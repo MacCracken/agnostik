@@ -14,3 +14,23 @@ test telemetry/trace_context_child ... bench:          52 ns/iter (+/- 9)
 
 test security/sandbox_config_default ... bench:          27 ns/iter (+/- 8)
 
+test agent/agent_id_new ... bench:          48 ns/iter (+/- 1)
+
+test telemetry/trace_context_new ... bench:          94 ns/iter (+/- 4)
+
+test telemetry/trace_context_child ... bench:          52 ns/iter (+/- 1)
+
+test security/sandbox_config_default ... bench:          27 ns/iter (+/- 1)
+
+test serde/trace_context_serialize ... bench:         168 ns/iter (+/- 4)
+
+test serde/trace_context_deserialize ... bench:         325 ns/iter (+/- 3)
+
+test serde/sandbox_config_serialize ... bench:         262 ns/iter (+/- 75)
+
+test serde/sandbox_config_deserialize ... bench:         331 ns/iter (+/- 141)
+
+test serde/agent_id_serialize ... bench:          33 ns/iter (+/- 13)
+
+test serde/agent_id_deserialize ... bench:          59 ns/iter (+/- 13)
+

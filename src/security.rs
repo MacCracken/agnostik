@@ -150,16 +150,177 @@ pub struct SecurityPolicy {
     pub permissions: Vec<Permission>,
 }
 
-/// Security capability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Platform security features available on the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
-pub enum Capability {
+pub enum SystemFeature {
     Landlock,
     Seccomp,
     Namespaces,
     Cgroups,
     Tpm,
     SecureBoot,
+}
+
+/// Backward compatibility alias.
+pub type Capability = SystemFeature;
+
+// ---------------------------------------------------------------------------
+// Cgroups v2
+// ---------------------------------------------------------------------------
+
+/// Cgroup v2 resource limits for agent sandboxing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CgroupLimits {
+    /// Hard memory limit in bytes (`memory.max`).
+    #[serde(default)]
+    pub memory_max: Option<u64>,
+    /// Soft memory limit in bytes (`memory.high`).
+    #[serde(default)]
+    pub memory_high: Option<u64>,
+    /// CPU bandwidth: max microseconds per period (`cpu.max`).
+    #[serde(default)]
+    pub cpu_max_usec: Option<u64>,
+    /// CPU bandwidth period in microseconds (default 100000).
+    #[serde(default)]
+    pub cpu_period_usec: Option<u64>,
+    /// CPU weight 1-10000 (`cpu.weight`, default 100).
+    #[serde(default)]
+    pub cpu_weight: Option<u16>,
+    /// Max number of PIDs (`pids.max`).
+    #[serde(default)]
+    pub pids_max: Option<u32>,
+}
+
+// ---------------------------------------------------------------------------
+// Namespaces
+// ---------------------------------------------------------------------------
+
+/// Which Linux namespaces to unshare for an agent.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamespaceConfig {
+    #[serde(default)]
+    pub pid: bool,
+    #[serde(default)]
+    pub net: bool,
+    #[serde(default)]
+    pub mount: bool,
+    #[serde(default)]
+    pub user: bool,
+    #[serde(default)]
+    pub uts: bool,
+    #[serde(default)]
+    pub ipc: bool,
+    #[serde(default)]
+    pub cgroup: bool,
+}
+
+/// UID/GID mapping for user namespaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdMapping {
+    pub inside_id: u32,
+    pub outside_id: u32,
+    pub count: u32,
+}
+
+// ---------------------------------------------------------------------------
+// Landlock
+// ---------------------------------------------------------------------------
+
+/// Landlock filesystem access rights (bitflags-style).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LandlockFsAccess {
+    Execute,
+    WriteFile,
+    ReadFile,
+    ReadDir,
+    RemoveDir,
+    RemoveFile,
+    MakeChar,
+    MakeDir,
+    MakeReg,
+    MakeSock,
+    MakeFifo,
+    MakeBlock,
+    MakeSym,
+    Refer,
+    Truncate,
+}
+
+/// A single Landlock filesystem rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LandlockFsRule {
+    pub path: std::path::PathBuf,
+    pub allowed_access: Vec<LandlockFsAccess>,
+}
+
+/// Landlock network access rights.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LandlockNetAccess {
+    BindTcp,
+    ConnectTcp,
+}
+
+/// A single Landlock network rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LandlockNetRule {
+    pub port: u16,
+    pub allowed_access: Vec<LandlockNetAccess>,
+}
+
+/// Complete Landlock ruleset for an agent.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LandlockRuleset {
+    #[serde(default)]
+    pub fs_rules: Vec<LandlockFsRule>,
+    #[serde(default)]
+    pub net_rules: Vec<LandlockNetRule>,
+}
+
+// ---------------------------------------------------------------------------
+// Linux capabilities (POSIX 1003.1e)
+// ---------------------------------------------------------------------------
+
+/// Linux capability (POSIX 1003.1e).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LinuxCapability {
+    CapChown,
+    CapDacOverride,
+    CapDacReadSearch,
+    CapFowner,
+    CapFsetid,
+    CapKill,
+    CapSetgid,
+    CapSetuid,
+    CapSetpcap,
+    CapNetBindService,
+    CapNetBroadcast,
+    CapNetAdmin,
+    CapNetRaw,
+    CapSysAdmin,
+    CapSysPtrace,
+    CapSysChroot,
+    CapMknod,
+    CapAuditWrite,
+    CapSetfcap,
+}
+
+/// Linux capability sets for a sandboxed process.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CapabilitySet {
+    #[serde(default)]
+    pub effective: Vec<LinuxCapability>,
+    #[serde(default)]
+    pub permitted: Vec<LinuxCapability>,
+    #[serde(default)]
+    pub inheritable: Vec<LinuxCapability>,
+    #[serde(default)]
+    pub bounding: Vec<LinuxCapability>,
+    #[serde(default)]
+    pub ambient: Vec<LinuxCapability>,
 }
 
 #[cfg(test)]
@@ -357,5 +518,172 @@ mod tests {
             let back: Capability = serde_json::from_str(&json).unwrap();
             assert_eq!(variant, back);
         }
+    }
+
+    #[test]
+    fn system_feature_is_capability_alias() {
+        let sf = SystemFeature::Landlock;
+        let cap: Capability = sf;
+        assert_eq!(sf, cap);
+    }
+
+    // --- Cgroup tests ---
+
+    #[test]
+    fn cgroup_limits_default() {
+        let c = CgroupLimits::default();
+        assert!(c.memory_max.is_none());
+        assert!(c.pids_max.is_none());
+    }
+
+    #[test]
+    fn cgroup_limits_serde_roundtrip() {
+        let c = CgroupLimits {
+            memory_max: Some(1024 * 1024 * 512),
+            memory_high: Some(1024 * 1024 * 256),
+            cpu_max_usec: Some(50000),
+            cpu_period_usec: Some(100000),
+            cpu_weight: Some(100),
+            pids_max: Some(64),
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: CgroupLimits = serde_json::from_str(&json).unwrap();
+        assert_eq!(c, back);
+    }
+
+    // --- Namespace tests ---
+
+    #[test]
+    fn namespace_config_default() {
+        let n = NamespaceConfig::default();
+        assert!(!n.pid);
+        assert!(!n.net);
+    }
+
+    #[test]
+    fn namespace_config_serde_roundtrip() {
+        let n = NamespaceConfig {
+            pid: true,
+            net: true,
+            mount: true,
+            user: true,
+            uts: false,
+            ipc: false,
+            cgroup: true,
+        };
+        let json = serde_json::to_string(&n).unwrap();
+        let back: NamespaceConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(n, back);
+    }
+
+    #[test]
+    fn id_mapping_serde_roundtrip() {
+        let m = IdMapping {
+            inside_id: 0,
+            outside_id: 1000,
+            count: 1,
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let back: IdMapping = serde_json::from_str(&json).unwrap();
+        assert_eq!(m, back);
+    }
+
+    // --- Landlock tests ---
+
+    #[test]
+    fn landlock_fs_access_serde_roundtrip() {
+        for variant in [
+            LandlockFsAccess::Execute,
+            LandlockFsAccess::ReadFile,
+            LandlockFsAccess::WriteFile,
+            LandlockFsAccess::ReadDir,
+            LandlockFsAccess::MakeDir,
+            LandlockFsAccess::Truncate,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: LandlockFsAccess = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn landlock_fs_rule_serde_roundtrip() {
+        let r = LandlockFsRule {
+            path: "/home/user".into(),
+            allowed_access: vec![LandlockFsAccess::ReadFile, LandlockFsAccess::ReadDir],
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: LandlockFsRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.path, std::path::PathBuf::from("/home/user"));
+        assert_eq!(back.allowed_access.len(), 2);
+    }
+
+    #[test]
+    fn landlock_net_access_serde_roundtrip() {
+        for variant in [LandlockNetAccess::BindTcp, LandlockNetAccess::ConnectTcp] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: LandlockNetAccess = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn landlock_ruleset_serde_roundtrip() {
+        let rs = LandlockRuleset {
+            fs_rules: vec![LandlockFsRule {
+                path: "/tmp".into(),
+                allowed_access: vec![LandlockFsAccess::ReadFile, LandlockFsAccess::WriteFile],
+            }],
+            net_rules: vec![LandlockNetRule {
+                port: 443,
+                allowed_access: vec![LandlockNetAccess::ConnectTcp],
+            }],
+        };
+        let json = serde_json::to_string(&rs).unwrap();
+        let back: LandlockRuleset = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.fs_rules.len(), 1);
+        assert_eq!(back.net_rules.len(), 1);
+    }
+
+    // --- Linux capability tests ---
+
+    #[test]
+    fn linux_capability_serde_roundtrip() {
+        for variant in [
+            LinuxCapability::CapNetAdmin,
+            LinuxCapability::CapSysAdmin,
+            LinuxCapability::CapNetRaw,
+            LinuxCapability::CapSetuid,
+            LinuxCapability::CapSysChroot,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: LinuxCapability = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn capability_set_default() {
+        let cs = CapabilitySet::default();
+        assert!(cs.effective.is_empty());
+        assert!(cs.bounding.is_empty());
+    }
+
+    #[test]
+    fn capability_set_serde_roundtrip() {
+        let cs = CapabilitySet {
+            effective: vec![LinuxCapability::CapNetBindService],
+            permitted: vec![
+                LinuxCapability::CapNetBindService,
+                LinuxCapability::CapNetRaw,
+            ],
+            inheritable: vec![],
+            bounding: vec![LinuxCapability::CapNetBindService],
+            ambient: vec![],
+        };
+        let json = serde_json::to_string(&cs).unwrap();
+        let back: CapabilitySet = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.effective.len(), 1);
+        assert_eq!(back.permitted.len(), 2);
     }
 }

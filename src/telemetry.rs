@@ -191,6 +191,83 @@ pub enum EventType {
     Custom,
 }
 
+// ---------------------------------------------------------------------------
+// Metrics (OTel-aligned)
+// ---------------------------------------------------------------------------
+
+/// Kind of metric instrument.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MetricKind {
+    Counter,
+    UpDownCounter,
+    Gauge,
+    Histogram,
+}
+
+/// A metric value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum MetricValue {
+    Int(i64),
+    Float(f64),
+    Histogram {
+        sum: f64,
+        count: u64,
+        bounds: Vec<f64>,
+        bucket_counts: Vec<u64>,
+    },
+}
+
+/// Describes a metric instrument.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstrumentDescriptor {
+    pub name: String,
+    pub description: String,
+    pub unit: String,
+    pub kind: MetricKind,
+}
+
+/// A single metric data point.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricDataPoint {
+    pub instrument: String,
+    pub value: MetricValue,
+    pub attributes: std::collections::HashMap<String, String>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+}
+
+// ---------------------------------------------------------------------------
+// Traits
+// ---------------------------------------------------------------------------
+
+/// Trait for span export backends.
+pub trait SpanCollector: Send + Sync {
+    /// Export a batch of completed spans.
+    fn export(&self, spans: &[Span]) -> crate::Result<()>;
+
+    /// Flush any buffered spans.
+    fn flush(&self) -> crate::Result<()> {
+        Ok(())
+    }
+
+    /// Shutdown the collector, flushing remaining spans.
+    fn shutdown(&self) -> crate::Result<()> {
+        self.flush()
+    }
+}
+
+/// Trait for metric export backends.
+pub trait MetricSink: Send + Sync {
+    /// Export a batch of metric data points.
+    fn export(&self, metrics: &[MetricDataPoint]) -> crate::Result<()>;
+
+    /// Flush any buffered metrics.
+    fn flush(&self) -> crate::Result<()> {
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,5 +443,76 @@ mod tests {
     #[test]
     fn span_id_from_str_invalid() {
         assert!("zzz".parse::<SpanId>().is_err());
+    }
+
+    // --- Metric tests ---
+
+    #[test]
+    fn metric_kind_serde_roundtrip() {
+        for variant in [
+            MetricKind::Counter,
+            MetricKind::UpDownCounter,
+            MetricKind::Gauge,
+            MetricKind::Histogram,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: MetricKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn metric_value_int_serde_roundtrip() {
+        let v = MetricValue::Int(42);
+        let json = serde_json::to_string(&v).unwrap();
+        let back: MetricValue = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, back);
+    }
+
+    #[test]
+    fn metric_value_float_serde_roundtrip() {
+        let v = MetricValue::Float(42.5);
+        let json = serde_json::to_string(&v).unwrap();
+        let back: MetricValue = serde_json::from_str(&json).unwrap();
+        assert!(matches!(back, MetricValue::Float(f) if (f - 42.5).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn metric_value_histogram_serde_roundtrip() {
+        let v = MetricValue::Histogram {
+            sum: 150.0,
+            count: 10,
+            bounds: vec![10.0, 50.0, 100.0],
+            bucket_counts: vec![2, 5, 2, 1],
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        let _back: MetricValue = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn instrument_descriptor_serde_roundtrip() {
+        let d = InstrumentDescriptor {
+            name: "http_request_duration".into(),
+            description: "Duration of HTTP requests".into(),
+            unit: "ms".into(),
+            kind: MetricKind::Histogram,
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        let back: InstrumentDescriptor = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "http_request_duration");
+        assert_eq!(back.kind, MetricKind::Histogram);
+    }
+
+    #[test]
+    fn metric_data_point_serde_roundtrip() {
+        let dp = MetricDataPoint {
+            instrument: "requests_total".into(),
+            value: MetricValue::Int(100),
+            attributes: [("method".into(), "GET".into())].into_iter().collect(),
+            timestamp: chrono::Utc::now(),
+        };
+        let json = serde_json::to_string(&dp).unwrap();
+        let back: MetricDataPoint = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.instrument, "requests_total");
     }
 }
