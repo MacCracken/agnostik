@@ -56,22 +56,49 @@ impl Default for UserId {
     }
 }
 
+impl std::fmt::Display for UserId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl std::str::FromStr for UserId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Uuid::parse_str(s).map(Self)
+    }
+}
+
 impl From<Uuid> for UserId {
     fn from(id: Uuid) -> Self {
         Self(id)
     }
 }
 
-/// Version information.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Version information (SemVer).
+///
+/// Serializes as a string `"MAJOR.MINOR.PATCH[-PRE][+BUILD]"`.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
     pub patch: u32,
-    #[serde(default)]
     pub prerelease: Option<String>,
-    #[serde(default)]
     pub build: Option<String>,
+}
+
+impl Serialize for Version {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for Version {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        s.parse().map_err(serde::de::Error::custom)
+    }
 }
 
 impl std::fmt::Display for Version {
@@ -123,7 +150,7 @@ impl std::str::FromStr for Version {
 }
 
 /// System capabilities.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Capabilities {
     #[serde(default)]
     pub llm_support: bool,
@@ -381,6 +408,48 @@ mod tests {
         let uuid = Uuid::new_v4();
         let id: UserId = uuid.into();
         assert_eq!(id.0, uuid);
+    }
+
+    #[test]
+    fn user_id_display() {
+        let id = UserId::new();
+        let s = format!("{id}");
+        assert_eq!(s.len(), 36);
+    }
+
+    #[test]
+    fn user_id_from_str_roundtrip() {
+        let id = UserId::new();
+        let s = id.to_string();
+        let parsed: UserId = s.parse().unwrap();
+        assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn user_id_from_str_invalid() {
+        assert!("not-a-uuid".parse::<UserId>().is_err());
+    }
+
+    #[test]
+    fn version_serde_as_string() {
+        let v = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            prerelease: Some("alpha".into()),
+            build: None,
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, r#""1.2.3-alpha""#);
+        let back: Version = serde_json::from_str(&json).unwrap();
+        assert_eq!(v, back);
+    }
+
+    #[test]
+    fn capabilities_eq() {
+        let a = Capabilities::default();
+        let b = Capabilities::default();
+        assert_eq!(a, b);
     }
 
     #[test]

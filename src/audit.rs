@@ -1,4 +1,4 @@
-use crate::types::AgentId;
+use crate::types::{AgentId, UserId, Version};
 use serde::{Deserialize, Serialize};
 
 /// Audit severity level.
@@ -16,7 +16,7 @@ pub enum AuditSeverity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IntegrityFields {
     /// Integrity format version.
-    pub version: String,
+    pub version: Version,
     /// HMAC-SHA256 signature of this entry (hex-encoded, 64 chars).
     pub signature: String,
     /// SHA-256 hash of the previous entry (hex-encoded, 64 chars).
@@ -31,7 +31,13 @@ impl IntegrityFields {
     #[must_use]
     pub fn genesis(signature: String) -> Self {
         Self {
-            version: "1.0.0".into(),
+            version: Version {
+                major: 1,
+                minor: 0,
+                patch: 0,
+                prerelease: None,
+                build: None,
+            },
             signature,
             previous_entry_hash: GENESIS_HASH.into(),
         }
@@ -59,7 +65,7 @@ pub struct AuditEntry {
     pub details: serde_json::Value,
     /// User who triggered the action (if applicable).
     #[serde(default)]
-    pub user_id: Option<String>,
+    pub user_id: Option<UserId>,
     /// Integrity chain fields.
     pub integrity: IntegrityFields,
 }
@@ -102,14 +108,16 @@ mod tests {
     fn integrity_fields_genesis() {
         let i = IntegrityFields::genesis("abc123def456".into());
         assert!(i.is_genesis());
-        assert_eq!(i.version, "1.0.0");
+        assert_eq!(i.version.major, 1);
+        assert_eq!(i.version.minor, 0);
+        assert_eq!(i.version.patch, 0);
         assert_eq!(i.previous_entry_hash, GENESIS_HASH);
     }
 
     #[test]
     fn integrity_fields_non_genesis() {
         let i = IntegrityFields {
-            version: "1.0.0".into(),
+            version: "1.0.0".parse().unwrap(),
             signature: "sig".into(),
             previous_entry_hash: "abcd1234".into(),
         };
@@ -135,7 +143,7 @@ mod tests {
             action: "file_read".into(),
             severity: AuditSeverity::Info,
             details: serde_json::json!({"path": "/tmp/test"}),
-            user_id: Some("user-001".into()),
+            user_id: Some(UserId::new()),
             integrity: IntegrityFields::genesis("sig".into()),
         };
         let json = serde_json::to_string(&e).unwrap();
@@ -158,7 +166,7 @@ mod tests {
             details: serde_json::Value::Null,
             user_id: None,
             integrity: IntegrityFields {
-                version: "1.0.0".into(),
+                version: "1.0.0".parse().unwrap(),
                 signature: "prev_sig".into(),
                 previous_entry_hash: "prev_hash".into(),
             },

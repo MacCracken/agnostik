@@ -65,10 +65,53 @@ pub use types::*;
 
 // Feature-gated re-exports
 #[cfg(feature = "agent")]
-pub use agent::{AgentConfig, AgentManifest, AgentStatus, AgentType};
+pub use agent::{
+    AgentConfig, AgentDependency, AgentEvent, AgentInfo, AgentManifest, AgentMessage,
+    AgentRateLimit, AgentStats, AgentStatus, AgentType, ResourceGrant, ResourceLimits,
+    ResourceRequest, ResourceUsage, StopReason,
+};
 
 #[cfg(feature = "security")]
-pub use security::{FsAccess, NetworkAccess, Permission, SandboxConfig, SeccompAction};
+pub use security::{
+    AuthContext, CapabilitySet, CgroupLimits, ConditionOperator, EncryptedStorageConfig,
+    FilesystemRule, FsAccess, IdMapping, LandlockFsAccess, LandlockFsRule, LandlockNetAccess,
+    LandlockNetRule, LandlockRuleset, LinuxCapability, NamespaceConfig, NetworkAccess,
+    NetworkPolicy, Permission, PermissionCondition, PolicyEffect, Role, RolePermission,
+    SandboxCapabilities, SandboxConfig, SeccompAction, SeccompMode, SeccompRule, SecurityContext,
+    SecurityPolicy, SystemFeature, TokenPayload,
+};
 
 #[cfg(feature = "telemetry")]
-pub use telemetry::{Span, SpanId, TelemetryConfig, TraceContext, TraceId};
+pub use telemetry::{
+    EventType, InstrumentDescriptor, MetricDataPoint, MetricKind, MetricSink, MetricValue, Span,
+    SpanCollector, SpanId, SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
+};
+
+#[cfg(feature = "audit")]
+pub use audit::{AuditEntry, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFields};
+
+#[cfg(feature = "llm")]
+pub use llm::{
+    ContentBlock, EmbeddingRequest, EmbeddingResponse, FinishReason, InferenceRequest,
+    InferenceResponse, LlmProvider, Message, MessageRole, SamplingParams, StreamEvent, TokenUsage,
+    ToolCall, ToolDefinition, ToolResult,
+};
+
+#[cfg(feature = "secrets")]
+pub use secrets::{Secret, SecretMetadata, SecretStore};
+
+#[cfg(feature = "config")]
+pub use config::{
+    AgnosConfig, EdgeResourceOverrides, EnvironmentProfile, FleetConfig, ProfileDefinition,
+};
+
+#[cfg(feature = "classification")]
+pub use classification::{ClassificationLevel, ClassificationResult, PiiKind};
+
+#[cfg(feature = "validation")]
+pub use validation::{ValidationResult, ValidationSeverity, ValidationWarning};
+
+#[cfg(feature = "hardware")]
+pub use hardware::{
+    AcceleratorDevice, AcceleratorFlags, AcceleratorSummary, DeviceFamily, DeviceVendor,
+};

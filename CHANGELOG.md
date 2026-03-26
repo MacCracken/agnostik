@@ -66,11 +66,14 @@
 #### Core Improvements
 - **AgentId**, **UserId** moved to always-available `types` module (no longer feature-gated)
 - **FromStr** impls for AgentId (UUID), Version (SemVer), TraceId (hex), SpanId (hex)
+- **Display**, **FromStr** added to UserId (UUID parsing/formatting)
 - **From\<Uuid\>** for AgentId and UserId
 - **From\<std::io::Error\>** for AgnostikError (new `Io` variant)
 - **From\<serde_json::Error\>** for AgnostikError (into `Serialization` variant)
 - **Hash** added to AgentType, AgentStatus, LlmProvider, FinishReason, SystemFeature
 - **Eq** added to ResourceLimits, ResourceUsage, TokenUsage
+- **PartialEq**, **Eq** added to Capabilities
+- Crate-root re-exports for all feature-gated modules' key types (consumers can use `agnostik::AuditEntry` instead of `agnostik::audit::AuditEntry`)
 
 ### Fixed
 - `Version::default()` was hardcoded to `2026.3.25` — now correctly defaults to `0.0.0`
@@ -90,17 +93,24 @@
 - **Breaking**: `InferenceResponse.text` replaced with `content: Vec<ContentBlock>`
 - **Breaking**: `InferenceRequest.temperature` moved into `SamplingParams`
 - **Breaking**: `logging::init()` renamed to `logging::try_init()` with `Result` return
+- **Breaking**: `Version` serde format changed from struct `{"major":1,"minor":0,"patch":0}` to string `"1.0.0"` (matches SemVer convention)
+- **Breaking**: `AgentManifest.version` changed from `String` to `Version`
+- **Breaking**: `AgentDependency.min_version` changed from `Option<String>` to `Option<Version>`
+- **Breaking**: `AgentMessage.timestamp` changed from `Option<DateTime<Utc>>` to `DateTime<Utc>` (now required)
+- **Breaking**: `AuditEntry.user_id` changed from `Option<String>` to `Option<UserId>`
+- **Breaking**: `IntegrityFields.version` changed from `String` to `Version`
+- **Breaking**: `Span.start_ms` renamed to `started_at` and changed from `u64` to `chrono::DateTime<Utc>`
 - `agent` feature now implies `security` feature
 - `audit` and `secrets` features now depend on `chrono`
 - `Secret` Serialize/Deserialize omission documented in doc comments
 
 ### Performance
-- Serde benchmarks added: AgentId (33/59 ns ser/de), TraceContext (168/325 ns), SandboxConfig (262/331 ns)
+- Serde benchmarks added: AgentId (37/60 ns ser/de), TraceContext (166/320 ns), SandboxConfig (326/336 ns)
+- New serde benchmarks: InferenceRequest (700 ns/1.22 µs), AuditEntry (800 ns/1.02 µs), AcceleratorDevice (483/480 ns)
 - No regressions in existing benchmarks
 
 ### Testing
-- 147 tests total (143 unit + 4 integration), up from 49
-- 99.53% line coverage (8 files at 100%, all files above 94%)
+- 194 tests total (190 unit + 4 integration), up from 49
 - Serde roundtrip tests for all public types
 
 ## [0.1.0] - 2026-03-25

@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.1.0+** — 12 modules, 180 tests, 99%+ coverage. All quality gates passing.
+**v0.1.0+** — 12 modules, 194 tests. All quality gates passing.
 
 ## Completed
 
@@ -13,7 +13,14 @@
 - Error source chaining (From<io::Error>, From<serde_json::Error>)
 - Consistent derives (Hash, Eq, PartialEq) across all types
 - Secret Debug redaction, logging panic fix, feature contamination fix
-- 99.53% test coverage
+- Version serde as string (SemVer convention)
+- UserId Display/FromStr for consistency with AgentId
+- PartialEq/Eq on Capabilities
+- Typed versions: AgentManifest.version, AgentDependency.min_version, IntegrityFields.version → Version
+- Typed IDs: AuditEntry.user_id → Option<UserId>
+- Required timestamps: AgentMessage.timestamp (no longer Optional)
+- Span.started_at uses chrono::DateTime<Utc> (was start_ms: u64)
+- Crate-root re-exports for all feature-gated module types
 
 ### LLM Module v2
 - Structured conversation types (MessageRole, Message, ContentBlock)
@@ -50,25 +57,16 @@
 4. Consumers gradually migrate `agnos_common::*` → `agnostik::*`
 5. agnos-common deprecated once all consumers migrated
 
+### Completed Backlog
+- Environment Profiles: EdgeResourceOverrides, ProfileDefinition, FleetConfig (config module)
+- Agent Manifest v2: ResourceRequest/ResourceGrant (negotiation), AgentDependency (dependency declaration)
+- LLM Embeddings: EmbeddingRequest/EmbeddingResponse (llm module)
+- Agent Communication: AgentMessage envelope with correlation_id, reply_to (agent module)
+- SecretStore trait (secrets module)
+
 ## Backlog
 
-### Environment Profiles
-- Edge-specific resource limits
-- Fleet-wide configuration distribution
-- Profile inheritance (edge inherits from production, overrides specific fields)
-
-### Agent Manifest v2
-- Resource negotiation (agent requests, runtime approves/modifies)
-- Dependency declaration (agent A requires agent B)
-
-### LLM Expansion
-- Embedding types (EmbeddingRequest/Response for RAG pipelines)
-
-### Agent Communication
-- Agent-to-agent message envelope (sender/receiver AgentId, correlation_id)
-
-### Trait Interfaces
-- SecretStore trait (pluggable secret backends)
+_(No outstanding backlog items — all planned features implemented)_
 
 ## v1.0.0 Criteria
 - API frozen — no breaking changes

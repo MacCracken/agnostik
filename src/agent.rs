@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 use crate::security::{Permission, SandboxConfig};
-pub use crate::types::{AgentId, UserId};
+pub use crate::types::{AgentId, UserId, Version};
 
 /// Agent type classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -101,7 +101,7 @@ pub struct AgentManifest {
     #[serde(default)]
     pub author: String,
     #[serde(default)]
-    pub version: String,
+    pub version: Version,
     #[serde(default)]
     pub homepage: String,
     #[serde(default)]
@@ -170,8 +170,7 @@ pub struct AgentMessage {
     #[serde(default)]
     pub reply_to: Option<uuid::Uuid>,
     pub payload: serde_json::Value,
-    #[serde(default)]
-    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +184,7 @@ pub struct AgentDependency {
     pub required_agent: String,
     /// Minimum version required (SemVer).
     #[serde(default)]
-    pub min_version: Option<String>,
+    pub min_version: Option<Version>,
     /// Whether the dependency is mandatory or optional.
     #[serde(default = "default_true")]
     pub required: bool,
@@ -425,7 +424,7 @@ mod tests {
             correlation_id: Some(uuid::Uuid::new_v4()),
             reply_to: None,
             payload: serde_json::json!({"action": "delegate", "task": "search"}),
-            timestamp: Some(chrono::Utc::now()),
+            timestamp: chrono::Utc::now(),
         };
         let json = serde_json::to_string(&m).unwrap();
         let back: AgentMessage = serde_json::from_str(&json).unwrap();
@@ -438,13 +437,14 @@ mod tests {
     fn agent_dependency_serde_roundtrip() {
         let d = AgentDependency {
             required_agent: "search-agent".into(),
-            min_version: Some("1.0.0".into()),
+            min_version: Some("1.0.0".parse().unwrap()),
             required: true,
         };
         let json = serde_json::to_string(&d).unwrap();
         let back: AgentDependency = serde_json::from_str(&json).unwrap();
         assert_eq!(back.required_agent, "search-agent");
         assert!(back.required);
+        assert_eq!(back.min_version.unwrap().major, 1);
     }
 
     #[test]

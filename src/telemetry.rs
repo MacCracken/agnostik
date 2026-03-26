@@ -146,7 +146,7 @@ pub struct Span {
     pub span_id: SpanId,
     pub parent_span_id: Option<SpanId>,
     pub status: SpanStatus,
-    pub start_ms: u64,
+    pub started_at: chrono::DateTime<chrono::Utc>,
     pub duration_ms: u64,
     pub attributes: std::collections::HashMap<String, String>,
 }
@@ -354,7 +354,7 @@ mod tests {
             span_id: SpanId::new(),
             parent_span_id: None,
             status: SpanStatus::Ok,
-            start_ms: 1000,
+            started_at: chrono::Utc::now(),
             duration_ms: 50,
             attributes: [("key".into(), "value".into())].into_iter().collect(),
         };
