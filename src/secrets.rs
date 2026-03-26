@@ -1,9 +1,22 @@
 use serde::{Deserialize, Serialize};
 
 /// A secret value that is zeroized on drop.
-#[derive(Debug, Clone)]
+///
+/// `Debug` output is redacted to prevent accidental leaks in logs or panics.
+/// `Serialize`/`Deserialize` are intentionally omitted — use [`Secret::expose`]
+/// explicitly when the raw value is needed, and [`SecretMetadata`] for
+/// serializable metadata about the secret.
+#[derive(Clone)]
 pub struct Secret {
     value: String,
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Secret")
+            .field("value", &"[REDACTED]")
+            .finish()
+    }
 }
 
 impl Secret {
@@ -66,6 +79,14 @@ mod tests {
     fn empty_secret() {
         let s = Secret::new("");
         assert!(s.is_empty());
+    }
+
+    #[test]
+    fn secret_debug_redacted() {
+        let s = Secret::new("super-secret-value");
+        let debug = format!("{s:?}");
+        assert!(debug.contains("REDACTED"));
+        assert!(!debug.contains("super-secret-value"));
     }
 
     #[test]
