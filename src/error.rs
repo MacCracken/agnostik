@@ -30,6 +30,15 @@ pub enum AgnostikError {
 
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl From<serde_json::Error> for AgnostikError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::Serialization(e.to_string())
+    }
 }
 
 impl AgnostikError {
@@ -71,5 +80,27 @@ mod tests {
     #[test]
     fn config_error_not_retriable() {
         assert!(!AgnostikError::ConfigError("bad".into()).is_retriable());
+    }
+
+    #[test]
+    fn from_io_error() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "gone");
+        let e: AgnostikError = io_err.into();
+        assert!(matches!(e, AgnostikError::Io(_)));
+        assert!(e.to_string().contains("gone"));
+    }
+
+    #[test]
+    fn from_serde_error() {
+        let serde_err = serde_json::from_str::<String>("not json").unwrap_err();
+        let e: AgnostikError = serde_err.into();
+        assert!(matches!(e, AgnostikError::Serialization(_)));
+    }
+
+    #[test]
+    fn io_not_retriable() {
+        let io_err = std::io::Error::other("fail");
+        let e: AgnostikError = io_err.into();
+        assert!(!e.is_retriable());
     }
 }

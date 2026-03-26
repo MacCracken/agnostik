@@ -30,7 +30,6 @@ impl Secret {
     }
 }
 
-#[cfg(feature = "secrets")]
 impl Drop for Secret {
     fn drop(&mut self) {
         zeroize::Zeroize::zeroize(&mut self.value);
@@ -41,8 +40,8 @@ impl Drop for Secret {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretMetadata {
     pub name: String,
-    pub created_at: String,
-    pub expires_at: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
     pub rotation_policy: Option<String>,
 }
 
@@ -73,7 +72,7 @@ mod tests {
     fn secret_metadata_serde() {
         let m = SecretMetadata {
             name: "api-key".into(),
-            created_at: "2026-03-25".into(),
+            created_at: chrono::Utc::now(),
             expires_at: None,
             rotation_policy: Some("90d".into()),
         };

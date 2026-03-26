@@ -1,5 +1,66 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use uuid::Uuid;
+
+/// Unique agent identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AgentId(pub Uuid);
+
+impl AgentId {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for AgentId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for AgentId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<Uuid> for AgentId {
+    fn from(id: Uuid) -> Self {
+        Self(id)
+    }
+}
+
+impl std::str::FromStr for AgentId {
+    type Err = uuid::Error;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Uuid::parse_str(s).map(Self)
+    }
+}
+
+/// Unique user identifier.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct UserId(pub Uuid);
+
+impl UserId {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for UserId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl From<Uuid> for UserId {
+    fn from(id: Uuid) -> Self {
+        Self(id)
+    }
+}
 
 /// Version information.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +84,41 @@ impl std::fmt::Display for Version {
             write!(f, "+{build}")?;
         }
         Ok(())
+    }
+}
+
+impl std::str::FromStr for Version {
+    type Err = crate::error::AgnostikError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        // Split off build metadata first (after '+')
+        let (rest, build) = match s.split_once('+') {
+            Some((r, b)) => (r, Some(b.to_owned())),
+            None => (s, None),
+        };
+        // Split off prerelease (after '-', but only after the version core)
+        let (core, prerelease) = match rest.split_once('-') {
+            Some((c, p)) => (c, Some(p.to_owned())),
+            None => (rest, None),
+        };
+        let parts: Vec<&str> = core.split('.').collect();
+        if parts.len() != 3 {
+            return Err(crate::error::AgnostikError::InvalidArgument(format!(
+                "expected MAJOR.MINOR.PATCH, got: {s}"
+            )));
+        }
+        let parse = |p: &str| {
+            p.parse::<u32>().map_err(|_| {
+                crate::error::AgnostikError::InvalidArgument(format!("invalid version part: {p}"))
+            })
+        };
+        Ok(Self {
+            major: parse(parts[0])?,
+            minor: parse(parts[1])?,
+            patch: parse(parts[2])?,
+            prerelease,
+            build,
+        })
     }
 }
 
@@ -200,5 +296,64 @@ mod tests {
             let back: SystemStatus = serde_json::from_str(&json).unwrap();
             assert_eq!(variant, back);
         }
+    }
+
+    #[test]
+    fn agent_id_from_uuid() {
+        let uuid = Uuid::new_v4();
+        let id: AgentId = uuid.into();
+        assert_eq!(id.0, uuid);
+    }
+
+    #[test]
+    fn agent_id_from_str_roundtrip() {
+        let id = AgentId::new();
+        let s = id.to_string();
+        let parsed: AgentId = s.parse().unwrap();
+        assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn agent_id_from_str_invalid() {
+        assert!("not-a-uuid".parse::<AgentId>().is_err());
+    }
+
+    #[test]
+    fn user_id_serde_roundtrip() {
+        let id = UserId::new();
+        let json = serde_json::to_string(&id).unwrap();
+        let back: UserId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn version_from_str_simple() {
+        let v: Version = "1.2.3".parse().unwrap();
+        assert_eq!(v.major, 1);
+        assert_eq!(v.minor, 2);
+        assert_eq!(v.patch, 3);
+        assert!(v.prerelease.is_none());
+        assert!(v.build.is_none());
+    }
+
+    #[test]
+    fn version_from_str_full() {
+        let v: Version = "1.2.3-alpha+b1".parse().unwrap();
+        assert_eq!(v.major, 1);
+        assert_eq!(v.prerelease.as_deref(), Some("alpha"));
+        assert_eq!(v.build.as_deref(), Some("b1"));
+    }
+
+    #[test]
+    fn version_from_str_display_roundtrip() {
+        let original = "1.2.3-beta.1+build.42";
+        let v: Version = original.parse().unwrap();
+        assert_eq!(v.to_string(), original);
+    }
+
+    #[test]
+    fn version_from_str_invalid() {
+        assert!("1.2".parse::<Version>().is_err());
+        assert!("abc".parse::<Version>().is_err());
     }
 }

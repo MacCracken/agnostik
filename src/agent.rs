@@ -1,57 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use uuid::Uuid;
 
-#[cfg(feature = "security")]
 use crate::security::{Permission, SandboxConfig};
-
-/// Unique agent identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct AgentId(pub Uuid);
-
-impl AgentId {
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-
-    #[must_use]
-    pub fn from_uuid(id: Uuid) -> Self {
-        Self(id)
-    }
-}
-
-impl Default for AgentId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl std::fmt::Display for AgentId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-/// Unique user identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct UserId(pub Uuid);
-
-impl UserId {
-    #[must_use]
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-}
-
-impl Default for UserId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub use crate::types::{AgentId, UserId};
 
 /// Agent type classification.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub enum AgentType {
     System,
@@ -61,7 +15,7 @@ pub enum AgentType {
 }
 
 /// Agent lifecycle status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum AgentStatus {
     Pending,
@@ -74,7 +28,7 @@ pub enum AgentStatus {
 }
 
 /// Resource limits for an agent.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceLimits {
     pub max_memory: u64,
     pub max_cpu_time: u64,
@@ -94,7 +48,7 @@ impl Default for ResourceLimits {
 }
 
 /// Current resource usage snapshot.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ResourceUsage {
     pub memory_used: u64,
     pub cpu_time_used: u64,
@@ -108,9 +62,9 @@ pub struct AgentConfig {
     pub name: String,
     pub agent_type: AgentType,
     pub resource_limits: ResourceLimits,
-    #[cfg(feature = "security")]
+    #[serde(default)]
     pub sandbox: SandboxConfig,
-    #[cfg(feature = "security")]
+    #[serde(default)]
     pub permissions: Vec<Permission>,
     pub metadata: serde_json::Value,
 }
@@ -121,9 +75,7 @@ impl Default for AgentConfig {
             name: String::new(),
             agent_type: AgentType::User,
             resource_limits: ResourceLimits::default(),
-            #[cfg(feature = "security")]
             sandbox: SandboxConfig::default(),
-            #[cfg(feature = "security")]
             permissions: Vec::new(),
             metadata: serde_json::Value::Null,
         }
@@ -152,7 +104,6 @@ pub struct AgentManifest {
     pub version: String,
     #[serde(default)]
     pub homepage: String,
-    #[cfg(feature = "security")]
     #[serde(default)]
     pub requested_permissions: Vec<Permission>,
     #[serde(default)]
@@ -168,7 +119,7 @@ pub struct AgentManifest {
 /// Agent event for pub/sub.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentEvent {
-    pub agent_id: String,
+    pub agent_id: AgentId,
     pub event_type: String,
     pub payload: serde_json::Value,
 }
@@ -176,7 +127,7 @@ pub struct AgentEvent {
 /// Agent runtime info.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInfo {
-    pub id: String,
+    pub id: AgentId,
     pub name: String,
     pub agent_type: AgentType,
     pub status: AgentStatus,
@@ -350,27 +301,29 @@ mod tests {
 
     #[test]
     fn agent_event_serde_roundtrip() {
+        let id = AgentId::new();
         let e = AgentEvent {
-            agent_id: "agent-001".into(),
+            agent_id: id,
             event_type: "started".into(),
             payload: serde_json::json!({"status": "ok"}),
         };
         let json = serde_json::to_string(&e).unwrap();
         let back: AgentEvent = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.agent_id, id);
     }
 
     #[test]
     fn agent_info_serde_roundtrip() {
+        let id = AgentId::new();
         let i = AgentInfo {
-            id: "agent-001".into(),
+            id,
             name: "test".into(),
             agent_type: AgentType::User,
             status: AgentStatus::Running,
         };
         let json = serde_json::to_string(&i).unwrap();
         let back: AgentInfo = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.id, "agent-001");
+        assert_eq!(back.id, id);
         assert_eq!(back.status, AgentStatus::Running);
     }
 

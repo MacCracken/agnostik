@@ -1,3 +1,4 @@
+use crate::types::AgentId;
 use serde::{Deserialize, Serialize};
 
 /// Filesystem access level.
@@ -127,7 +128,7 @@ impl Default for SandboxConfig {
 /// Security context for an operation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityContext {
-    pub agent_id: String,
+    pub agent_id: AgentId,
     pub permissions: Vec<Permission>,
     pub sandbox: SandboxConfig,
 }
@@ -308,14 +309,15 @@ mod tests {
 
     #[test]
     fn security_context_serde_roundtrip() {
+        let id = AgentId::new();
         let ctx = SecurityContext {
-            agent_id: "agent-001".into(),
+            agent_id: id,
             permissions: vec![Permission::FileRead, Permission::NetworkAccess],
             sandbox: SandboxConfig::default(),
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let back: SecurityContext = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.agent_id, id);
         assert_eq!(back.permissions.len(), 2);
     }
 

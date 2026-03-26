@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// LLM provider identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum LlmProvider {
     Ollama,
@@ -20,7 +20,7 @@ pub enum LlmProvider {
 }
 
 /// Token usage for an inference request.
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -54,7 +54,7 @@ pub struct InferenceResponse {
 }
 
 /// Why inference stopped.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum FinishReason {
     Stop,

@@ -1,3 +1,4 @@
+use crate::types::AgentId;
 use serde::{Deserialize, Serialize};
 
 /// Trace identifier (128-bit).
@@ -23,6 +24,16 @@ impl std::fmt::Display for TraceId {
     }
 }
 
+impl std::str::FromStr for TraceId {
+    type Err = crate::error::AgnostikError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        u128::from_str_radix(s, 16).map(Self).map_err(|_| {
+            crate::error::AgnostikError::InvalidArgument(format!("invalid trace id: {s}"))
+        })
+    }
+}
+
 /// Span identifier (64-bit).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SpanId(pub u64);
@@ -40,6 +51,22 @@ impl Default for SpanId {
     }
 }
 
+impl std::fmt::Display for SpanId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:016x}", self.0)
+    }
+}
+
+impl std::str::FromStr for SpanId {
+    type Err = crate::error::AgnostikError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        u64::from_str_radix(s, 16).map(Self).map_err(|_| {
+            crate::error::AgnostikError::InvalidArgument(format!("invalid span id: {s}"))
+        })
+    }
+}
+
 fn rand_u64() -> u64 {
     uuid::Uuid::new_v4().as_u128() as u64
 }
@@ -51,7 +78,20 @@ pub struct TraceContext {
     pub span_id: SpanId,
     #[serde(default)]
     pub parent_span_id: Option<SpanId>,
+    /// W3C trace flags (bit 0 = sampled).
+    #[serde(default = "default_trace_flags")]
+    pub trace_flags: u8,
+    /// W3C trace state (vendor-specific key=value pairs).
+    #[serde(default)]
+    pub trace_state: String,
 }
+
+fn default_trace_flags() -> u8 {
+    0x01
+}
+
+/// W3C trace flag: sampled.
+pub const TRACE_FLAG_SAMPLED: u8 = 0x01;
 
 impl TraceContext {
     #[must_use]
@@ -60,6 +100,8 @@ impl TraceContext {
             trace_id: TraceId::new(),
             span_id: SpanId::new(),
             parent_span_id: None,
+            trace_flags: TRACE_FLAG_SAMPLED,
+            trace_state: String::new(),
         }
     }
 
@@ -69,7 +111,15 @@ impl TraceContext {
             trace_id: self.trace_id,
             span_id: SpanId::new(),
             parent_span_id: Some(self.span_id),
+            trace_flags: self.trace_flags,
+            trace_state: self.trace_state.clone(),
         }
+    }
+
+    /// Whether this context is sampled.
+    #[must_use]
+    pub fn is_sampled(&self) -> bool {
+        self.trace_flags & TRACE_FLAG_SAMPLED != 0
     }
 }
 
@@ -122,10 +172,10 @@ impl Default for TelemetryConfig {
 /// Crash report for diagnostics.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CrashReport {
-    pub agent_id: String,
+    pub agent_id: AgentId,
     pub error: String,
     pub backtrace: Option<String>,
-    pub timestamp: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 /// Event types for pub/sub.
@@ -258,16 +308,63 @@ mod tests {
 
     #[test]
     fn crash_report_serde_roundtrip() {
+        let id = AgentId::new();
         let r = CrashReport {
-            agent_id: "agent-001".into(),
+            agent_id: id,
             error: "segfault".into(),
             backtrace: Some("frame0\nframe1".into()),
-            timestamp: "2026-03-25T00:00:00Z".into(),
+            timestamp: chrono::Utc::now(),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: CrashReport = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.agent_id, id);
         assert_eq!(back.error, "segfault");
         assert!(back.backtrace.is_some());
+    }
+
+    #[test]
+    fn trace_context_w3c_flags() {
+        let ctx = TraceContext::new();
+        assert!(ctx.is_sampled());
+        assert_eq!(ctx.trace_flags, TRACE_FLAG_SAMPLED);
+        assert!(ctx.trace_state.is_empty());
+    }
+
+    #[test]
+    fn trace_context_child_propagates_flags() {
+        let mut parent = TraceContext::new();
+        parent.trace_flags = 0x00;
+        parent.trace_state = "vendor=value".into();
+        let child = parent.child();
+        assert_eq!(child.trace_flags, 0x00);
+        assert!(!child.is_sampled());
+        assert_eq!(child.trace_state, "vendor=value");
+    }
+
+    #[test]
+    fn trace_id_from_str_roundtrip() {
+        let id = TraceId::new();
+        let s = id.to_string();
+        let parsed: TraceId = s.parse().unwrap();
+        assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn trace_id_from_str_invalid() {
+        assert!("not-hex".parse::<TraceId>().is_err());
+    }
+
+    #[test]
+    fn span_id_display_from_str_roundtrip() {
+        let id = SpanId::new();
+        let s = id.to_string();
+        assert_eq!(s.len(), 16);
+        let parsed: SpanId = s.parse().unwrap();
+        assert_eq!(id, parsed);
+    }
+
+    #[test]
+    fn span_id_from_str_invalid() {
+        assert!("zzz".parse::<SpanId>().is_err());
     }
 }

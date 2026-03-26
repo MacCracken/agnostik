@@ -1,3 +1,4 @@
+use crate::types::AgentId;
 use serde::{Deserialize, Serialize};
 
 /// Audit severity level.
@@ -14,8 +15,8 @@ pub enum AuditSeverity {
 /// An audit log entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
-    pub timestamp: String,
-    pub agent_id: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub agent_id: AgentId,
     pub action: String,
     pub severity: AuditSeverity,
     pub details: serde_json::Value,
@@ -35,9 +36,10 @@ mod tests {
 
     #[test]
     fn audit_entry_serde() {
+        let id = AgentId::new();
         let e = AuditEntry {
-            timestamp: "2026-03-25T00:00:00Z".into(),
-            agent_id: "agent-001".into(),
+            timestamp: chrono::Utc::now(),
+            agent_id: id,
             action: "file_read".into(),
             severity: AuditSeverity::Info,
             details: serde_json::json!({"path": "/tmp/test"}),
@@ -46,7 +48,7 @@ mod tests {
         };
         let json = serde_json::to_string(&e).unwrap();
         let back: AuditEntry = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.agent_id, id);
     }
 
     #[test]

@@ -1,0 +1,16 @@
+test agent/agent_id_new ... bench:          48 ns/iter (+/- 0)
+
+test telemetry/trace_context_new ... bench:          92 ns/iter (+/- 1)
+
+test telemetry/trace_context_child ... bench:          48 ns/iter (+/- 0)
+
+test security/sandbox_config_default ... bench:          26 ns/iter (+/- 0)
+
+test agent/agent_id_new ... bench:          47 ns/iter (+/- 9)
+
+test telemetry/trace_context_new ... bench:          94 ns/iter (+/- 14)
+
+test telemetry/trace_context_child ... bench:          52 ns/iter (+/- 9)
+
+test security/sandbox_config_default ... bench:          27 ns/iter (+/- 8)
+
