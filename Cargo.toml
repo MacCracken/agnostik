@@ -11,6 +11,7 @@ readme = "README.md"
 documentation = "https://docs.rs/agnostik"
 keywords = ["agnos", "types", "agent", "sandbox", "telemetry"]
 categories = ["data-structures", "os"]
+publish = false
 exclude = [".claude/", ".github/", "docs/", "scripts/"]
 
 [features]
