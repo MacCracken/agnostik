@@ -42,6 +42,15 @@ pub mod secrets;
 #[cfg(feature = "config")]
 pub mod config;
 
+#[cfg(feature = "classification")]
+pub mod classification;
+
+#[cfg(feature = "validation")]
+pub mod validation;
+
+#[cfg(feature = "hardware")]
+pub mod hardware;
+
 pub mod types;
 
 #[cfg(feature = "logging")]

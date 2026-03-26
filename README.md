@@ -6,14 +6,14 @@ Extracted from `agnos-common` as a standalone crate. Provides the core type voca
 
 ## Features
 
-- **Agent** — AgentId, AgentConfig, AgentStatus, AgentManifest, ResourceLimits
-- **Security** — SandboxConfig, Permission, NetworkAccess, NetworkPolicy, SeccompAction
-- **Telemetry** — TraceContext (W3C-compatible), TraceId, SpanId, Span, EventType
+- **Agent** — AgentId, AgentConfig, AgentStatus, AgentManifest, ResourceLimits, AgentEvent
+- **Security** — SandboxConfig, Permission, NetworkPolicy, CgroupLimits, NamespaceConfig, LandlockRuleset, LinuxCapability, CapabilitySet
+- **Telemetry** — TraceContext (W3C-compatible), Span, MetricKind, MetricDataPoint, SpanCollector/MetricSink traits
 - **Audit** — AuditEntry, AuditSeverity, hash chain types
-- **LLM** — InferenceRequest/Response, TokenUsage, LlmProvider, FinishReason
-- **Secrets** — Zeroize-backed Secret, SecretMetadata
+- **LLM** — Message, ContentBlock, ToolDefinition, ToolCall, SamplingParams, InferenceRequest/Response, StreamEvent
+- **Secrets** — Zeroize-backed Secret (redacted Debug), SecretMetadata
 - **Config** — EnvironmentProfile, AgnosConfig, ComponentConfig
-- **Error** — AgnostikError with retriable classification
+- **Error** — AgnostikError with 11 variants, retriable classification, From<io::Error>/From<serde_json::Error>
 
 ## Quick Start
 
@@ -23,20 +23,26 @@ use agnostik::{AgentId, SandboxConfig, TraceContext, AgnostikError};
 let id = AgentId::new();
 let sandbox = SandboxConfig::default();
 let trace = TraceContext::new();
-let child = trace.child(); // inherits trace_id
+let child = trace.child(); // inherits trace_id, flags, state
+assert!(trace.is_sampled());
+
+// Parse from strings
+let parsed: AgentId = "550e8400-e29b-41d4-a716-446655440000".parse().unwrap();
 ```
 
 ## Feature Flags
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `agent` | yes | Agent identity and configuration types |
-| `security` | yes | Sandbox, permission, network policy types |
-| `telemetry` | yes | Distributed tracing types |
+| `agent` | yes | Agent identity, configuration, and lifecycle types (implies `security`) |
+| `security` | yes | Sandbox, permission, cgroup, namespace, landlock, capability types |
+| `telemetry` | yes | Distributed tracing, metrics, SpanCollector/MetricSink traits |
 | `audit` | no | Audit chain entry types |
-| `llm` | no | LLM inference request/response types |
+| `llm` | no | LLM conversation, tool calling, streaming, and inference types |
 | `secrets` | no | Zeroize-backed secret storage |
 | `config` | no | Environment profile and component config |
+| `logging` | no | Tracing subscriber initialization |
+| `full` | no | All features enabled |
 
 ## Consumers
 
@@ -44,4 +50,4 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 
 ## License
 
-GPL-3.0
+GPL-3.0-only

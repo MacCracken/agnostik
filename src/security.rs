@@ -323,6 +323,119 @@ pub struct CapabilitySet {
     pub ambient: Vec<LinuxCapability>,
 }
 
+// ---------------------------------------------------------------------------
+// Sandbox capability detection
+// ---------------------------------------------------------------------------
+
+/// Seccomp BPF mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SeccompMode {
+    Disabled,
+    Strict,
+    Filter,
+    Unsupported,
+}
+
+/// Detected sandbox capabilities on the host.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SandboxCapabilities {
+    pub seccomp_available: bool,
+    pub seccomp_mode: SeccompMode,
+    pub landlock_available: bool,
+    /// Landlock ABI version (0 = not available).
+    pub landlock_abi: u32,
+    pub cgroup_v2: bool,
+    pub namespaces_available: bool,
+}
+
+impl Default for SandboxCapabilities {
+    fn default() -> Self {
+        Self {
+            seccomp_available: false,
+            seccomp_mode: SeccompMode::Disabled,
+            landlock_available: false,
+            landlock_abi: 0,
+            cgroup_v2: false,
+            namespaces_available: false,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RBAC
+// ---------------------------------------------------------------------------
+
+/// System role for access control.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum Role {
+    Admin,
+    Operator,
+    Auditor,
+    Viewer,
+    Service,
+}
+
+/// Comparison operator for permission conditions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ConditionOperator {
+    Eq,
+    Neq,
+    In,
+    Nin,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
+}
+
+/// A condition on a permission rule.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PermissionCondition {
+    pub field: String,
+    pub operator: ConditionOperator,
+    pub value: serde_json::Value,
+}
+
+/// A resource-level permission with actions and optional conditions.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RolePermission {
+    pub resource: String,
+    pub actions: Vec<String>,
+    #[serde(default)]
+    pub conditions: Vec<PermissionCondition>,
+}
+
+/// JWT-style token payload for authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenPayload {
+    /// Subject (user or agent ID).
+    pub sub: String,
+    pub role: Role,
+    #[serde(default)]
+    pub permissions: Vec<String>,
+    /// Issued-at timestamp (Unix seconds).
+    pub iat: u64,
+    /// Expiry timestamp (Unix seconds).
+    pub exp: u64,
+    /// Token ID (for revocation).
+    pub jti: String,
+    #[serde(default)]
+    pub email: Option<String>,
+    #[serde(default)]
+    pub display_name: Option<String>,
+}
+
+/// Authentication context for an operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthContext {
+    pub agent_id: crate::types::AgentId,
+    pub role: Role,
+    pub permissions: Vec<RolePermission>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -685,5 +798,134 @@ mod tests {
         let back: CapabilitySet = serde_json::from_str(&json).unwrap();
         assert_eq!(back.effective.len(), 1);
         assert_eq!(back.permitted.len(), 2);
+    }
+
+    // --- Sandbox capabilities tests ---
+
+    #[test]
+    fn seccomp_mode_serde_roundtrip() {
+        for variant in [
+            SeccompMode::Disabled,
+            SeccompMode::Strict,
+            SeccompMode::Filter,
+            SeccompMode::Unsupported,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SeccompMode = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn sandbox_capabilities_default() {
+        let sc = SandboxCapabilities::default();
+        assert!(!sc.seccomp_available);
+        assert_eq!(sc.seccomp_mode, SeccompMode::Disabled);
+        assert!(!sc.landlock_available);
+        assert_eq!(sc.landlock_abi, 0);
+    }
+
+    #[test]
+    fn sandbox_capabilities_serde_roundtrip() {
+        let sc = SandboxCapabilities {
+            seccomp_available: true,
+            seccomp_mode: SeccompMode::Filter,
+            landlock_available: true,
+            landlock_abi: 4,
+            cgroup_v2: true,
+            namespaces_available: true,
+        };
+        let json = serde_json::to_string(&sc).unwrap();
+        let back: SandboxCapabilities = serde_json::from_str(&json).unwrap();
+        assert!(back.seccomp_available);
+        assert_eq!(back.seccomp_mode, SeccompMode::Filter);
+        assert_eq!(back.landlock_abi, 4);
+    }
+
+    // --- RBAC tests ---
+
+    #[test]
+    fn role_serde_roundtrip() {
+        for variant in [
+            Role::Admin,
+            Role::Operator,
+            Role::Auditor,
+            Role::Viewer,
+            Role::Service,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: Role = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn condition_operator_serde_roundtrip() {
+        for variant in [
+            ConditionOperator::Eq,
+            ConditionOperator::Neq,
+            ConditionOperator::In,
+            ConditionOperator::Gt,
+            ConditionOperator::Lte,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: ConditionOperator = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn role_permission_serde_roundtrip() {
+        let rp = RolePermission {
+            resource: "agents".into(),
+            actions: vec!["read".into(), "write".into()],
+            conditions: vec![PermissionCondition {
+                field: "owner".into(),
+                operator: ConditionOperator::Eq,
+                value: serde_json::json!("self"),
+            }],
+        };
+        let json = serde_json::to_string(&rp).unwrap();
+        let back: RolePermission = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.resource, "agents");
+        assert_eq!(back.actions.len(), 2);
+        assert_eq!(back.conditions.len(), 1);
+    }
+
+    #[test]
+    fn token_payload_serde_roundtrip() {
+        let tp = TokenPayload {
+            sub: "user-001".into(),
+            role: Role::Operator,
+            permissions: vec!["agents:read".into(), "agents:write".into()],
+            iat: 1711324800,
+            exp: 1711411200,
+            jti: "tok-abc-123".into(),
+            email: Some("user@example.com".into()),
+            display_name: Some("Test User".into()),
+        };
+        let json = serde_json::to_string(&tp).unwrap();
+        let back: TokenPayload = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sub, "user-001");
+        assert_eq!(back.role, Role::Operator);
+        assert_eq!(back.permissions.len(), 2);
+        assert_eq!(back.email.as_deref(), Some("user@example.com"));
+    }
+
+    #[test]
+    fn auth_context_serde_roundtrip() {
+        let ac = AuthContext {
+            agent_id: AgentId::new(),
+            role: Role::Admin,
+            permissions: vec![RolePermission {
+                resource: "*".into(),
+                actions: vec!["*".into()],
+                conditions: vec![],
+            }],
+        };
+        let json = serde_json::to_string(&ac).unwrap();
+        let back: AuthContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.role, Role::Admin);
+        assert_eq!(back.permissions.len(), 1);
     }
 }

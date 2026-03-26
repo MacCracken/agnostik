@@ -22,8 +22,11 @@ audit = ["dep:sha2", "dep:hex", "dep:chrono"]
 llm = []
 secrets = ["dep:zeroize", "dep:chrono"]
 config = []
+classification = []
+validation = []
+hardware = []
 logging = ["dep:tracing-subscriber"]
-full = ["agent", "security", "telemetry", "audit", "llm", "secrets", "config", "logging"]
+full = ["agent", "security", "telemetry", "audit", "llm", "secrets", "config", "classification", "validation", "hardware", "logging"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
