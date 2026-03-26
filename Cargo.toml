@@ -1,0 +1,48 @@
+[package]
+name = "agnostik"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.89"
+license = "GPL-3.0"
+description = "Agnostik — shared types, error handling, and domain primitives for the AGNOS ecosystem"
+homepage = "https://github.com/MacCracken/agnostik"
+repository = "https://github.com/MacCracken/agnostik"
+readme = "README.md"
+documentation = "https://docs.rs/agnostik"
+keywords = ["agnos", "types", "agent", "sandbox", "telemetry"]
+categories = ["data-structures", "os"]
+exclude = [".claude/", ".github/", "docs/", "scripts/"]
+
+[features]
+default = ["agent", "security", "telemetry"]
+agent = []
+security = []
+telemetry = ["dep:chrono"]
+audit = ["dep:sha2", "dep:hex"]
+llm = []
+secrets = ["dep:zeroize"]
+config = []
+logging = ["dep:tracing-subscriber"]
+full = ["agent", "security", "telemetry", "audit", "llm", "secrets", "config", "logging"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Optional
+chrono = { version = "0.4", features = ["serde"], optional = true }
+sha2 = { version = "0.10", optional = true }
+hex = { version = "0.4", optional = true }
+zeroize = { version = "1.7", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"], optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+serde_json = "1"
+
+[[bench]]
+name = "benchmarks"
+harness = false
