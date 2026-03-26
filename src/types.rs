@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Version information.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -11,12 +11,6 @@ pub struct Version {
     pub prerelease: Option<String>,
     #[serde(default)]
     pub build: Option<String>,
-}
-
-impl Default for Version {
-    fn default() -> Self {
-        Self { major: 2026, minor: 3, patch: 25, prerelease: None, build: None }
-    }
 }
 
 impl std::fmt::Display for Version {
@@ -45,11 +39,18 @@ pub struct Capabilities {
     pub tpm_available: bool,
 }
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 impl Default for Capabilities {
     fn default() -> Self {
-        Self { llm_support: false, virtualization: true, gpu_available: false, tpm_available: false }
+        Self {
+            llm_support: false,
+            virtualization: true,
+            gpu_available: false,
+            tpm_available: false,
+        }
     }
 }
 
@@ -87,20 +88,32 @@ mod tests {
 
     #[test]
     fn version_display() {
-        let v = Version { major: 1, minor: 2, patch: 3, prerelease: Some("alpha".into()), build: Some("b1".into()) };
+        let v = Version {
+            major: 1,
+            minor: 2,
+            patch: 3,
+            prerelease: Some("alpha".into()),
+            build: Some("b1".into()),
+        };
         assert_eq!(v.to_string(), "1.2.3-alpha+b1");
     }
 
     #[test]
     fn version_display_simple() {
-        let v = Version { major: 2, minor: 0, patch: 0, prerelease: None, build: None };
+        let v = Version {
+            major: 2,
+            minor: 0,
+            patch: 0,
+            prerelease: None,
+            build: None,
+        };
         assert_eq!(v.to_string(), "2.0.0");
     }
 
     #[test]
     fn version_default() {
         let v = Version::default();
-        assert_eq!(v.major, 2026);
+        assert_eq!(v.to_string(), "0.0.0");
     }
 
     #[test]
@@ -126,7 +139,11 @@ mod tests {
     fn component_config_serde() {
         let mut settings = HashMap::new();
         settings.insert("port".into(), serde_json::json!(8080));
-        let c = ComponentConfig { name: "test".into(), enabled: true, settings };
+        let c = ComponentConfig {
+            name: "test".into(),
+            enabled: true,
+            settings,
+        };
         let json = serde_json::to_string(&c).unwrap();
         let back: ComponentConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "test");
@@ -134,9 +151,54 @@ mod tests {
 
     #[test]
     fn version_serde_roundtrip() {
-        let v = Version { major: 1, minor: 0, patch: 0, prerelease: None, build: None };
+        let v = Version {
+            major: 1,
+            minor: 0,
+            patch: 0,
+            prerelease: None,
+            build: None,
+        };
         let json = serde_json::to_string(&v).unwrap();
         let back: Version = serde_json::from_str(&json).unwrap();
         assert_eq!(v, back);
+    }
+
+    #[test]
+    fn capabilities_serde_roundtrip() {
+        let c = Capabilities::default();
+        let json = serde_json::to_string(&c).unwrap();
+        let back: Capabilities = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.virtualization, c.virtualization);
+        assert_eq!(back.llm_support, c.llm_support);
+        assert_eq!(back.gpu_available, c.gpu_available);
+        assert_eq!(back.tpm_available, c.tpm_available);
+    }
+
+    #[test]
+    fn message_type_serde_roundtrip() {
+        for variant in [
+            MessageType::Command,
+            MessageType::Response,
+            MessageType::Event,
+            MessageType::Heartbeat,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: MessageType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn system_status_serde_roundtrip() {
+        for variant in [
+            SystemStatus::Healthy,
+            SystemStatus::Degraded,
+            SystemStatus::Critical,
+            SystemStatus::Unknown,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SystemStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 }

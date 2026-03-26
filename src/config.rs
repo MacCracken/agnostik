@@ -2,17 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// Environment profile for agent deployment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[non_exhaustive]
 pub enum EnvironmentProfile {
+    #[default]
     Development,
     Staging,
     Production,
     Edge,
-}
-
-impl Default for EnvironmentProfile {
-    fn default() -> Self { Self::Development }
 }
 
 /// Top-level AGNOS configuration.
@@ -40,7 +37,10 @@ mod tests {
 
     #[test]
     fn profile_default() {
-        assert_eq!(EnvironmentProfile::default(), EnvironmentProfile::Development);
+        assert_eq!(
+            EnvironmentProfile::default(),
+            EnvironmentProfile::Development
+        );
     }
 
     #[test]
@@ -56,5 +56,19 @@ mod tests {
         let json = serde_json::to_string(&c).unwrap();
         let back: AgnosConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.profile, EnvironmentProfile::Development);
+    }
+
+    #[test]
+    fn environment_profile_serde_roundtrip() {
+        for variant in [
+            EnvironmentProfile::Development,
+            EnvironmentProfile::Staging,
+            EnvironmentProfile::Production,
+            EnvironmentProfile::Edge,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: EnvironmentProfile = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 }

@@ -9,7 +9,9 @@ pub struct Secret {
 impl Secret {
     #[must_use]
     pub fn new(value: impl Into<String>) -> Self {
-        Self { value: value.into() }
+        Self {
+            value: value.into(),
+        }
     }
 
     #[must_use]

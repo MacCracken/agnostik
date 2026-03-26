@@ -6,11 +6,15 @@ pub struct TraceId(pub u128);
 
 impl TraceId {
     #[must_use]
-    pub fn new() -> Self { Self(uuid::Uuid::new_v4().as_u128()) }
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().as_u128())
+    }
 }
 
 impl Default for TraceId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Display for TraceId {
@@ -25,11 +29,15 @@ pub struct SpanId(pub u64);
 
 impl SpanId {
     #[must_use]
-    pub fn new() -> Self { Self(rand_u64()) }
+    pub fn new() -> Self {
+        Self(rand_u64())
+    }
 }
 
 impl Default for SpanId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn rand_u64() -> u64 {
@@ -48,7 +56,11 @@ pub struct TraceContext {
 impl TraceContext {
     #[must_use]
     pub fn new() -> Self {
-        Self { trace_id: TraceId::new(), span_id: SpanId::new(), parent_span_id: None }
+        Self {
+            trace_id: TraceId::new(),
+            span_id: SpanId::new(),
+            parent_span_id: None,
+        }
     }
 
     #[must_use]
@@ -62,7 +74,9 @@ impl TraceContext {
 }
 
 impl Default for TraceContext {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Span status.
@@ -97,7 +111,11 @@ pub struct TelemetryConfig {
 
 impl Default for TelemetryConfig {
     fn default() -> Self {
-        Self { enabled: true, sample_rate: 1.0, export_endpoint: None }
+        Self {
+            enabled: true,
+            sample_rate: 1.0,
+            export_endpoint: None,
+        }
     }
 }
 
@@ -173,5 +191,83 @@ mod tests {
         let json = serde_json::to_string(&ctx).unwrap();
         let back: TraceContext = serde_json::from_str(&json).unwrap();
         assert_eq!(ctx.trace_id, back.trace_id);
+    }
+
+    #[test]
+    fn span_status_serde_roundtrip() {
+        for variant in [SpanStatus::Ok, SpanStatus::Error, SpanStatus::Cancelled] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SpanStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn event_type_serde_roundtrip() {
+        for variant in [
+            EventType::AgentStarted,
+            EventType::AgentStopped,
+            EventType::AgentFailed,
+            EventType::InferenceComplete,
+            EventType::AuditEvent,
+            EventType::SecurityAlert,
+            EventType::Custom,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: EventType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn span_serde_roundtrip() {
+        let s = Span {
+            name: "test-span".into(),
+            trace_id: TraceId::new(),
+            span_id: SpanId::new(),
+            parent_span_id: None,
+            status: SpanStatus::Ok,
+            start_ms: 1000,
+            duration_ms: 50,
+            attributes: [("key".into(), "value".into())].into_iter().collect(),
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Span = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "test-span");
+        assert_eq!(back.trace_id, s.trace_id);
+        assert_eq!(back.status, SpanStatus::Ok);
+        assert_eq!(back.duration_ms, 50);
+    }
+
+    #[test]
+    fn telemetry_config_serde_roundtrip() {
+        let c = TelemetryConfig {
+            enabled: true,
+            sample_rate: 0.5,
+            export_endpoint: Some("http://localhost:4317".into()),
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: TelemetryConfig = serde_json::from_str(&json).unwrap();
+        assert!(back.enabled);
+        assert!((back.sample_rate - 0.5).abs() < f64::EPSILON);
+        assert_eq!(
+            back.export_endpoint.as_deref(),
+            Some("http://localhost:4317")
+        );
+    }
+
+    #[test]
+    fn crash_report_serde_roundtrip() {
+        let r = CrashReport {
+            agent_id: "agent-001".into(),
+            error: "segfault".into(),
+            backtrace: Some("frame0\nframe1".into()),
+            timestamp: "2026-03-25T00:00:00Z".into(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: CrashReport = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.error, "segfault");
+        assert!(back.backtrace.is_some());
     }
 }

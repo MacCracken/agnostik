@@ -40,7 +40,9 @@ pub struct InferenceRequest {
     pub stream: bool,
 }
 
-fn default_temperature() -> f32 { 0.7 }
+fn default_temperature() -> f32 {
+    0.7
+}
 
 /// LLM inference response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -95,5 +97,72 @@ mod tests {
     #[test]
     fn finish_reason_variants() {
         assert_ne!(FinishReason::Stop, FinishReason::Length);
+    }
+
+    #[test]
+    fn token_usage_serde_roundtrip() {
+        let u = TokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 20,
+            total_tokens: 30,
+        };
+        let json = serde_json::to_string(&u).unwrap();
+        let back: TokenUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.prompt_tokens, 10);
+        assert_eq!(back.total_tokens, 30);
+    }
+
+    #[test]
+    fn finish_reason_serde_roundtrip() {
+        for variant in [
+            FinishReason::Stop,
+            FinishReason::Length,
+            FinishReason::ContentFilter,
+            FinishReason::Error,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: FinishReason = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn inference_response_serde_roundtrip() {
+        let r = InferenceResponse {
+            text: "Hello world".into(),
+            model: "llama3".into(),
+            usage: TokenUsage {
+                prompt_tokens: 5,
+                completion_tokens: 10,
+                total_tokens: 15,
+            },
+            finish_reason: FinishReason::Stop,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: InferenceResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.text, "Hello world");
+        assert_eq!(back.finish_reason, FinishReason::Stop);
+    }
+
+    #[test]
+    fn llm_provider_serde_roundtrip() {
+        for variant in [
+            LlmProvider::Ollama,
+            LlmProvider::LlamaCpp,
+            LlmProvider::OpenAI,
+            LlmProvider::Anthropic,
+            LlmProvider::Google,
+            LlmProvider::DeepSeek,
+            LlmProvider::Mistral,
+            LlmProvider::Grok,
+            LlmProvider::Groq,
+            LlmProvider::OpenRouter,
+            LlmProvider::LmStudio,
+            LlmProvider::LocalAI,
+            LlmProvider::Custom("my-provider".into()),
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let _back: LlmProvider = serde_json::from_str(&json).unwrap();
+        }
     }
 }

@@ -53,10 +53,10 @@ pub use types::*;
 
 // Feature-gated re-exports
 #[cfg(feature = "agent")]
-pub use agent::{AgentId, AgentConfig, AgentStatus, AgentType, AgentManifest};
+pub use agent::{AgentConfig, AgentId, AgentManifest, AgentStatus, AgentType};
 
 #[cfg(feature = "security")]
-pub use security::{SandboxConfig, Permission, NetworkAccess, FsAccess, SeccompAction};
+pub use security::{FsAccess, NetworkAccess, Permission, SandboxConfig, SeccompAction};
 
 #[cfg(feature = "telemetry")]
-pub use telemetry::{TraceContext, TraceId, SpanId, Span, TelemetryConfig};
+pub use telemetry::{Span, SpanId, TelemetryConfig, TraceContext, TraceId};

@@ -48,4 +48,19 @@ mod tests {
         let back: AuditEntry = serde_json::from_str(&json).unwrap();
         assert_eq!(back.agent_id, "agent-001");
     }
+
+    #[test]
+    fn audit_severity_serde_roundtrip() {
+        for variant in [
+            AuditSeverity::Debug,
+            AuditSeverity::Info,
+            AuditSeverity::Warning,
+            AuditSeverity::Error,
+            AuditSeverity::Critical,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: AuditSeverity = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
 }

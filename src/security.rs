@@ -84,7 +84,11 @@ pub struct EncryptedStorageConfig {
 
 impl Default for EncryptedStorageConfig {
     fn default() -> Self {
-        Self { enabled: false, size_mb: 256, filesystem: "ext4".into() }
+        Self {
+            enabled: false,
+            size_mb: 256,
+            filesystem: "ext4".into(),
+        }
     }
 }
 
@@ -106,7 +110,10 @@ pub struct SandboxConfig {
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
-            filesystem_rules: vec![FilesystemRule { path: "/tmp".into(), access: FsAccess::ReadWrite }],
+            filesystem_rules: vec![FilesystemRule {
+                path: "/tmp".into(),
+                access: FsAccess::ReadWrite,
+            }],
             network_access: NetworkAccess::LocalhostOnly,
             seccomp_rules: vec![],
             isolate_network: true,
@@ -202,5 +209,151 @@ mod tests {
     #[test]
     fn policy_effect_variants() {
         assert_ne!(PolicyEffect::Allow, PolicyEffect::Deny);
+    }
+
+    #[test]
+    fn fs_access_serde_roundtrip() {
+        for variant in [FsAccess::NoAccess, FsAccess::ReadOnly, FsAccess::ReadWrite] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: FsAccess = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn network_access_serde_roundtrip() {
+        for variant in [
+            NetworkAccess::None,
+            NetworkAccess::LocalhostOnly,
+            NetworkAccess::Restricted,
+            NetworkAccess::Full,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: NetworkAccess = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn seccomp_action_serde_roundtrip() {
+        for variant in [
+            SeccompAction::Allow,
+            SeccompAction::Deny,
+            SeccompAction::Trap,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SeccompAction = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn permission_serde_roundtrip() {
+        for variant in [
+            Permission::FileRead,
+            Permission::FileWrite,
+            Permission::NetworkAccess,
+            Permission::ProcessSpawn,
+            Permission::LlmInference,
+            Permission::AuditRead,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: Permission = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn filesystem_rule_serde_roundtrip() {
+        let r = FilesystemRule {
+            path: "/tmp".into(),
+            access: FsAccess::ReadWrite,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: FilesystemRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.path, std::path::PathBuf::from("/tmp"));
+        assert_eq!(back.access, FsAccess::ReadWrite);
+    }
+
+    #[test]
+    fn seccomp_rule_serde_roundtrip() {
+        let r = SeccompRule {
+            syscall: "write".into(),
+            action: SeccompAction::Allow,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: SeccompRule = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.syscall, "write");
+        assert_eq!(back.action, SeccompAction::Allow);
+    }
+
+    #[test]
+    fn network_policy_serde_roundtrip() {
+        let p = NetworkPolicy::default();
+        let json = serde_json::to_string(&p).unwrap();
+        let back: NetworkPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.allowed_outbound_ports, vec![80, 443]);
+        assert_eq!(back.enable_nat, p.enable_nat);
+    }
+
+    #[test]
+    fn encrypted_storage_config_serde_roundtrip() {
+        let e = EncryptedStorageConfig::default();
+        let json = serde_json::to_string(&e).unwrap();
+        let back: EncryptedStorageConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.enabled, e.enabled);
+        assert_eq!(back.size_mb, e.size_mb);
+        assert_eq!(back.filesystem, e.filesystem);
+    }
+
+    #[test]
+    fn security_context_serde_roundtrip() {
+        let ctx = SecurityContext {
+            agent_id: "agent-001".into(),
+            permissions: vec![Permission::FileRead, Permission::NetworkAccess],
+            sandbox: SandboxConfig::default(),
+        };
+        let json = serde_json::to_string(&ctx).unwrap();
+        let back: SecurityContext = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent_id, "agent-001");
+        assert_eq!(back.permissions.len(), 2);
+    }
+
+    #[test]
+    fn policy_effect_serde_roundtrip() {
+        for variant in [PolicyEffect::Allow, PolicyEffect::Deny, PolicyEffect::Audit] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: PolicyEffect = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn security_policy_serde_roundtrip() {
+        let p = SecurityPolicy {
+            name: "default".into(),
+            effect: PolicyEffect::Allow,
+            permissions: vec![Permission::FileRead],
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: SecurityPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "default");
+        assert_eq!(back.effect, PolicyEffect::Allow);
+    }
+
+    #[test]
+    fn capability_serde_roundtrip() {
+        for variant in [
+            Capability::Landlock,
+            Capability::Seccomp,
+            Capability::Namespaces,
+            Capability::Cgroups,
+            Capability::Tpm,
+            Capability::SecureBoot,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: Capability = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 }

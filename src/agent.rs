@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use std::collections::HashMap;
+use uuid::Uuid;
 
 #[cfg(feature = "security")]
-use crate::security::{SandboxConfig, Permission, NetworkAccess, FsAccess, FilesystemRule};
+use crate::security::{Permission, SandboxConfig};
 
 /// Unique agent identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -11,14 +11,20 @@ pub struct AgentId(pub Uuid);
 
 impl AgentId {
     #[must_use]
-    pub fn new() -> Self { Self(Uuid::new_v4()) }
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
 
     #[must_use]
-    pub fn from_uuid(id: Uuid) -> Self { Self(id) }
+    pub fn from_uuid(id: Uuid) -> Self {
+        Self(id)
+    }
 }
 
 impl Default for AgentId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Display for AgentId {
@@ -33,11 +39,15 @@ pub struct UserId(pub Uuid);
 
 impl UserId {
     #[must_use]
-    pub fn new() -> Self { Self(Uuid::new_v4()) }
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
 }
 
 impl Default for UserId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Agent type classification.
@@ -253,5 +263,141 @@ mod tests {
         let a = UserId::new();
         let b = UserId::new();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn agent_type_serde_roundtrip() {
+        for variant in [AgentType::System, AgentType::User, AgentType::Service] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: AgentType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn agent_status_serde_roundtrip() {
+        for variant in [
+            AgentStatus::Pending,
+            AgentStatus::Starting,
+            AgentStatus::Running,
+            AgentStatus::Paused,
+            AgentStatus::Stopping,
+            AgentStatus::Stopped,
+            AgentStatus::Failed,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: AgentStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn resource_limits_serde_roundtrip() {
+        let l = ResourceLimits::default();
+        let json = serde_json::to_string(&l).unwrap();
+        let back: ResourceLimits = serde_json::from_str(&json).unwrap();
+        assert_eq!(l, back);
+    }
+
+    #[test]
+    fn resource_usage_serde_roundtrip() {
+        let u = ResourceUsage {
+            memory_used: 512,
+            cpu_time_used: 1000,
+            file_descriptors_used: 10,
+            processes_used: 2,
+        };
+        let json = serde_json::to_string(&u).unwrap();
+        let back: ResourceUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.memory_used, 512);
+        assert_eq!(back.cpu_time_used, 1000);
+    }
+
+    #[test]
+    fn agent_rate_limit_serde_roundtrip() {
+        let r = AgentRateLimit {
+            max_tokens_per_hour: 10000,
+            max_requests_per_minute: 60,
+            max_concurrent_requests: 5,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: AgentRateLimit = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.max_tokens_per_hour, 10000);
+        assert_eq!(back.max_requests_per_minute, 60);
+    }
+
+    #[test]
+    fn agent_config_serde_roundtrip() {
+        let c = AgentConfig::default();
+        let json = serde_json::to_string(&c).unwrap();
+        let back: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, c.name);
+        assert_eq!(back.agent_type, c.agent_type);
+    }
+
+    #[test]
+    fn agent_manifest_serde_roundtrip() {
+        let m = AgentManifest {
+            name: "test-agent".into(),
+            description: "A test agent".into(),
+            ..AgentManifest::default()
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let back: AgentManifest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "test-agent");
+        assert_eq!(back.description, "A test agent");
+    }
+
+    #[test]
+    fn agent_event_serde_roundtrip() {
+        let e = AgentEvent {
+            agent_id: "agent-001".into(),
+            event_type: "started".into(),
+            payload: serde_json::json!({"status": "ok"}),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        let back: AgentEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.agent_id, "agent-001");
+    }
+
+    #[test]
+    fn agent_info_serde_roundtrip() {
+        let i = AgentInfo {
+            id: "agent-001".into(),
+            name: "test".into(),
+            agent_type: AgentType::User,
+            status: AgentStatus::Running,
+        };
+        let json = serde_json::to_string(&i).unwrap();
+        let back: AgentInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, "agent-001");
+        assert_eq!(back.status, AgentStatus::Running);
+    }
+
+    #[test]
+    fn agent_stats_serde_roundtrip() {
+        let s = AgentStats {
+            total_requests: 100,
+            total_tokens: 5000,
+            uptime_seconds: 3600,
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: AgentStats = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.total_requests, 100);
+        assert_eq!(back.uptime_seconds, 3600);
+    }
+
+    #[test]
+    fn stop_reason_serde_roundtrip() {
+        for variant in [
+            StopReason::UserRequested,
+            StopReason::ResourceExhausted,
+            StopReason::Error("oops".into()),
+            StopReason::Timeout,
+            StopReason::SystemShutdown,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let _back: StopReason = serde_json::from_str(&json).unwrap();
+        }
     }
 }
