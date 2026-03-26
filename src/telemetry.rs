@@ -515,4 +515,64 @@ mod tests {
         let back: MetricDataPoint = serde_json::from_str(&json).unwrap();
         assert_eq!(back.instrument, "requests_total");
     }
+
+    #[test]
+    fn trace_id_default() {
+        let a = TraceId::default();
+        let b = TraceId::default();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn span_id_default() {
+        let a = SpanId::default();
+        let b = SpanId::default();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn trace_context_default() {
+        let ctx = TraceContext::default();
+        assert!(ctx.is_sampled());
+    }
+
+    #[test]
+    fn trace_context_serde_with_defaults() {
+        // Deserialize with only required fields to exercise serde defaults
+        let json = r#"{"trace_id":1,"span_id":1}"#;
+        let ctx: TraceContext = serde_json::from_str(json).unwrap();
+        assert_eq!(ctx.trace_flags, TRACE_FLAG_SAMPLED); // default_trace_flags()
+        assert!(ctx.trace_state.is_empty());
+    }
+
+    // --- Trait default method coverage ---
+
+    struct NoopCollector;
+
+    impl SpanCollector for NoopCollector {
+        fn export(&self, _spans: &[Span]) -> crate::Result<()> {
+            Ok(())
+        }
+    }
+
+    struct NoopSink;
+
+    impl MetricSink for NoopSink {
+        fn export(&self, _metrics: &[MetricDataPoint]) -> crate::Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn span_collector_default_methods() {
+        let c = NoopCollector;
+        assert!(c.flush().is_ok());
+        assert!(c.shutdown().is_ok());
+    }
+
+    #[test]
+    fn metric_sink_default_methods() {
+        let s = NoopSink;
+        assert!(s.flush().is_ok());
+    }
 }

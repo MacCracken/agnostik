@@ -356,4 +356,40 @@ mod tests {
         assert!("1.2".parse::<Version>().is_err());
         assert!("abc".parse::<Version>().is_err());
     }
+
+    #[test]
+    fn version_from_str_invalid_part() {
+        assert!("1.2.xyz".parse::<Version>().is_err());
+    }
+
+    #[test]
+    fn agent_id_default() {
+        let a = AgentId::default();
+        let b = AgentId::default();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn user_id_default() {
+        let a = UserId::default();
+        let b = UserId::default();
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn user_id_from_uuid() {
+        let uuid = Uuid::new_v4();
+        let id: UserId = uuid.into();
+        assert_eq!(id.0, uuid);
+    }
+
+    #[test]
+    fn capabilities_serde_with_defaults() {
+        // Deserialize with missing fields to exercise serde defaults
+        let json = r#"{"llm_support":true}"#;
+        let c: Capabilities = serde_json::from_str(json).unwrap();
+        assert!(c.llm_support);
+        assert!(c.virtualization); // default_true()
+        assert!(!c.gpu_available);
+    }
 }
