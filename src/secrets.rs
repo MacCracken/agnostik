@@ -58,6 +58,21 @@ pub struct SecretMetadata {
     pub rotation_policy: Option<String>,
 }
 
+/// Trait for pluggable secret storage backends.
+pub trait SecretStore: Send + Sync {
+    /// Retrieve a secret by name.
+    fn get(&self, name: &str) -> crate::Result<Secret>;
+
+    /// Store a secret.
+    fn put(&self, name: &str, value: Secret) -> crate::Result<()>;
+
+    /// Delete a secret by name.
+    fn delete(&self, name: &str) -> crate::Result<()>;
+
+    /// List metadata for all stored secrets.
+    fn list_metadata(&self) -> crate::Result<Vec<SecretMetadata>>;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

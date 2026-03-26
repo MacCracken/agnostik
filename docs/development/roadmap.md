@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.1.0+** — Scaffold hardened, LLM/telemetry/security expanded, 99.5% coverage.
+**v0.1.0+** — 12 modules, 180 tests, 99%+ coverage. All quality gates passing.
 
 ## Completed
 
@@ -13,7 +13,7 @@
 - Error source chaining (From<io::Error>, From<serde_json::Error>)
 - Consistent derives (Hash, Eq, PartialEq) across all types
 - Secret Debug redaction, logging panic fix, feature contamination fix
-- 99.53% test coverage, 147 tests
+- 99.53% test coverage
 
 ### LLM Module v2
 - Structured conversation types (MessageRole, Message, ContentBlock)
@@ -33,6 +33,14 @@
 - Landlock v3 types (LandlockRuleset, LandlockFsAccess, LandlockNetAccess)
 - Linux capabilities (LinuxCapability, CapabilitySet)
 - SystemFeature rename (Capability alias preserved)
+- RBAC types (Role, RolePermission, TokenPayload, AuthContext)
+- SandboxCapabilities detection (SeccompMode, landlock ABI, cgroup v2, namespaces)
+
+### Cross-Pollination from SecureYeoman
+- Classification module (ClassificationLevel, PiiKind, ClassificationResult)
+- Validation module (ValidationResult, ValidationWarning, injection scoring)
+- Hardware module (AcceleratorDevice, DeviceFamily, DeviceVendor, AcceleratorSummary)
+- Audit integrity chain (IntegrityFields, HMAC-SHA256, AuditSink trait)
 
 ## Migration Plan
 
@@ -50,12 +58,8 @@
 - Profile inheritance (edge inherits from production, overrides specific fields)
 
 ### Agent Manifest v2
-- Capability-based permissions (replaces enum list)
 - Resource negotiation (agent requests, runtime approves/modifies)
 - Dependency declaration (agent A requires agent B)
-
-### Telemetry v2 Remainder
-- Budget-aware sampling (sample rate enforcement with token budgets)
 
 ### LLM Expansion
 - Embedding types (EmbeddingRequest/Response for RAG pipelines)
@@ -65,7 +69,6 @@
 
 ### Trait Interfaces
 - SecretStore trait (pluggable secret backends)
-- AuditSink trait (pluggable audit log destinations)
 
 ## v1.0.0 Criteria
 - API frozen — no breaking changes

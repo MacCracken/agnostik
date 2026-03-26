@@ -11,13 +11,16 @@
 //!
 //! | Feature | Default | Description |
 //! |---------|---------|-------------|
-//! | `agent` | yes | Agent types (AgentId, AgentConfig, AgentStatus, AgentManifest) |
-//! | `security` | yes | Security types (SandboxConfig, Permission, NetworkAccess) |
-//! | `telemetry` | yes | Telemetry types (TraceContext, Span, TelemetryConfig) |
-//! | `audit` | no | Audit chain types (AuditEntry, hash chain) |
-//! | `llm` | no | LLM types (InferenceRequest, Provider, TokenUsage) |
-//! | `secrets` | no | Secret management types (zeroize-backed) |
-//! | `config` | no | Component configuration types |
+//! | `agent` | yes | Agent identity, configuration, lifecycle (implies `security`) |
+//! | `security` | yes | Sandbox, RBAC, cgroup, namespace, landlock, capability types |
+//! | `telemetry` | yes | W3C tracing, metrics, SpanCollector/MetricSink traits |
+//! | `audit` | no | Tamper-evident audit chain with HMAC integrity |
+//! | `llm` | no | Conversation, tool calling, streaming, inference types |
+//! | `secrets` | no | Zeroize-backed secret storage |
+//! | `config` | no | Environment profile and component config |
+//! | `classification` | no | Data classification and PII detection types |
+//! | `validation` | no | Input validation and sanitization types |
+//! | `hardware` | no | Hardware accelerator detection types |
 
 pub mod error;
 

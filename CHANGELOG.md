@@ -4,6 +4,39 @@
 
 ### Added
 
+#### Classification Module (new)
+- **ClassificationLevel** — Public/Internal/Confidential/Restricted (ordered by sensitivity)
+- **PiiKind** — Email, Phone, SSN, CreditCard, IpAddress, Passport, DriversLicense, DateOfBirth, Custom
+- **ClassificationResult** — level, auto_level, rules_triggered, pii_found, keywords_found
+
+#### Validation Module (new)
+- **ValidationSeverity** — Low/Medium/High (ordered)
+- **ValidationWarning** — code, message, severity, position, pattern
+- **ValidationResult** — valid, sanitized, warnings, blocked, block_reason, injection_score
+
+#### Hardware Module (new)
+- **DeviceFamily** — Gpu, Tpu, Npu, AiAsic, Cpu
+- **DeviceVendor** — Nvidia, Amd, Intel, Apple, Google, Qualcomm, Habana, Aws, Custom
+- **AcceleratorFlags** — cuda, rocm, metal, vulkan, oneapi, tpu availability
+- **AcceleratorDevice** — full device descriptor with VRAM, utilization, temperature, driver, compute capability
+- **AcceleratorSummary** — device list with `by_family()` filter
+
+#### Security RBAC & Sandbox Capabilities
+- **Role** — Admin, Operator, Auditor, Viewer, Service
+- **ConditionOperator** — Eq/Neq/In/Nin/Gt/Gte/Lt/Lte for permission conditions
+- **PermissionCondition**, **RolePermission** — resource-level RBAC with conditions
+- **TokenPayload** — JWT claims (sub, role, permissions, iat, exp, jti, email, display_name)
+- **AuthContext** — agent_id + role + permissions
+- **SeccompMode** — Disabled/Strict/Filter/Unsupported
+- **SandboxCapabilities** — seccomp, landlock ABI version, cgroup v2, namespace detection
+
+#### Audit Integrity Chain
+- **IntegrityFields** — version, HMAC-SHA256 signature, previous_entry_hash
+- **GENESIS_HASH** constant for chain initialization
+- **IntegrityFields::genesis()**, **is_genesis()** helpers
+- **AuditEntry** restructured with id, correlation_id, user_id, integrity chain
+- **AuditSink** trait — append, verify_chain
+
 #### LLM Module Expansion
 - **MessageRole**, **Message**, **ContentBlock** — structured multi-turn conversation types replacing bare `prompt: String`
 - **ToolDefinition**, **ToolCall**, **ToolResult** — function/tool calling types

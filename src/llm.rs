@@ -232,6 +232,28 @@ pub enum StreamEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Embeddings
+// ---------------------------------------------------------------------------
+
+/// Request to generate embeddings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingRequest {
+    pub model: String,
+    pub inputs: Vec<String>,
+    /// Desired output dimensionality (if supported by model).
+    #[serde(default)]
+    pub dimensions: Option<u32>,
+}
+
+/// Response containing embedding vectors.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EmbeddingResponse {
+    pub model: String,
+    pub embeddings: Vec<Vec<f32>>,
+    pub usage: TokenUsage,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -554,5 +576,36 @@ mod tests {
         let back: InferenceResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(back.finish_reason, FinishReason::ToolUse);
         assert_eq!(back.tool_calls.len(), 1);
+    }
+
+    #[test]
+    fn embedding_request_serde_roundtrip() {
+        let r = EmbeddingRequest {
+            model: "text-embedding-3-small".into(),
+            inputs: vec!["hello world".into(), "rust programming".into()],
+            dimensions: Some(1536),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: EmbeddingRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.model, "text-embedding-3-small");
+        assert_eq!(back.inputs.len(), 2);
+        assert_eq!(back.dimensions, Some(1536));
+    }
+
+    #[test]
+    fn embedding_response_serde_roundtrip() {
+        let r = EmbeddingResponse {
+            model: "text-embedding-3-small".into(),
+            embeddings: vec![vec![0.1, 0.2, 0.3], vec![0.4, 0.5, 0.6]],
+            usage: TokenUsage {
+                prompt_tokens: 4,
+                completion_tokens: 0,
+                total_tokens: 4,
+            },
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: EmbeddingResponse = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.embeddings.len(), 2);
+        assert_eq!(back.usage.prompt_tokens, 4);
     }
 }

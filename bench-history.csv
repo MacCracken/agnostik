@@ -54,3 +54,23 @@ test serde/agent_id_serialize ... bench:          33 ns/iter (+/- 0)
 
 test serde/agent_id_deserialize ... bench:          59 ns/iter (+/- 0)
 
+test agent/agent_id_new ... bench:          46 ns/iter (+/- 1)
+
+test telemetry/trace_context_new ... bench:          93 ns/iter (+/- 1)
+
+test telemetry/trace_context_child ... bench:          52 ns/iter (+/- 1)
+
+test security/sandbox_config_default ... bench:          26 ns/iter (+/- 0)
+
+test serde/trace_context_serialize ... bench:         166 ns/iter (+/- 2)
+
+test serde/trace_context_deserialize ... bench:         317 ns/iter (+/- 5)
+
+test serde/sandbox_config_serialize ... bench:         232 ns/iter (+/- 14)
+
+test serde/sandbox_config_deserialize ... bench:         323 ns/iter (+/- 5)
+
+test serde/agent_id_serialize ... bench:          32 ns/iter (+/- 0)
+
+test serde/agent_id_deserialize ... bench:          58 ns/iter (+/- 0)
+

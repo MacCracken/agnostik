@@ -152,6 +152,68 @@ pub enum StopReason {
     SystemShutdown,
 }
 
+// ---------------------------------------------------------------------------
+// Agent-to-agent messaging
+// ---------------------------------------------------------------------------
+
+/// A typed message envelope for agent-to-agent communication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentMessage {
+    /// Unique message ID.
+    pub id: uuid::Uuid,
+    pub sender: AgentId,
+    pub receiver: AgentId,
+    /// Correlation ID for request/response pairing.
+    #[serde(default)]
+    pub correlation_id: Option<uuid::Uuid>,
+    /// ID of message this is replying to.
+    #[serde(default)]
+    pub reply_to: Option<uuid::Uuid>,
+    pub payload: serde_json::Value,
+    #[serde(default)]
+    pub timestamp: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+// ---------------------------------------------------------------------------
+// Agent dependencies & resource negotiation
+// ---------------------------------------------------------------------------
+
+/// Declaration that an agent depends on another agent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentDependency {
+    /// The agent that is required.
+    pub required_agent: String,
+    /// Minimum version required (SemVer).
+    #[serde(default)]
+    pub min_version: Option<String>,
+    /// Whether the dependency is mandatory or optional.
+    #[serde(default = "default_true")]
+    pub required: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+/// A resource request from an agent to the runtime.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceRequest {
+    pub agent_id: AgentId,
+    pub requested_limits: ResourceLimits,
+    #[serde(default)]
+    pub justification: Option<String>,
+}
+
+/// The runtime's response to a resource request.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceGrant {
+    pub agent_id: AgentId,
+    pub granted_limits: ResourceLimits,
+    pub approved: bool,
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,5 +414,61 @@ mod tests {
             let json = serde_json::to_string(&variant).unwrap();
             let _back: StopReason = serde_json::from_str(&json).unwrap();
         }
+    }
+
+    #[test]
+    fn agent_message_serde_roundtrip() {
+        let m = AgentMessage {
+            id: uuid::Uuid::new_v4(),
+            sender: AgentId::new(),
+            receiver: AgentId::new(),
+            correlation_id: Some(uuid::Uuid::new_v4()),
+            reply_to: None,
+            payload: serde_json::json!({"action": "delegate", "task": "search"}),
+            timestamp: Some(chrono::Utc::now()),
+        };
+        let json = serde_json::to_string(&m).unwrap();
+        let back: AgentMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.id, m.id);
+        assert_eq!(back.sender, m.sender);
+        assert_eq!(back.correlation_id, m.correlation_id);
+    }
+
+    #[test]
+    fn agent_dependency_serde_roundtrip() {
+        let d = AgentDependency {
+            required_agent: "search-agent".into(),
+            min_version: Some("1.0.0".into()),
+            required: true,
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        let back: AgentDependency = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.required_agent, "search-agent");
+        assert!(back.required);
+    }
+
+    #[test]
+    fn resource_request_serde_roundtrip() {
+        let rr = ResourceRequest {
+            agent_id: AgentId::new(),
+            requested_limits: ResourceLimits::default(),
+            justification: Some("needs more memory for embeddings".into()),
+        };
+        let json = serde_json::to_string(&rr).unwrap();
+        let back: ResourceRequest = serde_json::from_str(&json).unwrap();
+        assert!(back.justification.is_some());
+    }
+
+    #[test]
+    fn resource_grant_serde_roundtrip() {
+        let rg = ResourceGrant {
+            agent_id: AgentId::new(),
+            granted_limits: ResourceLimits::default(),
+            approved: true,
+            reason: None,
+        };
+        let json = serde_json::to_string(&rg).unwrap();
+        let back: ResourceGrant = serde_json::from_str(&json).unwrap();
+        assert!(back.approved);
     }
 }
