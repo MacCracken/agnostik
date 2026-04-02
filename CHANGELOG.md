@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.90.0] - 2026-04-02
 
 ### Changed
 - **Breaking**: `AgentId::from_str` and `UserId::from_str` now return `AgnostikError` instead of `uuid::Error` — consistent with all other `FromStr` impls in the crate

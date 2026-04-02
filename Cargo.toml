@@ -1,6 +1,6 @@
 [package]
 name = "agnostik"
-version = "2026.3.26"
+version = "0.90.0"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0-only"
