@@ -10,6 +10,8 @@
 - **SpanEvent** — timestamped annotations on spans (OTel span events, added to `Span.events`)
 - **SpanLink** — cross-trace span relationships (OTel span links, added to `Span.links`)
 - `TraceContext::to_traceparent()` / `from_traceparent()` — W3C `traceparent` header format
+- **AggregationTemporality** — Cumulative/Delta for metric data points (OTel-aligned)
+- `MetricDataPoint.temporality`, `is_monotonic` — metric temporality and monotonicity fields
 - `SpanStatus::Unset` variant (OTel default status)
 
 #### Security — OCI Runtime Spec Alignment
@@ -20,6 +22,8 @@
 - `SandboxConfig.apparmor_profile` — explicit AppArmor profile field
 - `SandboxConfig.selinux_label` — explicit SELinux process label field
 - `SandboxConfig.seccomp` — full `SeccompProfile` field
+- **MountPropagation** — Private/Shared/Slave/Unbindable for filesystem mount rules
+- `FilesystemRule.readonly`, `noexec`, `nosuid`, `nodev`, `propagation` — mount option fields
 
 #### Security — Linux Capabilities
 - **LinuxCapability** expanded from 19 to 39 variants (full Linux kernel capability set including CapBpf, CapPerfmon, CapCheckpointRestore, etc.)
@@ -39,6 +43,10 @@
 - `InferenceRequest.system` — top-level system prompt (Anthropic API pattern)
 - `InferenceRequest.logprobs`, `top_logprobs` — log probability output control
 
+#### Audit — Forensics & Compliance
+- **AuditResult** — Success/Failure/Denied outcome for audited actions
+- `AuditEntry.result`, `source_ip`, `target_resource`, `duration_ms`, `tags` — enriched audit fields
+
 ### Changed
 - **Breaking**: `SpanStatus` changed from `Copy` enum `{Ok, Error, Cancelled}` to `{Unset, Ok, Error { message }}` (OTel-aligned, Error now carries optional message)
 - **Breaking**: `SeccompRule.syscall: String` replaced with `names: Vec<String>` + `args: Vec<SeccompArg>`
@@ -55,7 +63,7 @@
 
 ### Testing
 - Integration tests expanded from 4 to 26, covering all feature-gated modules
-- 238 tests total (212 unit + 26 integration)
+- 241 tests total (215 unit + 26 integration)
 
 ### Maintenance
 - `deny.toml`: removed 6 unmatched license allowances (GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, Zlib)

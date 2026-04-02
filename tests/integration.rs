@@ -329,8 +329,13 @@ fn audit_entry_integrity_chain() {
         agent_id: AgentId::new(),
         action: "system_start".into(),
         severity: AuditSeverity::Info,
+        result: AuditResult::Success,
         details: serde_json::json!({}),
         user_id: None,
+        source_ip: None,
+        target_resource: None,
+        duration_ms: None,
+        tags: vec![],
         integrity: IntegrityFields::genesis("genesis-sig".into()),
     };
     assert!(genesis.integrity.is_genesis());
@@ -344,8 +349,13 @@ fn audit_entry_integrity_chain() {
         agent_id: genesis.agent_id,
         action: "file_read".into(),
         severity: AuditSeverity::Debug,
+        result: AuditResult::Success,
         details: serde_json::json!({"path": "/etc/config"}),
         user_id: Some(UserId::new()),
+        source_ip: Some("192.168.1.100".into()),
+        target_resource: Some("/etc/config".into()),
+        duration_ms: Some(5),
+        tags: vec!["filesystem".into()],
         integrity: IntegrityFields {
             version: "1.0.0".parse().unwrap(),
             signature: "second-sig".into(),

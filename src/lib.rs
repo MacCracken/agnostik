@@ -75,22 +75,22 @@ pub use agent::{
 pub use security::{
     AuthContext, CapabilitySet, CgroupLimits, ConditionOperator, EncryptedStorageConfig,
     FilesystemRule, FsAccess, IdMapping, LandlockFsAccess, LandlockFsRule, LandlockNetAccess,
-    LandlockNetRule, LandlockRuleset, LinuxCapability, NamespaceConfig, NetworkAccess,
-    NetworkPolicy, Permission, PermissionCondition, PolicyEffect, Role, RolePermission,
-    SandboxCapabilities, SandboxConfig, SeccompAction, SeccompArch, SeccompArg, SeccompArgOp,
-    SeccompMode, SeccompProfile, SeccompRule, SecurityContext, SecurityPolicy, SystemFeature,
-    TokenPayload,
+    LandlockNetRule, LandlockRuleset, LinuxCapability, MountPropagation, NamespaceConfig,
+    NetworkAccess, NetworkPolicy, Permission, PermissionCondition, PolicyEffect, Role,
+    RolePermission, SandboxCapabilities, SandboxConfig, SeccompAction, SeccompArch, SeccompArg,
+    SeccompArgOp, SeccompMode, SeccompProfile, SeccompRule, SecurityContext, SecurityPolicy,
+    SystemFeature, TokenPayload,
 };
 
 #[cfg(feature = "telemetry")]
 pub use telemetry::{
-    EventType, InstrumentDescriptor, MetricDataPoint, MetricKind, MetricSink, MetricValue,
-    Resource, Span, SpanCollector, SpanEvent, SpanId, SpanKind, SpanLink, SpanStatus,
-    TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
+    AggregationTemporality, EventType, InstrumentDescriptor, MetricDataPoint, MetricKind,
+    MetricSink, MetricValue, Resource, Span, SpanCollector, SpanEvent, SpanId, SpanKind, SpanLink,
+    SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
 };
 
 #[cfg(feature = "audit")]
-pub use audit::{AuditEntry, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFields};
+pub use audit::{AuditEntry, AuditResult, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFields};
 
 #[cfg(feature = "llm")]
 pub use llm::{

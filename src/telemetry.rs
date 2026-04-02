@@ -346,6 +346,17 @@ pub struct InstrumentDescriptor {
     pub kind: MetricKind,
 }
 
+/// Whether a metric reports cumulative totals or deltas since last report (OTel-aligned).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum AggregationTemporality {
+    /// Values represent totals since process start.
+    #[default]
+    Cumulative,
+    /// Values represent change since the last report.
+    Delta,
+}
+
 /// A single metric data point.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricDataPoint {
@@ -353,6 +364,12 @@ pub struct MetricDataPoint {
     pub value: MetricValue,
     pub attributes: std::collections::HashMap<String, String>,
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Aggregation temporality (cumulative vs delta).
+    #[serde(default)]
+    pub temporality: AggregationTemporality,
+    /// Whether this counter is monotonically increasing (only meaningful for counters).
+    #[serde(default)]
+    pub is_monotonic: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -756,10 +773,26 @@ mod tests {
             value: MetricValue::Int(100),
             attributes: [("method".into(), "GET".into())].into_iter().collect(),
             timestamp: chrono::Utc::now(),
+            temporality: AggregationTemporality::Cumulative,
+            is_monotonic: true,
         };
         let json = serde_json::to_string(&dp).unwrap();
         let back: MetricDataPoint = serde_json::from_str(&json).unwrap();
         assert_eq!(back.instrument, "requests_total");
+        assert_eq!(back.temporality, AggregationTemporality::Cumulative);
+        assert!(back.is_monotonic);
+    }
+
+    #[test]
+    fn aggregation_temporality_serde_roundtrip() {
+        for variant in [
+            AggregationTemporality::Cumulative,
+            AggregationTemporality::Delta,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: AggregationTemporality = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 
     #[test]

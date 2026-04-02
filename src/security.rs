@@ -101,11 +101,41 @@ pub enum Permission {
     AuditRead,
 }
 
+/// Mount propagation type for filesystem rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum MountPropagation {
+    /// Mount is private (changes do not propagate).
+    #[default]
+    Private,
+    /// Mount propagates to and from peers.
+    Shared,
+    /// Mount receives propagation but does not send.
+    Slave,
+    /// Mount cannot be bind-mounted.
+    Unbindable,
+}
+
 /// Filesystem access rule.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FilesystemRule {
     pub path: std::path::PathBuf,
     pub access: FsAccess,
+    /// Read-only mount (overrides access for the mount itself).
+    #[serde(default)]
+    pub readonly: bool,
+    /// Prevent execution of binaries.
+    #[serde(default)]
+    pub noexec: bool,
+    /// Prevent setuid/setgid bits from taking effect.
+    #[serde(default)]
+    pub nosuid: bool,
+    /// Prevent device special files from being accessed.
+    #[serde(default)]
+    pub nodev: bool,
+    /// Mount propagation type.
+    #[serde(default)]
+    pub propagation: MountPropagation,
 }
 
 /// A seccomp syscall rule with optional argument conditions.
@@ -200,6 +230,11 @@ impl Default for SandboxConfig {
             filesystem_rules: vec![FilesystemRule {
                 path: "/tmp".into(),
                 access: FsAccess::ReadWrite,
+                readonly: false,
+                noexec: true,
+                nosuid: true,
+                nodev: true,
+                propagation: MountPropagation::Private,
             }],
             network_access: NetworkAccess::LocalhostOnly,
             seccomp: None,
@@ -654,6 +689,11 @@ mod tests {
         let r = FilesystemRule {
             path: "/tmp".into(),
             access: FsAccess::ReadWrite,
+            readonly: false,
+            noexec: true,
+            nosuid: true,
+            nodev: true,
+            propagation: MountPropagation::Private,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: FilesystemRule = serde_json::from_str(&json).unwrap();

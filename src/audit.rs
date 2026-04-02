@@ -50,6 +50,16 @@ impl IntegrityFields {
     }
 }
 
+/// Whether the audited action succeeded or failed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum AuditResult {
+    #[default]
+    Success,
+    Failure,
+    Denied,
+}
+
 /// An audit log entry with tamper-evident integrity.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEntry {
@@ -62,10 +72,25 @@ pub struct AuditEntry {
     pub agent_id: AgentId,
     pub action: String,
     pub severity: AuditSeverity,
+    /// Whether the action succeeded or failed.
+    #[serde(default)]
+    pub result: AuditResult,
     pub details: serde_json::Value,
     /// User who triggered the action (if applicable).
     #[serde(default)]
     pub user_id: Option<UserId>,
+    /// Source IP address of the request (if applicable).
+    #[serde(default)]
+    pub source_ip: Option<String>,
+    /// Resource that was the target of the action.
+    #[serde(default)]
+    pub target_resource: Option<String>,
+    /// Duration of the audited operation in milliseconds.
+    #[serde(default)]
+    pub duration_ms: Option<u64>,
+    /// Searchable tags for filtering.
+    #[serde(default)]
+    pub tags: Vec<String>,
     /// Integrity chain fields.
     pub integrity: IntegrityFields,
 }
@@ -142,8 +167,13 @@ mod tests {
             agent_id: id,
             action: "file_read".into(),
             severity: AuditSeverity::Info,
+            result: AuditResult::Success,
             details: serde_json::json!({"path": "/tmp/test"}),
             user_id: Some(UserId::new()),
+            source_ip: Some("10.0.0.1".into()),
+            target_resource: Some("/tmp/test".into()),
+            duration_ms: Some(42),
+            tags: vec!["filesystem".into(), "read".into()],
             integrity: IntegrityFields::genesis("sig".into()),
         };
         let json = serde_json::to_string(&e).unwrap();
@@ -151,6 +181,11 @@ mod tests {
         assert_eq!(back.agent_id, id);
         assert_eq!(back.id, "entry-001");
         assert_eq!(back.correlation_id.as_deref(), Some("corr-abc"));
+        assert_eq!(back.result, AuditResult::Success);
+        assert_eq!(back.source_ip.as_deref(), Some("10.0.0.1"));
+        assert_eq!(back.target_resource.as_deref(), Some("/tmp/test"));
+        assert_eq!(back.duration_ms, Some(42));
+        assert_eq!(back.tags, vec!["filesystem", "read"]);
         assert!(back.integrity.is_genesis());
     }
 
@@ -163,8 +198,13 @@ mod tests {
             agent_id: AgentId::new(),
             action: "login".into(),
             severity: AuditSeverity::Info,
+            result: AuditResult::default(),
             details: serde_json::Value::Null,
             user_id: None,
+            source_ip: None,
+            target_resource: None,
+            duration_ms: None,
+            tags: vec![],
             integrity: IntegrityFields {
                 version: "1.0.0".parse().unwrap(),
                 signature: "prev_sig".into(),
@@ -173,5 +213,30 @@ mod tests {
         };
         let json = serde_json::to_string(&e).unwrap();
         let _back: AuditEntry = serde_json::from_str(&json).unwrap();
+    }
+
+    #[test]
+    fn audit_result_serde_roundtrip() {
+        for variant in [
+            AuditResult::Success,
+            AuditResult::Failure,
+            AuditResult::Denied,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: AuditResult = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn audit_entry_defaults_on_deserialize() {
+        // New fields default correctly when deserializing old data
+        let json = r#"{"id":"e1","timestamp":"2026-04-02T00:00:00Z","agent_id":"00000000-0000-0000-0000-000000000001","action":"test","severity":"Info","details":null,"integrity":{"version":"1.0.0","signature":"s","previous_entry_hash":"h"}}"#;
+        let e: AuditEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(e.result, AuditResult::Success);
+        assert!(e.source_ip.is_none());
+        assert!(e.target_resource.is_none());
+        assert!(e.duration_ms.is_none());
+        assert!(e.tags.is_empty());
     }
 }

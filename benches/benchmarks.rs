@@ -120,8 +120,13 @@ fn bench_audit_entry_serde(c: &mut Criterion) {
         agent_id: agnostik::AgentId::new(),
         action: "file_read".into(),
         severity: AuditSeverity::Info,
+        result: AuditResult::Success,
         details: serde_json::json!({"path": "/tmp/test", "bytes": 4096}),
         user_id: Some(agnostik::UserId::new()),
+        source_ip: Some("10.0.0.1".into()),
+        target_resource: Some("/tmp/test".into()),
+        duration_ms: Some(12),
+        tags: vec!["filesystem".into()],
         integrity: IntegrityFields::genesis("sig-abc123".into()),
     };
     let json = serde_json::to_string(&entry).unwrap();
