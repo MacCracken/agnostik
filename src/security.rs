@@ -20,13 +20,73 @@ pub enum NetworkAccess {
     Full,
 }
 
-/// Seccomp filter action.
+/// Seccomp filter action (OCI runtime spec aligned).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SeccompAction {
     Allow,
-    Deny,
+    /// Kill the thread (SECCOMP_RET_KILL_THREAD).
+    Kill,
+    /// Kill the process (SECCOMP_RET_KILL_PROCESS).
+    KillProcess,
+    /// Send SIGSYS (SECCOMP_RET_TRAP).
     Trap,
+    /// Return an errno value (SECCOMP_RET_ERRNO).
+    Errno(u32),
+    /// Notify a tracing process (SECCOMP_RET_TRACE).
+    Trace(u32),
+    /// Log the syscall (SECCOMP_RET_LOG).
+    Log,
+}
+
+/// Seccomp argument comparison operator (OCI runtime spec).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SeccompArgOp {
+    NotEqual,
+    LessThan,
+    LessEqual,
+    Equal,
+    GreaterEqual,
+    GreaterThan,
+    MaskedEqual,
+}
+
+/// A condition on a syscall argument for seccomp filtering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SeccompArg {
+    /// Argument index (0-5).
+    pub index: u32,
+    /// Value to compare against.
+    pub value: u64,
+    /// Second value (for MaskedEqual: mask).
+    #[serde(default)]
+    pub value_two: u64,
+    /// Comparison operator.
+    pub op: SeccompArgOp,
+}
+
+/// Target architecture for seccomp filters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SeccompArch {
+    X86,
+    X86_64,
+    X32,
+    Arm,
+    Aarch64,
+    Mips,
+    Mips64,
+    Mips64n32,
+    Mipsel,
+    Mipsel64,
+    Mipsel64n32,
+    Ppc,
+    Ppc64,
+    Ppc64le,
+    S390,
+    S390x,
+    Riscv64,
 }
 
 /// Agent permission.
@@ -48,11 +108,31 @@ pub struct FilesystemRule {
     pub access: FsAccess,
 }
 
-/// Seccomp rule.
+/// A seccomp syscall rule with optional argument conditions.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SeccompRule {
-    pub syscall: String,
+    /// Syscall names this rule applies to.
+    pub names: Vec<String>,
     pub action: SeccompAction,
+    /// Argument conditions (all must match for the action to apply).
+    #[serde(default)]
+    pub args: Vec<SeccompArg>,
+}
+
+/// Complete seccomp filter profile (OCI runtime spec aligned).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SeccompProfile {
+    /// Action to take when no rule matches.
+    pub default_action: SeccompAction,
+    /// Architectures this profile applies to.
+    #[serde(default)]
+    pub architectures: Vec<SeccompArch>,
+    /// Seccomp filter flags.
+    #[serde(default)]
+    pub flags: Vec<String>,
+    /// Syscall rules (evaluated in order).
+    #[serde(default)]
+    pub syscalls: Vec<SeccompRule>,
 }
 
 /// Per-agent network firewall policy.
@@ -98,12 +178,18 @@ impl Default for EncryptedStorageConfig {
 pub struct SandboxConfig {
     pub filesystem_rules: Vec<FilesystemRule>,
     pub network_access: NetworkAccess,
-    pub seccomp_rules: Vec<SeccompRule>,
+    /// Full seccomp filter profile (preferred over legacy `seccomp_rules`).
+    #[serde(default)]
+    pub seccomp: Option<SeccompProfile>,
     pub isolate_network: bool,
     #[serde(default)]
     pub network_policy: Option<NetworkPolicy>,
+    /// AppArmor profile name (e.g., "runtime/default").
     #[serde(default)]
-    pub mac_profile: Option<String>,
+    pub apparmor_profile: Option<String>,
+    /// SELinux process label (e.g., "system_u:system_r:container_t:s0").
+    #[serde(default)]
+    pub selinux_label: Option<String>,
     #[serde(default)]
     pub encrypted_storage: Option<EncryptedStorageConfig>,
 }
@@ -116,10 +202,11 @@ impl Default for SandboxConfig {
                 access: FsAccess::ReadWrite,
             }],
             network_access: NetworkAccess::LocalhostOnly,
-            seccomp_rules: vec![],
+            seccomp: None,
             isolate_network: true,
             network_policy: None,
-            mac_profile: None,
+            apparmor_profile: None,
+            selinux_label: None,
             encrypted_storage: None,
         }
     }
@@ -513,8 +600,12 @@ mod tests {
     fn seccomp_action_serde_roundtrip() {
         for variant in [
             SeccompAction::Allow,
-            SeccompAction::Deny,
+            SeccompAction::Kill,
+            SeccompAction::KillProcess,
             SeccompAction::Trap,
+            SeccompAction::Errno(1),
+            SeccompAction::Trace(0),
+            SeccompAction::Log,
         ] {
             let json = serde_json::to_string(&variant).unwrap();
             let back: SeccompAction = serde_json::from_str(&json).unwrap();
@@ -553,13 +644,69 @@ mod tests {
     #[test]
     fn seccomp_rule_serde_roundtrip() {
         let r = SeccompRule {
-            syscall: "write".into(),
+            names: vec!["write".into(), "writev".into()],
             action: SeccompAction::Allow,
+            args: vec![SeccompArg {
+                index: 0,
+                value: 1,
+                value_two: 0,
+                op: SeccompArgOp::Equal,
+            }],
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: SeccompRule = serde_json::from_str(&json).unwrap();
-        assert_eq!(back.syscall, "write");
+        assert_eq!(back.names, vec!["write", "writev"]);
         assert_eq!(back.action, SeccompAction::Allow);
+        assert_eq!(back.args.len(), 1);
+        assert_eq!(back.args[0].op, SeccompArgOp::Equal);
+    }
+
+    #[test]
+    fn seccomp_profile_serde_roundtrip() {
+        let p = SeccompProfile {
+            default_action: SeccompAction::Errno(1),
+            architectures: vec![SeccompArch::X86_64, SeccompArch::Aarch64],
+            flags: vec!["SECCOMP_FILTER_FLAG_LOG".into()],
+            syscalls: vec![SeccompRule {
+                names: vec!["read".into(), "write".into(), "exit_group".into()],
+                action: SeccompAction::Allow,
+                args: vec![],
+            }],
+        };
+        let json = serde_json::to_string(&p).unwrap();
+        let back: SeccompProfile = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.default_action, SeccompAction::Errno(1));
+        assert_eq!(back.architectures.len(), 2);
+        assert_eq!(back.syscalls.len(), 1);
+    }
+
+    #[test]
+    fn seccomp_arch_serde_roundtrip() {
+        for variant in [
+            SeccompArch::X86,
+            SeccompArch::X86_64,
+            SeccompArch::Aarch64,
+            SeccompArch::Riscv64,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SeccompArch = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn seccomp_arg_op_serde_roundtrip() {
+        for variant in [
+            SeccompArgOp::NotEqual,
+            SeccompArgOp::LessThan,
+            SeccompArgOp::Equal,
+            SeccompArgOp::GreaterThan,
+            SeccompArgOp::MaskedEqual,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SeccompArgOp = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 
     #[test]

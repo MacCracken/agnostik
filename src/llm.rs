@@ -43,6 +43,25 @@ pub enum MessageRole {
 pub enum ContentBlock {
     /// Plain text content.
     Text(String),
+    /// An image input (base64-encoded or URL).
+    Image {
+        /// Base64-encoded image data, or a URL.
+        source: String,
+        /// Media type (e.g., "image/png", "image/jpeg").
+        media_type: String,
+        /// Whether `source` is a URL (true) or base64 data (false).
+        #[serde(default)]
+        is_url: bool,
+    },
+    /// A document input (e.g., PDF).
+    Document {
+        /// Base64-encoded document data, or a URL.
+        source: String,
+        /// Media type (e.g., "application/pdf").
+        media_type: String,
+        #[serde(default)]
+        is_url: bool,
+    },
     /// A tool invocation produced by the model.
     ToolUse {
         id: String,
@@ -56,6 +75,8 @@ pub enum ContentBlock {
         #[serde(default)]
         is_error: bool,
     },
+    /// Model thinking/reasoning (extended thinking).
+    Thinking { thinking: String },
 }
 
 /// A single message in a conversation.
@@ -107,6 +128,45 @@ pub struct ToolResult {
 }
 
 // ---------------------------------------------------------------------------
+// Tool choice
+// ---------------------------------------------------------------------------
+
+/// Controls how the model selects tools.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ToolChoice {
+    /// Model decides whether to use tools.
+    Auto,
+    /// Model must not use tools.
+    None,
+    /// Model must use at least one tool.
+    Required,
+    /// Model must use the named tool.
+    Tool(String),
+}
+
+// ---------------------------------------------------------------------------
+// Response format
+// ---------------------------------------------------------------------------
+
+/// Requested output format for structured generation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum ResponseFormat {
+    /// Free-form text (default).
+    Text,
+    /// Valid JSON object.
+    JsonObject,
+    /// JSON conforming to a provided schema.
+    JsonSchema {
+        /// Name for the schema (used by some providers).
+        name: String,
+        /// JSON Schema the output must conform to.
+        schema: serde_json::Value,
+    },
+}
+
+// ---------------------------------------------------------------------------
 // Sampling parameters
 // ---------------------------------------------------------------------------
 
@@ -153,6 +213,12 @@ pub struct TokenUsage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
     pub total_tokens: u32,
+    /// Tokens used to create a prompt cache entry.
+    #[serde(default)]
+    pub cache_creation_input_tokens: u32,
+    /// Tokens read from prompt cache.
+    #[serde(default)]
+    pub cache_read_input_tokens: u32,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,6 +244,12 @@ pub struct InferenceRequest {
     /// Tools the model may invoke.
     #[serde(default)]
     pub tools: Vec<ToolDefinition>,
+    /// How the model should select tools.
+    #[serde(default)]
+    pub tool_choice: Option<ToolChoice>,
+    /// Requested output format (structured generation).
+    #[serde(default)]
+    pub response_format: Option<ResponseFormat>,
 }
 
 fn default_temperature() -> f32 {
@@ -284,6 +356,8 @@ mod tests {
             sampling: SamplingParams::default(),
             stream: false,
             tools: vec![],
+            tool_choice: None,
+            response_format: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -302,6 +376,7 @@ mod tests {
             prompt_tokens: 10,
             completion_tokens: 20,
             total_tokens: 30,
+            ..TokenUsage::default()
         };
         let json = serde_json::to_string(&u).unwrap();
         let back: TokenUsage = serde_json::from_str(&json).unwrap();
@@ -333,6 +408,7 @@ mod tests {
                 prompt_tokens: 5,
                 completion_tokens: 10,
                 total_tokens: 15,
+                ..TokenUsage::default()
             },
             finish_reason: FinishReason::Stop,
             tool_calls: vec![],
@@ -512,6 +588,7 @@ mod tests {
                 prompt_tokens: 10,
                 completion_tokens: 5,
                 total_tokens: 15,
+                ..TokenUsage::default()
             }),
             StreamEvent::Done {
                 finish_reason: FinishReason::Stop,
@@ -547,12 +624,16 @@ mod tests {
                 description: "Web search".into(),
                 parameters: serde_json::json!({"type": "object"}),
             }],
+            tool_choice: Some(ToolChoice::Auto),
+            response_format: Some(ResponseFormat::JsonObject),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(back.messages.len(), 2);
         assert_eq!(back.tools.len(), 1);
         assert_eq!(back.sampling.seed, Some(42));
+        assert_eq!(back.tool_choice, Some(ToolChoice::Auto));
+        assert_eq!(back.response_format, Some(ResponseFormat::JsonObject));
     }
 
     #[test]
@@ -601,11 +682,101 @@ mod tests {
                 prompt_tokens: 4,
                 completion_tokens: 0,
                 total_tokens: 4,
+                ..TokenUsage::default()
             },
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: EmbeddingResponse = serde_json::from_str(&json).unwrap();
         assert_eq!(back.embeddings.len(), 2);
         assert_eq!(back.usage.prompt_tokens, 4);
+    }
+
+    #[test]
+    fn tool_choice_serde_roundtrip() {
+        let variants = vec![
+            ToolChoice::Auto,
+            ToolChoice::None,
+            ToolChoice::Required,
+            ToolChoice::Tool("search".into()),
+        ];
+        for variant in &variants {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: ToolChoice = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, &back);
+        }
+    }
+
+    #[test]
+    fn response_format_serde_roundtrip() {
+        let variants = vec![
+            ResponseFormat::Text,
+            ResponseFormat::JsonObject,
+            ResponseFormat::JsonSchema {
+                name: "person".into(),
+                schema: serde_json::json!({"type": "object", "properties": {"name": {"type": "string"}}}),
+            },
+        ];
+        for variant in &variants {
+            let json = serde_json::to_string(variant).unwrap();
+            let back: ResponseFormat = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, &back);
+        }
+    }
+
+    #[test]
+    fn content_block_image_serde_roundtrip() {
+        let block = ContentBlock::Image {
+            source: "iVBORw0KGgo=".into(),
+            media_type: "image/png".into(),
+            is_url: false,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        assert_eq!(block, back);
+    }
+
+    #[test]
+    fn content_block_document_serde_roundtrip() {
+        let block = ContentBlock::Document {
+            source: "JVBERi0=".into(),
+            media_type: "application/pdf".into(),
+            is_url: false,
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        assert_eq!(block, back);
+    }
+
+    #[test]
+    fn content_block_thinking_serde_roundtrip() {
+        let block = ContentBlock::Thinking {
+            thinking: "Let me reason about this step by step...".into(),
+        };
+        let json = serde_json::to_string(&block).unwrap();
+        let back: ContentBlock = serde_json::from_str(&json).unwrap();
+        assert_eq!(block, back);
+    }
+
+    #[test]
+    fn token_usage_cache_fields() {
+        let u = TokenUsage {
+            prompt_tokens: 100,
+            completion_tokens: 50,
+            total_tokens: 150,
+            cache_creation_input_tokens: 80,
+            cache_read_input_tokens: 20,
+        };
+        let json = serde_json::to_string(&u).unwrap();
+        let back: TokenUsage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.cache_creation_input_tokens, 80);
+        assert_eq!(back.cache_read_input_tokens, 20);
+    }
+
+    #[test]
+    fn token_usage_cache_fields_default_to_zero() {
+        let json = r#"{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}"#;
+        let u: TokenUsage = serde_json::from_str(json).unwrap();
+        assert_eq!(u.cache_creation_input_tokens, 0);
+        assert_eq!(u.cache_read_input_tokens, 0);
     }
 }

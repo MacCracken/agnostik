@@ -2,7 +2,36 @@
 
 ## [0.90.0] - 2026-04-02
 
+### Added
+
+#### Telemetry — OTel Alignment
+- **Resource** — service identity struct (service_name, service_version, service_instance_id, attributes) for OTel signal attribution
+- **SpanKind** — Internal/Server/Client/Producer/Consumer (OTel span kind, added to `Span`)
+- `SpanStatus::Unset` variant (OTel default status)
+
+#### Security — OCI Runtime Spec Alignment
+- **SeccompProfile** — complete seccomp filter profile with `default_action`, `architectures`, `flags`, and `syscalls`
+- **SeccompArch** — 17 target architectures (x86, x86_64, aarch64, riscv64, etc.)
+- **SeccompArg** + **SeccompArgOp** — syscall argument-level filtering with 7 comparison operators
+- `SeccompAction::Kill`, `KillProcess`, `Errno(u32)`, `Trace(u32)`, `Log` variants
+- `SandboxConfig.apparmor_profile` — explicit AppArmor profile field
+- `SandboxConfig.selinux_label` — explicit SELinux process label field
+- `SandboxConfig.seccomp` — full `SeccompProfile` field
+
+#### LLM — Multimodal + Structured Output
+- **ContentBlock::Image** — base64/URL image inputs with media type
+- **ContentBlock::Document** — base64/URL document inputs (PDF, etc.)
+- **ContentBlock::Thinking** — model reasoning/extended thinking blocks
+- **ToolChoice** — Auto/None/Required/Tool(name) for tool selection control
+- **ResponseFormat** — Text/JsonObject/JsonSchema for structured generation
+- `TokenUsage.cache_creation_input_tokens`, `cache_read_input_tokens` — prompt caching fields
+
 ### Changed
+- **Breaking**: `SpanStatus` changed from `Copy` enum `{Ok, Error, Cancelled}` to `{Unset, Ok, Error { message }}` (OTel-aligned, Error now carries optional message)
+- **Breaking**: `SeccompRule.syscall: String` replaced with `names: Vec<String>` + `args: Vec<SeccompArg>`
+- **Breaking**: `SeccompAction::Deny` removed — use `Kill`, `KillProcess`, or `Errno(1)` instead
+- **Breaking**: `SandboxConfig.mac_profile` split into `apparmor_profile` + `selinux_label`
+- **Breaking**: `SandboxConfig.seccomp_rules` replaced with `seccomp: Option<SeccompProfile>`
 - **Breaking**: `AgentId::from_str` and `UserId::from_str` now return `AgnostikError` instead of `uuid::Error` — consistent with all other `FromStr` impls in the crate
 - Error message capitalization standardized: "I/O error" → "i/o error" (lowercase, matching all other variants)
 
@@ -13,7 +42,7 @@
 
 ### Testing
 - Integration tests expanded from 4 to 26, covering all feature-gated modules
-- 216 tests total (190 unit + 26 integration)
+- 230 tests total (204 unit + 26 integration)
 
 ### Maintenance
 - `deny.toml`: removed 6 unmatched license allowances (GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, Zlib)

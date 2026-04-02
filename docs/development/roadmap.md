@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.90.0** — 12 modules, 216 tests. API frozen. All quality gates passing. Alpha/beta for OS integration testing before v1.0.0.
+**v0.90.0** — 12 modules, 230 tests. API frozen. All quality gates passing. Alpha/beta for OS integration testing before v1.0.0.
 
 ## Migration
 

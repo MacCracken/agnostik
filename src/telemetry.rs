@@ -75,6 +75,29 @@ fn rand_u64() -> u64 {
     uuid::Uuid::new_v4().as_u128() as u64
 }
 
+// ---------------------------------------------------------------------------
+// Resource (OTel-aligned)
+// ---------------------------------------------------------------------------
+
+/// Identifies the entity producing telemetry (OTel Resource semantic conventions).
+///
+/// Every span, metric, and log record should be associated with a `Resource`
+/// describing the service, host, and container that produced it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Resource {
+    /// Logical service name (e.g., "daimon", "hoosh").
+    pub service_name: String,
+    /// Service version (SemVer).
+    #[serde(default)]
+    pub service_version: String,
+    /// Unique instance ID (hostname, pod name, container ID).
+    #[serde(default)]
+    pub service_instance_id: String,
+    /// Additional resource attributes (OTel semantic conventions).
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
+}
+
 /// Distributed trace context (W3C Trace Context compatible).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TraceContext {
@@ -133,13 +156,37 @@ impl Default for TraceContext {
     }
 }
 
-/// Span status.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Span status (OTel-aligned: Unset, Ok, Error).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum SpanStatus {
+    /// Status not explicitly set (default).
+    Unset,
+    /// Operation completed successfully.
     Ok,
-    Error,
-    Cancelled,
+    /// Operation failed.
+    Error {
+        /// Optional error description.
+        #[serde(default)]
+        message: String,
+    },
+}
+
+/// Span kind describing the relationship between the span and its parent (OTel-aligned).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum SpanKind {
+    /// Default. Internal operation within an application.
+    #[default]
+    Internal,
+    /// Handles an inbound synchronous request.
+    Server,
+    /// Makes an outbound synchronous request.
+    Client,
+    /// Initiates an asynchronous request (does not wait for response).
+    Producer,
+    /// Processes an asynchronous request.
+    Consumer,
 }
 
 /// A completed span.
@@ -150,6 +197,9 @@ pub struct Span {
     pub span_id: SpanId,
     pub parent_span_id: Option<SpanId>,
     pub status: SpanStatus,
+    /// Span kind (OTel: Internal, Server, Client, Producer, Consumer).
+    #[serde(default)]
+    pub kind: SpanKind,
     pub started_at: chrono::DateTime<chrono::Utc>,
     pub duration_ms: u64,
     pub attributes: std::collections::HashMap<String, String>,
@@ -308,7 +358,13 @@ mod tests {
 
     #[test]
     fn span_status_variants() {
-        assert_ne!(SpanStatus::Ok, SpanStatus::Error);
+        assert_ne!(
+            SpanStatus::Ok,
+            SpanStatus::Error {
+                message: String::new()
+            }
+        );
+        assert_ne!(SpanStatus::Unset, SpanStatus::Ok);
     }
 
     #[test]
@@ -326,11 +382,64 @@ mod tests {
 
     #[test]
     fn span_status_serde_roundtrip() {
-        for variant in [SpanStatus::Ok, SpanStatus::Error, SpanStatus::Cancelled] {
-            let json = serde_json::to_string(&variant).unwrap();
+        let variants = vec![
+            SpanStatus::Unset,
+            SpanStatus::Ok,
+            SpanStatus::Error {
+                message: String::new(),
+            },
+            SpanStatus::Error {
+                message: "connection refused".into(),
+            },
+        ];
+        for variant in &variants {
+            let json = serde_json::to_string(variant).unwrap();
             let back: SpanStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, &back);
+        }
+    }
+
+    #[test]
+    fn span_kind_serde_roundtrip() {
+        for variant in [
+            SpanKind::Internal,
+            SpanKind::Server,
+            SpanKind::Client,
+            SpanKind::Producer,
+            SpanKind::Consumer,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SpanKind = serde_json::from_str(&json).unwrap();
             assert_eq!(variant, back);
         }
+    }
+
+    #[test]
+    fn span_kind_default() {
+        assert_eq!(SpanKind::default(), SpanKind::Internal);
+    }
+
+    #[test]
+    fn resource_serde_roundtrip() {
+        let r = Resource {
+            service_name: "daimon".into(),
+            service_version: "0.90.0".into(),
+            service_instance_id: "daimon-abc123".into(),
+            attributes: [("host.name".into(), "node-01".into())]
+                .into_iter()
+                .collect(),
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: Resource = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.service_name, "daimon");
+        assert_eq!(back.attributes.get("host.name").unwrap(), "node-01");
+    }
+
+    #[test]
+    fn resource_default() {
+        let r = Resource::default();
+        assert!(r.service_name.is_empty());
+        assert!(r.attributes.is_empty());
     }
 
     #[test]
@@ -358,6 +467,7 @@ mod tests {
             span_id: SpanId::new(),
             parent_span_id: None,
             status: SpanStatus::Ok,
+            kind: SpanKind::Server,
             started_at: chrono::Utc::now(),
             duration_ms: 50,
             attributes: [("key".into(), "value".into())].into_iter().collect(),
@@ -367,6 +477,7 @@ mod tests {
         assert_eq!(back.name, "test-span");
         assert_eq!(back.trace_id, s.trace_id);
         assert_eq!(back.status, SpanStatus::Ok);
+        assert_eq!(back.kind, SpanKind::Server);
         assert_eq!(back.duration_ms, 50);
     }
 

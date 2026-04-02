@@ -7,7 +7,7 @@
 - **Type**: Flat library crate
 - **License**: GPL-3.0
 - **MSRV**: 1.89
-- **Version**: CalVer `2026.3.26` (YYYY.M.D)
+- **Version**: `0.90.0` (pre-release, targeting v1.0.0)
 
 ## Consumers
 
@@ -19,7 +19,7 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 
 0. Read roadmap, CHANGELOG, and open issues — know what was intended before auditing what was built
 1. Test + benchmark sweep of existing code
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
+2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `cargo vet`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
 3. Get baseline benchmarks (`./scripts/bench-history.sh`)
 4. Internal deep review — gaps, optimizations, security, logging/errors, docs
 5. External research — domain completeness, missing capabilities, best practices, world-class accuracy
@@ -31,7 +31,7 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 ### Work Loop / Working Loop (continuous)
 
 1. Work phase — new features, roadmap items, bug fixes
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
+2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `cargo vet`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
 3. Test + benchmark additions for new code
 4. Run benchmarks (`./scripts/bench-history.sh`)
 5. Internal review — performance, memory, security, throughput, correctness

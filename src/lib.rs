@@ -77,14 +77,16 @@ pub use security::{
     FilesystemRule, FsAccess, IdMapping, LandlockFsAccess, LandlockFsRule, LandlockNetAccess,
     LandlockNetRule, LandlockRuleset, LinuxCapability, NamespaceConfig, NetworkAccess,
     NetworkPolicy, Permission, PermissionCondition, PolicyEffect, Role, RolePermission,
-    SandboxCapabilities, SandboxConfig, SeccompAction, SeccompMode, SeccompRule, SecurityContext,
-    SecurityPolicy, SystemFeature, TokenPayload,
+    SandboxCapabilities, SandboxConfig, SeccompAction, SeccompArch, SeccompArg, SeccompArgOp,
+    SeccompMode, SeccompProfile, SeccompRule, SecurityContext, SecurityPolicy, SystemFeature,
+    TokenPayload,
 };
 
 #[cfg(feature = "telemetry")]
 pub use telemetry::{
-    EventType, InstrumentDescriptor, MetricDataPoint, MetricKind, MetricSink, MetricValue, Span,
-    SpanCollector, SpanId, SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
+    EventType, InstrumentDescriptor, MetricDataPoint, MetricKind, MetricSink, MetricValue,
+    Resource, Span, SpanCollector, SpanId, SpanKind, SpanStatus, TRACE_FLAG_SAMPLED,
+    TelemetryConfig, TraceContext, TraceId,
 };
 
 #[cfg(feature = "audit")]
@@ -93,8 +95,8 @@ pub use audit::{AuditEntry, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFie
 #[cfg(feature = "llm")]
 pub use llm::{
     ContentBlock, EmbeddingRequest, EmbeddingResponse, FinishReason, InferenceRequest,
-    InferenceResponse, LlmProvider, Message, MessageRole, SamplingParams, StreamEvent, TokenUsage,
-    ToolCall, ToolDefinition, ToolResult,
+    InferenceResponse, LlmProvider, Message, MessageRole, ResponseFormat, SamplingParams,
+    StreamEvent, TokenUsage, ToolCall, ToolChoice, ToolDefinition, ToolResult,
 };
 
 #[cfg(feature = "secrets")]

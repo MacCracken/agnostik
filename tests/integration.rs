@@ -272,6 +272,11 @@ fn llm_inference_request_full_roundtrip() {
             description: "Web search".into(),
             parameters: serde_json::json!({"type": "object", "properties": {"q": {"type": "string"}}}),
         }],
+        tool_choice: Some(ToolChoice::Required),
+        response_format: Some(ResponseFormat::JsonSchema {
+            name: "result".into(),
+            schema: serde_json::json!({"type": "object"}),
+        }),
     };
     let json = serde_json::to_string(&req).unwrap();
     let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -281,6 +286,11 @@ fn llm_inference_request_full_roundtrip() {
     assert!(back.stream);
     assert_eq!(back.sampling.seed, Some(42));
     assert_eq!(back.sampling.stop_sequences, vec!["END"]);
+    assert_eq!(back.tool_choice, Some(ToolChoice::Required));
+    assert!(matches!(
+        back.response_format,
+        Some(ResponseFormat::JsonSchema { .. })
+    ));
 }
 
 #[test]
