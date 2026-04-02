@@ -7,6 +7,9 @@
 #### Telemetry — OTel Alignment
 - **Resource** — service identity struct (service_name, service_version, service_instance_id, attributes) for OTel signal attribution
 - **SpanKind** — Internal/Server/Client/Producer/Consumer (OTel span kind, added to `Span`)
+- **SpanEvent** — timestamped annotations on spans (OTel span events, added to `Span.events`)
+- **SpanLink** — cross-trace span relationships (OTel span links, added to `Span.links`)
+- `TraceContext::to_traceparent()` / `from_traceparent()` — W3C `traceparent` header format
 - `SpanStatus::Unset` variant (OTel default status)
 
 #### Security — OCI Runtime Spec Alignment
@@ -18,6 +21,14 @@
 - `SandboxConfig.selinux_label` — explicit SELinux process label field
 - `SandboxConfig.seccomp` — full `SeccompProfile` field
 
+#### Security — Linux Capabilities
+- **LinuxCapability** expanded from 19 to 39 variants (full Linux kernel capability set including CapBpf, CapPerfmon, CapCheckpointRestore, etc.)
+
+#### Agent — Lifecycle Management
+- **RestartPolicy** — Never/Always/OnFailure for failed agent restart control
+- **HealthCheck** — liveness/readiness probe configuration (interval, timeout, retries, initial delay)
+- `AgentConfig.restart_policy`, `max_restarts`, `health_check`, `startup_timeout_secs`, `shutdown_timeout_secs`
+
 #### LLM — Multimodal + Structured Output
 - **ContentBlock::Image** — base64/URL image inputs with media type
 - **ContentBlock::Document** — base64/URL document inputs (PDF, etc.)
@@ -25,6 +36,8 @@
 - **ToolChoice** — Auto/None/Required/Tool(name) for tool selection control
 - **ResponseFormat** — Text/JsonObject/JsonSchema for structured generation
 - `TokenUsage.cache_creation_input_tokens`, `cache_read_input_tokens` — prompt caching fields
+- `InferenceRequest.system` — top-level system prompt (Anthropic API pattern)
+- `InferenceRequest.logprobs`, `top_logprobs` — log probability output control
 
 ### Changed
 - **Breaking**: `SpanStatus` changed from `Copy` enum `{Ok, Error, Cancelled}` to `{Unset, Ok, Error { message }}` (OTel-aligned, Error now carries optional message)
@@ -42,7 +55,7 @@
 
 ### Testing
 - Integration tests expanded from 4 to 26, covering all feature-gated modules
-- 230 tests total (204 unit + 26 integration)
+- 238 tests total (212 unit + 26 integration)
 
 ### Maintenance
 - `deny.toml`: removed 6 unmatched license allowances (GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, Zlib)

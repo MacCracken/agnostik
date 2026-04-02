@@ -67,8 +67,8 @@ pub use types::*;
 #[cfg(feature = "agent")]
 pub use agent::{
     AgentConfig, AgentDependency, AgentEvent, AgentInfo, AgentManifest, AgentMessage,
-    AgentRateLimit, AgentStats, AgentStatus, AgentType, ResourceGrant, ResourceLimits,
-    ResourceRequest, ResourceUsage, StopReason,
+    AgentRateLimit, AgentStats, AgentStatus, AgentType, HealthCheck, ResourceGrant, ResourceLimits,
+    ResourceRequest, ResourceUsage, RestartPolicy, StopReason,
 };
 
 #[cfg(feature = "security")]
@@ -85,8 +85,8 @@ pub use security::{
 #[cfg(feature = "telemetry")]
 pub use telemetry::{
     EventType, InstrumentDescriptor, MetricDataPoint, MetricKind, MetricSink, MetricValue,
-    Resource, Span, SpanCollector, SpanId, SpanKind, SpanStatus, TRACE_FLAG_SAMPLED,
-    TelemetryConfig, TraceContext, TraceId,
+    Resource, Span, SpanCollector, SpanEvent, SpanId, SpanKind, SpanLink, SpanStatus,
+    TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
 };
 
 #[cfg(feature = "audit")]

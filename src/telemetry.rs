@@ -148,6 +148,45 @@ impl TraceContext {
     pub fn is_sampled(&self) -> bool {
         self.trace_flags & TRACE_FLAG_SAMPLED != 0
     }
+
+    /// Format as a W3C `traceparent` header value.
+    ///
+    /// Format: `00-{trace_id}-{parent_id}-{flags}`
+    #[must_use]
+    pub fn to_traceparent(&self) -> String {
+        format!(
+            "00-{}-{}-{:02x}",
+            self.trace_id, self.span_id, self.trace_flags
+        )
+    }
+
+    /// Parse a W3C `traceparent` header value.
+    ///
+    /// Expected format: `{version}-{trace_id}-{parent_id}-{flags}`
+    pub fn from_traceparent(header: &str) -> crate::Result<Self> {
+        let parts: Vec<&str> = header.split('-').collect();
+        if parts.len() != 4 {
+            return Err(crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid traceparent: expected 4 dash-separated parts, got {}",
+                parts.len()
+            )));
+        }
+        let trace_id: TraceId = parts[1].parse()?;
+        let span_id: SpanId = parts[2].parse()?;
+        let trace_flags = u8::from_str_radix(parts[3], 16).map_err(|_| {
+            crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid traceparent flags: {} (expected 2 hex digits)",
+                parts[3]
+            ))
+        })?;
+        Ok(Self {
+            trace_id,
+            span_id,
+            parent_span_id: None,
+            trace_flags,
+            trace_state: String::new(),
+        })
+    }
 }
 
 impl Default for TraceContext {
@@ -189,6 +228,25 @@ pub enum SpanKind {
     Consumer,
 }
 
+/// A timestamped annotation on a span (OTel span event).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpanEvent {
+    /// Event name (e.g., "exception", "message").
+    pub name: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
+}
+
+/// A link from one span to another (OTel span link).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpanLink {
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
+}
+
 /// A completed span.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Span {
@@ -203,6 +261,12 @@ pub struct Span {
     pub started_at: chrono::DateTime<chrono::Utc>,
     pub duration_ms: u64,
     pub attributes: std::collections::HashMap<String, String>,
+    /// Timestamped events recorded during the span (OTel span events).
+    #[serde(default)]
+    pub events: Vec<SpanEvent>,
+    /// Links to related spans in other traces (OTel span links).
+    #[serde(default)]
+    pub links: Vec<SpanLink>,
 }
 
 /// Telemetry configuration.
@@ -471,6 +535,18 @@ mod tests {
             started_at: chrono::Utc::now(),
             duration_ms: 50,
             attributes: [("key".into(), "value".into())].into_iter().collect(),
+            events: vec![SpanEvent {
+                name: "exception".into(),
+                timestamp: chrono::Utc::now(),
+                attributes: [("exception.message".into(), "timeout".into())]
+                    .into_iter()
+                    .collect(),
+            }],
+            links: vec![SpanLink {
+                trace_id: TraceId::new(),
+                span_id: SpanId::new(),
+                attributes: Default::default(),
+            }],
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Span = serde_json::from_str(&json).unwrap();
@@ -479,6 +555,61 @@ mod tests {
         assert_eq!(back.status, SpanStatus::Ok);
         assert_eq!(back.kind, SpanKind::Server);
         assert_eq!(back.duration_ms, 50);
+        assert_eq!(back.events.len(), 1);
+        assert_eq!(back.events[0].name, "exception");
+        assert_eq!(back.links.len(), 1);
+    }
+
+    #[test]
+    fn span_event_serde_roundtrip() {
+        let e = SpanEvent {
+            name: "log".into(),
+            timestamp: chrono::Utc::now(),
+            attributes: [("level".into(), "error".into())].into_iter().collect(),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        let back: SpanEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "log");
+        assert_eq!(back.attributes.get("level").unwrap(), "error");
+    }
+
+    #[test]
+    fn span_link_serde_roundtrip() {
+        let l = SpanLink {
+            trace_id: TraceId::new(),
+            span_id: SpanId::new(),
+            attributes: [("link.type".into(), "parent".into())]
+                .into_iter()
+                .collect(),
+        };
+        let json = serde_json::to_string(&l).unwrap();
+        let back: SpanLink = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.trace_id, l.trace_id);
+        assert_eq!(back.span_id, l.span_id);
+    }
+
+    #[test]
+    fn traceparent_roundtrip() {
+        let ctx = TraceContext::new();
+        let header = ctx.to_traceparent();
+        assert!(header.starts_with("00-"));
+        let parts: Vec<&str> = header.split('-').collect();
+        assert_eq!(parts.len(), 4);
+        assert_eq!(parts[0], "00");
+        assert_eq!(parts[1].len(), 32); // trace_id
+        assert_eq!(parts[2].len(), 16); // span_id
+        assert_eq!(parts[3], "01"); // sampled
+
+        let parsed = TraceContext::from_traceparent(&header).unwrap();
+        assert_eq!(parsed.trace_id, ctx.trace_id);
+        assert_eq!(parsed.span_id, ctx.span_id);
+        assert_eq!(parsed.trace_flags, ctx.trace_flags);
+    }
+
+    #[test]
+    fn traceparent_invalid() {
+        assert!(TraceContext::from_traceparent("bad").is_err());
+        assert!(TraceContext::from_traceparent("00-notahex-0000000000000001-01").is_err());
     }
 
     #[test]

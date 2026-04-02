@@ -140,12 +140,22 @@ fn agent_config_cross_feature_serde() {
         permissions: vec![Permission::FileRead],
         resource_limits: ResourceLimits::default(),
         metadata: serde_json::json!({"env": "test"}),
+        restart_policy: RestartPolicy::OnFailure,
+        max_restarts: 3,
+        health_check: Some(HealthCheck::default()),
+        startup_timeout_secs: Some(30),
+        shutdown_timeout_secs: Some(10),
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(back.name, "test-agent");
     assert_eq!(back.permissions, vec![Permission::FileRead]);
     assert_eq!(back.agent_type, AgentType::Service);
+    assert_eq!(back.restart_policy, RestartPolicy::OnFailure);
+    assert_eq!(back.max_restarts, 3);
+    assert!(back.health_check.is_some());
+    assert_eq!(back.startup_timeout_secs, Some(30));
+    assert_eq!(back.shutdown_timeout_secs, Some(10));
 }
 
 #[test]
@@ -277,6 +287,9 @@ fn llm_inference_request_full_roundtrip() {
             name: "result".into(),
             schema: serde_json::json!({"type": "object"}),
         }),
+        system: Some("You are a helpful assistant.".into()),
+        logprobs: false,
+        top_logprobs: None,
     };
     let json = serde_json::to_string(&req).unwrap();
     let back: InferenceRequest = serde_json::from_str(&json).unwrap();

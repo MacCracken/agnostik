@@ -232,6 +232,9 @@ pub struct InferenceRequest {
     /// Plain text prompt (for simple, single-turn requests).
     #[serde(default)]
     pub prompt: String,
+    /// System prompt (separate from messages; used by Anthropic, optional for OpenAI).
+    #[serde(default)]
+    pub system: Option<String>,
     /// Structured conversation messages (preferred over `prompt`).
     #[serde(default)]
     pub messages: Vec<Message>,
@@ -250,6 +253,12 @@ pub struct InferenceRequest {
     /// Requested output format (structured generation).
     #[serde(default)]
     pub response_format: Option<ResponseFormat>,
+    /// Whether to return log probabilities for output tokens.
+    #[serde(default)]
+    pub logprobs: bool,
+    /// Number of most likely tokens to return per position (requires `logprobs: true`).
+    #[serde(default)]
+    pub top_logprobs: Option<u32>,
 }
 
 fn default_temperature() -> f32 {
@@ -358,6 +367,9 @@ mod tests {
             tools: vec![],
             tool_choice: None,
             response_format: None,
+            system: None,
+            logprobs: false,
+            top_logprobs: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -626,6 +638,9 @@ mod tests {
             }],
             tool_choice: Some(ToolChoice::Auto),
             response_format: Some(ResponseFormat::JsonObject),
+            system: Some("You are a search assistant.".into()),
+            logprobs: true,
+            top_logprobs: Some(5),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -634,6 +649,9 @@ mod tests {
         assert_eq!(back.sampling.seed, Some(42));
         assert_eq!(back.tool_choice, Some(ToolChoice::Auto));
         assert_eq!(back.response_format, Some(ResponseFormat::JsonObject));
+        assert_eq!(back.system.as_deref(), Some("You are a search assistant."));
+        assert!(back.logprobs);
+        assert_eq!(back.top_logprobs, Some(5));
     }
 
     #[test]

@@ -56,6 +56,57 @@ pub struct ResourceUsage {
     pub processes_used: u32,
 }
 
+/// Restart policy for failed agents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum RestartPolicy {
+    /// Never restart.
+    #[default]
+    Never,
+    /// Always restart, regardless of exit status.
+    Always,
+    /// Restart only on non-zero exit (failure).
+    OnFailure,
+}
+
+/// Health check configuration (liveness/readiness probes).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HealthCheck {
+    /// Interval between health checks in seconds.
+    #[serde(default = "default_health_interval")]
+    pub interval_secs: u32,
+    /// Timeout for each health check in seconds.
+    #[serde(default = "default_health_timeout")]
+    pub timeout_secs: u32,
+    /// Number of consecutive failures before marking unhealthy.
+    #[serde(default = "default_health_retries")]
+    pub retries: u32,
+    /// Seconds to wait before first health check after start.
+    #[serde(default)]
+    pub initial_delay_secs: u32,
+}
+
+fn default_health_interval() -> u32 {
+    30
+}
+fn default_health_timeout() -> u32 {
+    5
+}
+fn default_health_retries() -> u32 {
+    3
+}
+
+impl Default for HealthCheck {
+    fn default() -> Self {
+        Self {
+            interval_secs: default_health_interval(),
+            timeout_secs: default_health_timeout(),
+            retries: default_health_retries(),
+            initial_delay_secs: 0,
+        }
+    }
+}
+
 /// Agent configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
@@ -67,6 +118,21 @@ pub struct AgentConfig {
     #[serde(default)]
     pub permissions: Vec<Permission>,
     pub metadata: serde_json::Value,
+    /// Restart policy on failure.
+    #[serde(default)]
+    pub restart_policy: RestartPolicy,
+    /// Maximum restart attempts (0 = unlimited, only applies when restart_policy != Never).
+    #[serde(default)]
+    pub max_restarts: u32,
+    /// Health check configuration.
+    #[serde(default)]
+    pub health_check: Option<HealthCheck>,
+    /// Maximum seconds to wait for startup before marking failed.
+    #[serde(default)]
+    pub startup_timeout_secs: Option<u32>,
+    /// Graceful shutdown timeout in seconds (SIGTERM → SIGKILL delay).
+    #[serde(default)]
+    pub shutdown_timeout_secs: Option<u32>,
 }
 
 impl Default for AgentConfig {
@@ -78,6 +144,11 @@ impl Default for AgentConfig {
             sandbox: SandboxConfig::default(),
             permissions: Vec::new(),
             metadata: serde_json::Value::Null,
+            restart_policy: RestartPolicy::default(),
+            max_restarts: 0,
+            health_check: None,
+            startup_timeout_secs: None,
+            shutdown_timeout_secs: None,
         }
     }
 }
@@ -345,6 +416,63 @@ mod tests {
         let back: AgentConfig = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, c.name);
         assert_eq!(back.agent_type, c.agent_type);
+        assert_eq!(back.restart_policy, RestartPolicy::Never);
+    }
+
+    #[test]
+    fn restart_policy_serde_roundtrip() {
+        for variant in [
+            RestartPolicy::Never,
+            RestartPolicy::Always,
+            RestartPolicy::OnFailure,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: RestartPolicy = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn health_check_default() {
+        let h = HealthCheck::default();
+        assert_eq!(h.interval_secs, 30);
+        assert_eq!(h.timeout_secs, 5);
+        assert_eq!(h.retries, 3);
+        assert_eq!(h.initial_delay_secs, 0);
+    }
+
+    #[test]
+    fn health_check_serde_roundtrip() {
+        let h = HealthCheck {
+            interval_secs: 10,
+            timeout_secs: 2,
+            retries: 5,
+            initial_delay_secs: 15,
+        };
+        let json = serde_json::to_string(&h).unwrap();
+        let back: HealthCheck = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.interval_secs, 10);
+        assert_eq!(back.retries, 5);
+        assert_eq!(back.initial_delay_secs, 15);
+    }
+
+    #[test]
+    fn agent_config_with_lifecycle() {
+        let c = AgentConfig {
+            restart_policy: RestartPolicy::OnFailure,
+            max_restarts: 5,
+            health_check: Some(HealthCheck::default()),
+            startup_timeout_secs: Some(60),
+            shutdown_timeout_secs: Some(30),
+            ..AgentConfig::default()
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: AgentConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.restart_policy, RestartPolicy::OnFailure);
+        assert_eq!(back.max_restarts, 5);
+        assert!(back.health_check.is_some());
+        assert_eq!(back.startup_timeout_secs, Some(60));
+        assert_eq!(back.shutdown_timeout_secs, Some(30));
     }
 
     #[test]

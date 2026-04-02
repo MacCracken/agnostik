@@ -92,6 +92,9 @@ fn bench_inference_request_serde(c: &mut Criterion) {
         }],
         tool_choice: None,
         response_format: None,
+        system: None,
+        logprobs: false,
+        top_logprobs: None,
     };
     let json = serde_json::to_string(&req).unwrap();
 
