@@ -31,7 +31,7 @@ pub enum AgnostikError {
     #[error("serialization error: {0}")]
     Serialization(String),
 
-    #[error("I/O error: {0}")]
+    #[error("i/o error: {0}")]
     Io(#[from] std::io::Error),
 }
 

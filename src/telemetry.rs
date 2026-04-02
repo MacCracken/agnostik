@@ -29,7 +29,9 @@ impl std::str::FromStr for TraceId {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         u128::from_str_radix(s, 16).map(Self).map_err(|_| {
-            crate::error::AgnostikError::InvalidArgument(format!("invalid trace id: {s}"))
+            crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid trace id: {s} (expected 32 hex digits)"
+            ))
         })
     }
 }
@@ -62,7 +64,9 @@ impl std::str::FromStr for SpanId {
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
         u64::from_str_radix(s, 16).map(Self).map_err(|_| {
-            crate::error::AgnostikError::InvalidArgument(format!("invalid span id: {s}"))
+            crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid span id: {s} (expected 16 hex digits)"
+            ))
         })
     }
 }

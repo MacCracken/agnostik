@@ -32,10 +32,14 @@ impl From<Uuid> for AgentId {
 }
 
 impl std::str::FromStr for AgentId {
-    type Err = uuid::Error;
+    type Err = crate::error::AgnostikError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Uuid::parse_str(s).map(Self)
+        Uuid::parse_str(s).map(Self).map_err(|e| {
+            crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid agent id: {s} (expected UUID, {e})"
+            ))
+        })
     }
 }
 
@@ -63,10 +67,14 @@ impl std::fmt::Display for UserId {
 }
 
 impl std::str::FromStr for UserId {
-    type Err = uuid::Error;
+    type Err = crate::error::AgnostikError;
 
     fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Uuid::parse_str(s).map(Self)
+        Uuid::parse_str(s).map(Self).map_err(|e| {
+            crate::error::AgnostikError::InvalidArgument(format!(
+                "invalid user id: {s} (expected UUID, {e})"
+            ))
+        })
     }
 }
 
@@ -136,7 +144,9 @@ impl std::str::FromStr for Version {
         }
         let parse = |p: &str| {
             p.parse::<u32>().map_err(|_| {
-                crate::error::AgnostikError::InvalidArgument(format!("invalid version part: {p}"))
+                crate::error::AgnostikError::InvalidArgument(format!(
+                    "invalid version component: {p} (expected unsigned integer)"
+                ))
             })
         };
         Ok(Self {

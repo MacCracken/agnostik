@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.1.0+** — 12 modules, 194 tests. All quality gates passing.
+**v0.1.0+** — 12 modules, 216 tests. API frozen. All quality gates passing.
 
 ## Completed
 
@@ -69,7 +69,9 @@
 _(No outstanding backlog items — all planned features implemented)_
 
 ## v1.0.0 Criteria
-- API frozen — no breaking changes
+- API frozen — no breaking changes ✅
+- Consistent error types — all FromStr impls return AgnostikError ✅
+- Descriptive error messages with expected format hints ✅
 - All types Serialize + Deserialize with roundtrip tests ✅
 - All enums #[non_exhaustive] ✅
 - Zero unwrap/panic ✅

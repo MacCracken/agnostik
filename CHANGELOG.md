@@ -1,5 +1,25 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+- **Breaking**: `AgentId::from_str` and `UserId::from_str` now return `AgnostikError` instead of `uuid::Error` — consistent with all other `FromStr` impls in the crate
+- Error message capitalization standardized: "I/O error" → "i/o error" (lowercase, matching all other variants)
+
+### Fixed
+- `AgentId::from_str` and `UserId::from_str` error messages now include expected format and underlying cause (e.g., `"invalid agent id: foo (expected UUID, invalid character)"`)
+- `TraceId::from_str` and `SpanId::from_str` error messages now include expected format (e.g., `"expected 32 hex digits"`, `"expected 16 hex digits"`)
+- `Version::from_str` parse error improved: `"invalid version part: x"` → `"invalid version component: x (expected unsigned integer)"`
+
+### Testing
+- Integration tests expanded from 4 to 26, covering all feature-gated modules
+- 216 tests total (190 unit + 26 integration)
+
+### Maintenance
+- `deny.toml`: removed 6 unmatched license allowances (GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, Zlib)
+- `scripts/bench-history.sh`: fixed broken `--output-format bencher` flag (not valid in Criterion 0.5)
+- Dependencies updated: uuid 1.22→1.23, libc, zerocopy, wasm-bindgen
+
 ## [2026.3.26] - 2026-03-25
 
 ### Added
