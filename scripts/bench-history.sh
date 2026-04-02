@@ -1,3 +1,3 @@
 #!/bin/bash
 set -euo pipefail
-cargo bench --bench benchmarks -- --output-format bencher 2>/dev/null | tee -a bench-history.csv
+cargo bench --all-features --bench benchmarks 2>&1 | grep -E 'time:|Benchmarking' | tee -a bench-history.log
