@@ -47,6 +47,23 @@ impl AgnostikError {
     pub fn is_retriable(&self) -> bool {
         matches!(self, Self::Timeout | Self::ResourceExhausted(_))
     }
+
+    /// Numeric error code for API versioning and client routing.
+    #[must_use]
+    pub fn code(&self) -> u32 {
+        match self {
+            Self::AgentNotFound(_) => 1001,
+            Self::PermissionDenied(_) => 1002,
+            Self::ConfigError(_) => 1003,
+            Self::Timeout => 1004,
+            Self::ResourceExhausted(_) => 1005,
+            Self::InvalidArgument(_) => 1006,
+            Self::NotSupported(_) => 1007,
+            Self::Internal(_) => 1008,
+            Self::Serialization(_) => 1009,
+            Self::Io(_) => 1010,
+        }
+    }
 }
 
 /// Convenience result type.
@@ -102,5 +119,14 @@ mod tests {
         let io_err = std::io::Error::other("fail");
         let e: AgnostikError = io_err.into();
         assert!(!e.is_retriable());
+    }
+
+    #[test]
+    fn error_codes() {
+        assert_eq!(AgnostikError::AgentNotFound("x".into()).code(), 1001);
+        assert_eq!(AgnostikError::PermissionDenied("x".into()).code(), 1002);
+        assert_eq!(AgnostikError::Timeout.code(), 1004);
+        assert_eq!(AgnostikError::InvalidArgument("x".into()).code(), 1006);
+        assert_eq!(AgnostikError::Io(std::io::Error::other("x")).code(), 1010);
     }
 }

@@ -49,13 +49,43 @@ impl Drop for Secret {
     }
 }
 
+/// Kind of secret stored.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum SecretKind {
+    #[default]
+    Opaque,
+    ApiKey,
+    Password,
+    Certificate,
+    SshKey,
+    Token,
+}
+
 /// Secret metadata (not the value itself).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretMetadata {
     pub name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(default)]
     pub rotation_policy: Option<String>,
+    /// Kind of secret.
+    #[serde(default)]
+    pub kind: SecretKind,
+    /// Searchable tags.
+    #[serde(default)]
+    pub tags: Vec<String>,
+    /// Owner (user or service that created this secret).
+    #[serde(default)]
+    pub owner: Option<String>,
+    /// When the secret was last accessed.
+    #[serde(default)]
+    pub last_accessed_at: Option<chrono::DateTime<chrono::Utc>>,
+    /// When the secret was last rotated.
+    #[serde(default)]
+    pub last_rotated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Trait for pluggable secret storage backends.
@@ -71,6 +101,21 @@ pub trait SecretStore: Send + Sync {
 
     /// List metadata for all stored secrets.
     fn list_metadata(&self) -> crate::Result<Vec<SecretMetadata>>;
+
+    /// Rotate a secret: generate a new value and return it.
+    fn rotate(&self, _name: &str) -> crate::Result<Secret> {
+        Err(crate::AgnostikError::NotSupported(
+            "rotation not implemented".into(),
+        ))
+    }
+
+    /// Search secrets by tag.
+    fn search_by_tag(&self, tag: &str) -> crate::Result<Vec<SecretMetadata>> {
+        let _ = tag;
+        Err(crate::AgnostikError::NotSupported(
+            "search not implemented".into(),
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -111,9 +156,33 @@ mod tests {
             created_at: chrono::Utc::now(),
             expires_at: None,
             rotation_policy: Some("90d".into()),
+            kind: SecretKind::ApiKey,
+            tags: vec!["production".into(), "external".into()],
+            owner: Some("platform-team".into()),
+            last_accessed_at: None,
+            last_rotated_at: None,
         };
         let json = serde_json::to_string(&m).unwrap();
         let back: SecretMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(back.name, "api-key");
+        assert_eq!(back.kind, SecretKind::ApiKey);
+        assert_eq!(back.tags, vec!["production", "external"]);
+        assert_eq!(back.owner.as_deref(), Some("platform-team"));
+    }
+
+    #[test]
+    fn secret_kind_serde_roundtrip() {
+        for variant in [
+            SecretKind::Opaque,
+            SecretKind::ApiKey,
+            SecretKind::Password,
+            SecretKind::Certificate,
+            SecretKind::SshKey,
+            SecretKind::Token,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: SecretKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
     }
 }

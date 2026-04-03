@@ -338,6 +338,70 @@ pub struct EmbeddingResponse {
 }
 
 // ---------------------------------------------------------------------------
+// Model metadata
+// ---------------------------------------------------------------------------
+
+/// Describes a model's capabilities and constraints (for routing decisions).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelCapabilities {
+    /// Model identifier (e.g., "claude-sonnet-4-20250514").
+    pub model_id: String,
+    /// Human-readable display name.
+    #[serde(default)]
+    pub display_name: String,
+    /// Provider hosting this model.
+    pub provider: LlmProvider,
+    /// Maximum context window in tokens.
+    #[serde(default)]
+    pub context_window: u64,
+    /// Maximum output tokens per request.
+    #[serde(default)]
+    pub max_output_tokens: u64,
+    /// Whether the model supports vision/image inputs.
+    #[serde(default)]
+    pub supports_vision: bool,
+    /// Whether the model supports tool/function calling.
+    #[serde(default)]
+    pub supports_tools: bool,
+    /// Whether the model supports structured output (JSON mode).
+    #[serde(default)]
+    pub supports_structured_output: bool,
+    /// Whether the model supports streaming responses.
+    #[serde(default)]
+    pub supports_streaming: bool,
+    /// Input cost per million tokens (USD).
+    #[serde(default)]
+    pub input_cost_per_mtok: Option<f64>,
+    /// Output cost per million tokens (USD).
+    #[serde(default)]
+    pub output_cost_per_mtok: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
+// Rate limits
+// ---------------------------------------------------------------------------
+
+/// Rate limit state returned by a provider (from response headers).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct RateLimitInfo {
+    /// Maximum requests allowed in the current window.
+    #[serde(default)]
+    pub limit_requests: Option<u32>,
+    /// Remaining requests in the current window.
+    #[serde(default)]
+    pub remaining_requests: Option<u32>,
+    /// Maximum tokens allowed in the current window.
+    #[serde(default)]
+    pub limit_tokens: Option<u64>,
+    /// Remaining tokens in the current window.
+    #[serde(default)]
+    pub remaining_tokens: Option<u64>,
+    /// Seconds until the rate limit resets.
+    #[serde(default)]
+    pub reset_seconds: Option<f64>,
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -801,5 +865,43 @@ mod tests {
         let u: TokenUsage = serde_json::from_str(json).unwrap();
         assert_eq!(u.cache_creation_input_tokens, 0);
         assert_eq!(u.cache_read_input_tokens, 0);
+    }
+
+    #[test]
+    fn model_capabilities_serde_roundtrip() {
+        let mc = ModelCapabilities {
+            model_id: "claude-sonnet-4-20250514".into(),
+            display_name: "Claude Sonnet 4".into(),
+            provider: LlmProvider::Anthropic,
+            context_window: 200_000,
+            max_output_tokens: 64_000,
+            supports_vision: true,
+            supports_tools: true,
+            supports_structured_output: true,
+            supports_streaming: true,
+            input_cost_per_mtok: Some(3.0),
+            output_cost_per_mtok: Some(15.0),
+        };
+        let json = serde_json::to_string(&mc).unwrap();
+        let back: ModelCapabilities = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.model_id, "claude-sonnet-4-20250514");
+        assert_eq!(back.context_window, 200_000);
+        assert!(back.supports_vision);
+        assert_eq!(back.input_cost_per_mtok, Some(3.0));
+    }
+
+    #[test]
+    fn rate_limit_info_serde_roundtrip() {
+        let rl = RateLimitInfo {
+            limit_requests: Some(1000),
+            remaining_requests: Some(950),
+            limit_tokens: Some(100_000),
+            remaining_tokens: Some(85_000),
+            reset_seconds: Some(60.0),
+        };
+        let json = serde_json::to_string(&rl).unwrap();
+        let back: RateLimitInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.remaining_requests, Some(950));
+        assert_eq!(back.remaining_tokens, Some(85_000));
     }
 }

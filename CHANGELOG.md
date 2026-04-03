@@ -62,8 +62,32 @@
 #### Config — Environment Profiles
 - `EnvironmentProfile::Testing`, `Canary` — CI/CD and gradual rollout profiles
 
-#### Telemetry — Histogram Polish
+#### Telemetry — Logging & Exemplars
+- **LogSeverity** — Trace/Debug/Info/Warn/Error/Fatal (OTel severity levels)
+- **LogRecord** — structured log type with severity, body, attributes, trace correlation, and resource
+- **Exemplar** — links a metric data point to a specific trace (OTel exemplar)
 - `MetricValue::Histogram.min`, `max` — OTel histogram min/max fields
+
+#### Agent — Lifecycle Hooks & Resources
+- **LifecycleHooks** — pre_start/post_start/pre_stop/post_stop with command + timeout
+- `AgentConfig.lifecycle_hooks` — optional lifecycle hook configuration
+- `ResourceLimits.max_disk_bytes`, `network_bandwidth_bps` — disk and network resource limits
+
+#### Security — OCI Process Fields
+- `SecurityContext.run_as_user`, `run_as_group` — UID/GID for sandboxed processes
+- `SecurityContext.readonly_root_filesystem` — immutable root filesystem
+- `SandboxConfig.masked_paths`, `readonly_paths` — OCI maskedPaths/readonlyPaths
+- `NamespaceConfig.time` — time namespace (kernel 5.6+)
+
+#### Validation — Injection Breakdown
+- **InjectionScores** — per-category scores: sql, xss, command, path_traversal, prompt_injection
+
+#### Error — Numeric Codes
+- `AgnostikError::code()` — numeric error code (1001–1010) for API versioning and client routing
+
+#### LLM — Provider Routing
+- **ModelCapabilities** — model metadata for routing: context window, supported features, pricing
+- **RateLimitInfo** — provider rate limit state: limits, remaining, reset timer
 
 ### Changed
 - **Breaking**: `SpanStatus` changed from `Copy` enum `{Ok, Error, Cancelled}` to `{Unset, Ok, Error { message }}` (OTel-aligned, Error now carries optional message)
@@ -71,6 +95,10 @@
 - **Breaking**: `SeccompAction::Deny` removed — use `Kill`, `KillProcess`, or `Errno(1)` instead
 - **Breaking**: `SandboxConfig.mac_profile` split into `apparmor_profile` + `selinux_label`
 - **Breaking**: `SandboxConfig.seccomp_rules` replaced with `seccomp: Option<SeccompProfile>`
+- **Breaking**: `AgentStatus` — added `Restarting` and `Terminated` variants (consumers must update match arms)
+- **Breaking**: `SecretMetadata` — added `kind`, `tags`, `owner`, `last_accessed_at`, `last_rotated_at` fields
+- **Breaking**: `AuditSink` trait — added `verify_entry()`, `query()`, `seal()` methods (default impls provided)
+- **Breaking**: `SecretStore` trait — added `rotate()`, `search_by_tag()` methods (default impls provided)
 - **Breaking**: `AgentId::from_str` and `UserId::from_str` now return `AgnostikError` instead of `uuid::Error` — consistent with all other `FromStr` impls in the crate
 - Error message capitalization standardized: "I/O error" → "i/o error" (lowercase, matching all other variants)
 
@@ -81,7 +109,7 @@
 
 ### Testing
 - Integration tests expanded from 4 to 26, covering all feature-gated modules
-- 241 tests total (215 unit + 26 integration)
+- 249 tests total (223 unit + 26 integration)
 
 ### Maintenance
 - `deny.toml`: removed 6 unmatched license allowances (GPL-3.0, BSD-2-Clause, BSD-3-Clause, ISC, Unicode-DFS-2016, Zlib)

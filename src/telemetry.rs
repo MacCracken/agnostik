@@ -377,6 +377,56 @@ pub struct MetricDataPoint {
 }
 
 // ---------------------------------------------------------------------------
+// Log records (OTel-aligned)
+// ---------------------------------------------------------------------------
+
+/// Severity level for log records (OTel SeverityNumber groups).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LogSeverity {
+    Trace,
+    Debug,
+    Info,
+    Warn,
+    Error,
+    Fatal,
+}
+
+/// A structured log record (OTel Log data model).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogRecord {
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    pub severity: LogSeverity,
+    /// Log body (human-readable message or structured data).
+    pub body: String,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
+    /// Trace context for correlating logs with spans.
+    #[serde(default)]
+    pub trace_id: Option<TraceId>,
+    #[serde(default)]
+    pub span_id: Option<SpanId>,
+    /// Resource producing this log.
+    #[serde(default)]
+    pub resource: Option<Resource>,
+}
+
+// ---------------------------------------------------------------------------
+// Exemplars
+// ---------------------------------------------------------------------------
+
+/// Links a metric data point to the trace that caused it (OTel exemplar).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Exemplar {
+    pub trace_id: TraceId,
+    pub span_id: SpanId,
+    pub value: f64,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    #[serde(default)]
+    pub attributes: std::collections::HashMap<String, String>,
+}
+
+// ---------------------------------------------------------------------------
 // Traits
 // ---------------------------------------------------------------------------
 
@@ -859,5 +909,53 @@ mod tests {
     fn metric_sink_default_methods() {
         let s = NoopSink;
         assert!(s.flush().is_ok());
+    }
+
+    #[test]
+    fn log_record_serde_roundtrip() {
+        let lr = LogRecord {
+            timestamp: chrono::Utc::now(),
+            severity: LogSeverity::Error,
+            body: "connection refused".into(),
+            attributes: [("component".into(), "database".into())]
+                .into_iter()
+                .collect(),
+            trace_id: Some(TraceId::new()),
+            span_id: Some(SpanId::new()),
+            resource: Some(Resource {
+                service_name: "daimon".into(),
+                ..Resource::default()
+            }),
+        };
+        let json = serde_json::to_string(&lr).unwrap();
+        let back: LogRecord = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.severity, LogSeverity::Error);
+        assert_eq!(back.body, "connection refused");
+        assert!(back.trace_id.is_some());
+        assert!(back.resource.is_some());
+    }
+
+    #[test]
+    fn log_severity_ordering() {
+        assert!(LogSeverity::Trace < LogSeverity::Debug);
+        assert!(LogSeverity::Debug < LogSeverity::Info);
+        assert!(LogSeverity::Info < LogSeverity::Warn);
+        assert!(LogSeverity::Warn < LogSeverity::Error);
+        assert!(LogSeverity::Error < LogSeverity::Fatal);
+    }
+
+    #[test]
+    fn exemplar_serde_roundtrip() {
+        let e = Exemplar {
+            trace_id: TraceId::new(),
+            span_id: SpanId::new(),
+            value: 42.5,
+            timestamp: chrono::Utc::now(),
+            attributes: Default::default(),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        let back: Exemplar = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.trace_id, e.trace_id);
+        assert!((back.value - 42.5).abs() < f64::EPSILON);
     }
 }

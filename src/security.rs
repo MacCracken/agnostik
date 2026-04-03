@@ -222,6 +222,12 @@ pub struct SandboxConfig {
     pub selinux_label: Option<String>,
     #[serde(default)]
     pub encrypted_storage: Option<EncryptedStorageConfig>,
+    /// Paths hidden from the agent (OCI maskedPaths, e.g., "/proc/kcore").
+    #[serde(default)]
+    pub masked_paths: Vec<String>,
+    /// Paths mounted read-only (OCI readonlyPaths, e.g., "/proc/sys").
+    #[serde(default)]
+    pub readonly_paths: Vec<String>,
 }
 
 impl Default for SandboxConfig {
@@ -243,6 +249,8 @@ impl Default for SandboxConfig {
             apparmor_profile: None,
             selinux_label: None,
             encrypted_storage: None,
+            masked_paths: Vec::new(),
+            readonly_paths: Vec::new(),
         }
     }
 }
@@ -253,6 +261,15 @@ pub struct SecurityContext {
     pub agent_id: AgentId,
     pub permissions: Vec<Permission>,
     pub sandbox: SandboxConfig,
+    /// Run the agent process as this UID.
+    #[serde(default)]
+    pub run_as_user: Option<u32>,
+    /// Run the agent process as this GID.
+    #[serde(default)]
+    pub run_as_group: Option<u32>,
+    /// Mount the root filesystem as read-only.
+    #[serde(default)]
+    pub readonly_root_filesystem: bool,
 }
 
 /// Security policy effect.
@@ -335,6 +352,9 @@ pub struct NamespaceConfig {
     pub ipc: bool,
     #[serde(default)]
     pub cgroup: bool,
+    /// Time namespace (kernel 5.6+).
+    #[serde(default)]
+    pub time: bool,
 }
 
 /// UID/GID mapping for user namespaces.
@@ -795,6 +815,9 @@ mod tests {
             agent_id: id,
             permissions: vec![Permission::FileRead, Permission::NetworkAccess],
             sandbox: SandboxConfig::default(),
+            run_as_user: Some(1000),
+            run_as_group: Some(1000),
+            readonly_root_filesystem: true,
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let back: SecurityContext = serde_json::from_str(&json).unwrap();
@@ -890,6 +913,7 @@ mod tests {
             uts: false,
             ipc: false,
             cgroup: true,
+            time: false,
         };
         let json = serde_json::to_string(&n).unwrap();
         let back: NamespaceConfig = serde_json::from_str(&json).unwrap();

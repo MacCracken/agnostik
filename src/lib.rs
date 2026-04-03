@@ -67,8 +67,8 @@ pub use types::*;
 #[cfg(feature = "agent")]
 pub use agent::{
     AgentConfig, AgentDependency, AgentEvent, AgentInfo, AgentManifest, AgentMessage,
-    AgentRateLimit, AgentStats, AgentStatus, AgentType, HealthCheck, ResourceGrant, ResourceLimits,
-    ResourceRequest, ResourceUsage, RestartPolicy, StopReason,
+    AgentRateLimit, AgentStats, AgentStatus, AgentType, HealthCheck, LifecycleHook, LifecycleHooks,
+    ResourceGrant, ResourceLimits, ResourceRequest, ResourceUsage, RestartPolicy, StopReason,
 };
 
 #[cfg(feature = "security")]
@@ -84,9 +84,10 @@ pub use security::{
 
 #[cfg(feature = "telemetry")]
 pub use telemetry::{
-    AggregationTemporality, EventType, InstrumentDescriptor, MetricDataPoint, MetricKind,
-    MetricSink, MetricValue, Resource, Span, SpanCollector, SpanEvent, SpanId, SpanKind, SpanLink,
-    SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext, TraceId,
+    AggregationTemporality, EventType, Exemplar, InstrumentDescriptor, LogRecord, LogSeverity,
+    MetricDataPoint, MetricKind, MetricSink, MetricValue, Resource, Span, SpanCollector, SpanEvent,
+    SpanId, SpanKind, SpanLink, SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext,
+    TraceId,
 };
 
 #[cfg(feature = "audit")]
@@ -95,12 +96,13 @@ pub use audit::{AuditEntry, AuditResult, AuditSeverity, AuditSink, GENESIS_HASH,
 #[cfg(feature = "llm")]
 pub use llm::{
     ContentBlock, EmbeddingRequest, EmbeddingResponse, FinishReason, InferenceRequest,
-    InferenceResponse, LlmProvider, Message, MessageRole, ResponseFormat, SamplingParams,
-    StreamEvent, TokenUsage, ToolCall, ToolChoice, ToolDefinition, ToolResult,
+    InferenceResponse, LlmProvider, Message, MessageRole, ModelCapabilities, RateLimitInfo,
+    ResponseFormat, SamplingParams, StreamEvent, TokenUsage, ToolCall, ToolChoice, ToolDefinition,
+    ToolResult,
 };
 
 #[cfg(feature = "secrets")]
-pub use secrets::{Secret, SecretMetadata, SecretStore};
+pub use secrets::{Secret, SecretKind, SecretMetadata, SecretStore};
 
 #[cfg(feature = "config")]
 pub use config::{
@@ -111,7 +113,7 @@ pub use config::{
 pub use classification::{ClassificationLevel, ClassificationResult, PiiKind};
 
 #[cfg(feature = "validation")]
-pub use validation::{ValidationResult, ValidationSeverity, ValidationWarning};
+pub use validation::{InjectionScores, ValidationResult, ValidationSeverity, ValidationWarning};
 
 #[cfg(feature = "hardware")]
 pub use hardware::{

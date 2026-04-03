@@ -145,6 +145,7 @@ fn agent_config_cross_feature_serde() {
         health_check: Some(HealthCheck::default()),
         startup_timeout_secs: Some(30),
         shutdown_timeout_secs: Some(10),
+        lifecycle_hooks: None,
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();
@@ -191,6 +192,7 @@ fn validation_result_blocked_vs_clean() {
         blocked: true,
         block_reason: Some("injection detected".into()),
         injection_score: 0.99,
+        injection_scores: None,
     };
     let json = serde_json::to_string(&blocked).unwrap();
     let back: ValidationResult = serde_json::from_str(&json).unwrap();
@@ -205,6 +207,7 @@ fn validation_result_blocked_vs_clean() {
         blocked: false,
         block_reason: None,
         injection_score: 0.0,
+        injection_scores: None,
     };
     let json = serde_json::to_string(&clean).unwrap();
     let back: ValidationResult = serde_json::from_str(&json).unwrap();

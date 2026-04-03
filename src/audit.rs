@@ -102,6 +102,32 @@ pub trait AuditSink: Send + Sync {
 
     /// Verify the integrity chain of all entries.
     fn verify_chain(&self) -> crate::Result<bool>;
+
+    /// Verify a single entry against its claimed previous hash.
+    fn verify_entry(&self, entry: &AuditEntry) -> crate::Result<bool> {
+        let _ = entry;
+        Err(crate::AgnostikError::NotSupported(
+            "single-entry verification not implemented".into(),
+        ))
+    }
+
+    /// Query entries by time range.
+    fn query(
+        &self,
+        _from: chrono::DateTime<chrono::Utc>,
+        _to: chrono::DateTime<chrono::Utc>,
+    ) -> crate::Result<Vec<AuditEntry>> {
+        Err(crate::AgnostikError::NotSupported(
+            "query not implemented".into(),
+        ))
+    }
+
+    /// Seal the current chain state (periodic integrity proof for compliance).
+    fn seal(&self) -> crate::Result<String> {
+        Err(crate::AgnostikError::NotSupported(
+            "seal not implemented".into(),
+        ))
+    }
 }
 
 #[cfg(test)]

@@ -44,6 +44,24 @@ pub struct ValidationResult {
     /// Injection threat score (0.0 = safe, 1.0 = highly suspicious).
     #[serde(default)]
     pub injection_score: f64,
+    /// Per-injection-type scores (0.0–1.0).
+    #[serde(default)]
+    pub injection_scores: Option<InjectionScores>,
+}
+
+/// Per-category injection detection scores (0.0 = safe, 1.0 = highly suspicious).
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+pub struct InjectionScores {
+    #[serde(default)]
+    pub sql: f64,
+    #[serde(default)]
+    pub xss: f64,
+    #[serde(default)]
+    pub command: f64,
+    #[serde(default)]
+    pub path_traversal: f64,
+    #[serde(default)]
+    pub prompt_injection: f64,
 }
 
 #[cfg(test)]
@@ -100,6 +118,13 @@ mod tests {
             blocked: true,
             block_reason: Some("injection detected".into()),
             injection_score: 0.95,
+            injection_scores: Some(InjectionScores {
+                sql: 0.95,
+                xss: 0.0,
+                command: 0.0,
+                path_traversal: 0.0,
+                prompt_injection: 0.1,
+            }),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: ValidationResult = serde_json::from_str(&json).unwrap();
@@ -107,6 +132,7 @@ mod tests {
         assert!(back.blocked);
         assert_eq!(back.warnings.len(), 1);
         assert!((back.injection_score - 0.95).abs() < f64::EPSILON);
+        assert!((back.injection_scores.unwrap().sql - 0.95).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -118,6 +144,7 @@ mod tests {
             blocked: false,
             block_reason: None,
             injection_score: 0.0,
+            injection_scores: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: ValidationResult = serde_json::from_str(&json).unwrap();

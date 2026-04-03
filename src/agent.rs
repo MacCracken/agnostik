@@ -24,6 +24,8 @@ pub enum AgentStatus {
     Paused,
     Stopping,
     Stopped,
+    Restarting,
+    Terminated,
     Failed,
 }
 
@@ -34,6 +36,12 @@ pub struct ResourceLimits {
     pub max_cpu_time: u64,
     pub max_file_descriptors: u32,
     pub max_processes: u32,
+    /// Maximum disk usage in bytes.
+    #[serde(default)]
+    pub max_disk_bytes: Option<u64>,
+    /// Maximum network bandwidth in bytes per second.
+    #[serde(default)]
+    pub network_bandwidth_bps: Option<u64>,
 }
 
 impl Default for ResourceLimits {
@@ -43,8 +51,37 @@ impl Default for ResourceLimits {
             max_cpu_time: 3600 * 1000,
             max_file_descriptors: 1024,
             max_processes: 64,
+            max_disk_bytes: None,
+            network_bandwidth_bps: None,
         }
     }
+}
+
+/// Lifecycle hook definition for agent startup/shutdown.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LifecycleHook {
+    /// Command to execute.
+    pub command: Vec<String>,
+    /// Timeout for the hook in seconds.
+    #[serde(default)]
+    pub timeout_secs: Option<u32>,
+}
+
+/// Lifecycle hooks for agent orchestration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LifecycleHooks {
+    /// Runs before the agent process starts.
+    #[serde(default)]
+    pub pre_start: Option<LifecycleHook>,
+    /// Runs after the agent process starts successfully.
+    #[serde(default)]
+    pub post_start: Option<LifecycleHook>,
+    /// Runs before sending the stop signal.
+    #[serde(default)]
+    pub pre_stop: Option<LifecycleHook>,
+    /// Runs after the agent process exits.
+    #[serde(default)]
+    pub post_stop: Option<LifecycleHook>,
 }
 
 /// Current resource usage snapshot.
@@ -133,6 +170,9 @@ pub struct AgentConfig {
     /// Graceful shutdown timeout in seconds (SIGTERM → SIGKILL delay).
     #[serde(default)]
     pub shutdown_timeout_secs: Option<u32>,
+    /// Lifecycle hooks (pre/post start/stop).
+    #[serde(default)]
+    pub lifecycle_hooks: Option<LifecycleHooks>,
 }
 
 impl Default for AgentConfig {
@@ -149,6 +189,7 @@ impl Default for AgentConfig {
             health_check: None,
             startup_timeout_secs: None,
             shutdown_timeout_secs: None,
+            lifecycle_hooks: None,
         }
     }
 }
@@ -366,6 +407,8 @@ mod tests {
             AgentStatus::Paused,
             AgentStatus::Stopping,
             AgentStatus::Stopped,
+            AgentStatus::Restarting,
+            AgentStatus::Terminated,
             AgentStatus::Failed,
         ] {
             let json = serde_json::to_string(&variant).unwrap();
@@ -473,6 +516,27 @@ mod tests {
         assert!(back.health_check.is_some());
         assert_eq!(back.startup_timeout_secs, Some(60));
         assert_eq!(back.shutdown_timeout_secs, Some(30));
+    }
+
+    #[test]
+    fn lifecycle_hooks_serde_roundtrip() {
+        let hooks = LifecycleHooks {
+            pre_start: Some(LifecycleHook {
+                command: vec!["/usr/bin/init".into(), "--setup".into()],
+                timeout_secs: Some(10),
+            }),
+            post_start: None,
+            pre_stop: Some(LifecycleHook {
+                command: vec!["/usr/bin/cleanup".into()],
+                timeout_secs: Some(5),
+            }),
+            post_stop: None,
+        };
+        let json = serde_json::to_string(&hooks).unwrap();
+        let back: LifecycleHooks = serde_json::from_str(&json).unwrap();
+        assert!(back.pre_start.is_some());
+        assert!(back.post_start.is_none());
+        assert_eq!(back.pre_start.unwrap().command[0], "/usr/bin/init");
     }
 
     #[test]
