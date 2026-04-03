@@ -119,10 +119,6 @@ criteria = "safe-to-deploy"
 version = "2.3.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.indexmap]]
-version = "2.13.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.is-terminal]]
 version = "0.4.17"
 criteria = "safe-to-run"

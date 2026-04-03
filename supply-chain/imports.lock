@@ -8,6 +8,13 @@ user-id = 696
 user-login = "fitzgen"
 user-name = "Nick Fitzgerald"
 
+[[publisher.indexmap]]
+version = "2.13.0"
+when = "2026-01-07"
+user-id = 539
+user-login = "cuviper"
+user-name = "Josh Stone"
+
 [[publisher.unicode-xid]]
 version = "0.2.6"
 when = "2024-09-19"
