@@ -44,6 +44,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: cargo generate-lockfile
       - run: cargo install cargo-vet
       - run: cargo vet
   test:
