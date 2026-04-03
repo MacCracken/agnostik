@@ -7,7 +7,9 @@ use std::collections::HashMap;
 pub enum EnvironmentProfile {
     #[default]
     Development,
+    Testing,
     Staging,
+    Canary,
     Production,
     Edge,
 }

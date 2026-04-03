@@ -115,5 +115,6 @@ pub use validation::{ValidationResult, ValidationSeverity, ValidationWarning};
 
 #[cfg(feature = "hardware")]
 pub use hardware::{
-    AcceleratorDevice, AcceleratorFlags, AcceleratorSummary, DeviceFamily, DeviceVendor,
+    AcceleratorDevice, AcceleratorFlags, AcceleratorSummary, DeviceFamily, DeviceHealth,
+    DeviceVendor, MemoryType,
 };

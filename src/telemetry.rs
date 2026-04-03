@@ -334,6 +334,10 @@ pub enum MetricValue {
         count: u64,
         bounds: Vec<f64>,
         bucket_counts: Vec<u64>,
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
     },
 }
 
@@ -747,6 +751,8 @@ mod tests {
             count: 10,
             bounds: vec![10.0, 50.0, 100.0],
             bucket_counts: vec![2, 5, 2, 1],
+            min: Some(5.0),
+            max: Some(120.0),
         };
         let json = serde_json::to_string(&v).unwrap();
         let _back: MetricValue = serde_json::from_str(&json).unwrap();

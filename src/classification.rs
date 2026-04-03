@@ -25,6 +25,13 @@ pub enum PiiKind {
     Passport,
     DriversLicense,
     DateOfBirth,
+    FullName,
+    StreetAddress,
+    BankAccountNumber,
+    TaxId,
+    NationalId,
+    MedicalRecordNumber,
+    BiometricData,
     Custom,
 }
 
@@ -44,6 +51,9 @@ pub struct ClassificationResult {
     /// Sensitive keywords found.
     #[serde(default)]
     pub keywords_found: Vec<String>,
+    /// Confidence score of the classification (0.0–1.0).
+    #[serde(default)]
+    pub confidence: Option<f64>,
 }
 
 #[cfg(test)]
@@ -106,6 +116,7 @@ mod tests {
             rules_triggered: vec!["pii_detected".into()],
             pii_found: vec![PiiKind::Email, PiiKind::Phone],
             keywords_found: vec!["secret".into()],
+            confidence: Some(0.92),
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: ClassificationResult = serde_json::from_str(&json).unwrap();

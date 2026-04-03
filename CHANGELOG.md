@@ -42,10 +42,28 @@
 - `TokenUsage.cache_creation_input_tokens`, `cache_read_input_tokens` — prompt caching fields
 - `InferenceRequest.system` — top-level system prompt (Anthropic API pattern)
 - `InferenceRequest.logprobs`, `top_logprobs` — log probability output control
+- `InferenceResponse.id` — provider-assigned response ID
 
 #### Audit — Forensics & Compliance
 - **AuditResult** — Success/Failure/Denied outcome for audited actions
 - `AuditEntry.result`, `source_ip`, `target_resource`, `duration_ms`, `tags` — enriched audit fields
+
+#### Classification — Extended PII
+- **PiiKind** expanded: FullName, StreetAddress, BankAccountNumber, TaxId, NationalId, MedicalRecordNumber, BiometricData
+- `ClassificationResult.confidence` — classification confidence score (0.0–1.0)
+
+#### Hardware — Device Diagnostics
+- **DeviceHealth** — Ok/Degraded/Failed/Unknown health status per device
+- **MemoryType** — Gddr5/Gddr6/Gddr6x/Hbm2/Hbm2e/Hbm3/Lpddr4/5/5x/Ddr4/5 memory technology
+- `AcceleratorDevice.power_watts`, `memory_bandwidth_gbps`, `memory_type`, `health`
+- `AcceleratorFlags.sycl_available`, `openvino_available`, `directml_available`
+- `AcceleratorSummary::by_vendor()` — filter devices by vendor
+
+#### Config — Environment Profiles
+- `EnvironmentProfile::Testing`, `Canary` — CI/CD and gradual rollout profiles
+
+#### Telemetry — Histogram Polish
+- `MetricValue::Histogram.min`, `max` — OTel histogram min/max fields
 
 ### Changed
 - **Breaking**: `SpanStatus` changed from `Copy` enum `{Ok, Error, Cancelled}` to `{Unset, Ok, Error { message }}` (OTel-aligned, Error now carries optional message)

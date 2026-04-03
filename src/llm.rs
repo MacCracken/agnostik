@@ -268,6 +268,9 @@ fn default_temperature() -> f32 {
 /// LLM inference response.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceResponse {
+    /// Provider-assigned response ID.
+    #[serde(default)]
+    pub id: Option<String>,
     pub model: String,
     pub content: Vec<ContentBlock>,
     pub usage: TokenUsage,
@@ -414,6 +417,7 @@ mod tests {
     #[test]
     fn inference_response_serde_roundtrip() {
         let r = InferenceResponse {
+            id: None,
             model: "llama3".into(),
             content: vec![ContentBlock::Text("Hello world".into())],
             usage: TokenUsage {
@@ -657,6 +661,7 @@ mod tests {
     #[test]
     fn inference_response_with_tool_calls() {
         let r = InferenceResponse {
+            id: Some("resp-123".into()),
             model: "gpt-4".into(),
             content: vec![ContentBlock::ToolUse {
                 id: "call_1".into(),

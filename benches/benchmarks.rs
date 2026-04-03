@@ -161,6 +161,10 @@ fn bench_accelerator_device_serde(c: &mut Criterion) {
             cuda_available: true,
             ..AcceleratorFlags::default()
         },
+        power_watts: Some(450.0),
+        memory_bandwidth_gbps: Some(1008.0),
+        memory_type: Some(MemoryType::Gddr6x),
+        health: DeviceHealth::Ok,
     };
     let json = serde_json::to_string(&device).unwrap();
 
