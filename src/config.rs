@@ -19,8 +19,14 @@ pub enum EnvironmentProfile {
 pub struct AgnosConfig {
     pub profile: EnvironmentProfile,
     pub hostname: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub components: HashMap<String, crate::types::ComponentConfig>,
+    /// Config version / generation for rollback and drift detection.
+    #[serde(default)]
+    pub generation: u64,
+    /// Content hash for change detection (e.g., SHA-256 of canonical form).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content_hash: Option<String>,
 }
 
 impl Default for AgnosConfig {
@@ -29,6 +35,8 @@ impl Default for AgnosConfig {
             profile: EnvironmentProfile::Development,
             hostname: "localhost".into(),
             components: HashMap::new(),
+            generation: 0,
+            content_hash: None,
         }
     }
 }
@@ -37,13 +45,13 @@ impl Default for AgnosConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct EdgeResourceOverrides {
     /// Override max memory (bytes).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_memory: Option<u64>,
     /// Override max CPU time (milliseconds).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_cpu_time: Option<u64>,
     /// Override max concurrent agents.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_agents: Option<u32>,
 }
 
@@ -53,13 +61,13 @@ pub struct ProfileDefinition {
     pub name: String,
     pub profile: EnvironmentProfile,
     /// Parent profile to inherit settings from.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub inherits_from: Option<EnvironmentProfile>,
     /// Edge-specific resource overrides (applied on top of inherited settings).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub edge_overrides: Option<EdgeResourceOverrides>,
     /// Profile-specific settings (override inherited component settings).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub settings: HashMap<String, serde_json::Value>,
 }
 
@@ -67,10 +75,10 @@ pub struct ProfileDefinition {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FleetConfig {
     /// Named profiles available in the fleet.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub profiles: Vec<ProfileDefinition>,
     /// Default profile assigned to new nodes.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_profile: Option<String>,
 }
 

@@ -77,6 +77,31 @@ pub enum ContentBlock {
     },
     /// Model thinking/reasoning (extended thinking).
     Thinking { thinking: String },
+    /// Audio input or output (base64-encoded or URL).
+    Audio {
+        /// Base64-encoded audio data, or a URL.
+        source: String,
+        /// Media type (e.g., "audio/wav", "audio/mp3").
+        media_type: String,
+        /// Whether `source` is a URL (true) or base64 data (false).
+        #[serde(default)]
+        is_url: bool,
+    },
+    /// A citation referencing a source document (Anthropic/Gemini).
+    Citation {
+        /// The cited text excerpt.
+        #[serde(default)]
+        cited_text: String,
+        /// Source document index (0-based, referencing input documents).
+        #[serde(default)]
+        document_index: Option<u32>,
+        /// Start character offset in the source document.
+        #[serde(default)]
+        start_char: Option<u32>,
+        /// End character offset in the source document.
+        #[serde(default)]
+        end_char: Option<u32>,
+    },
 }
 
 /// A single message in a conversation.
@@ -84,6 +109,17 @@ pub enum ContentBlock {
 pub struct Message {
     pub role: MessageRole,
     pub content: Vec<ContentBlock>,
+    /// Cache control breakpoint (Anthropic prompt caching).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
+}
+
+/// Cache control hint for prompt caching (Anthropic).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum CacheControl {
+    /// Mark this as an ephemeral cache breakpoint.
+    Ephemeral,
 }
 
 impl Message {
@@ -93,6 +129,7 @@ impl Message {
         Self {
             role,
             content: vec![ContentBlock::Text(text.into())],
+            cache_control: None,
         }
     }
 }
@@ -108,6 +145,9 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing the tool's parameters.
     pub parameters: serde_json::Value,
+    /// Cache control breakpoint (Anthropic prompt caching).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_control: Option<CacheControl>,
 }
 
 /// A tool call returned by the model.
@@ -175,17 +215,17 @@ pub enum ResponseFormat {
 pub struct SamplingParams {
     #[serde(default = "default_temperature")]
     pub temperature: f32,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_p: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_k: Option<u32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frequency_penalty: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub presence_penalty: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop_sequences: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seed: Option<u64>,
 }
 
@@ -233,32 +273,42 @@ pub struct InferenceRequest {
     #[serde(default)]
     pub prompt: String,
     /// System prompt (separate from messages; used by Anthropic, optional for OpenAI).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub system: Option<String>,
     /// Structured conversation messages (preferred over `prompt`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub messages: Vec<Message>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
     #[serde(default)]
     pub sampling: SamplingParams,
     #[serde(default)]
     pub stream: bool,
     /// Tools the model may invoke.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tools: Vec<ToolDefinition>,
     /// How the model should select tools.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_choice: Option<ToolChoice>,
     /// Requested output format (structured generation).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_format: Option<ResponseFormat>,
     /// Whether to return log probabilities for output tokens.
     #[serde(default)]
     pub logprobs: bool,
     /// Number of most likely tokens to return per position (requires `logprobs: true`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub top_logprobs: Option<u32>,
+    /// Service tier for latency/cost trade-off (e.g., "auto", "default", "flex").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub service_tier: Option<String>,
+    /// Arbitrary request metadata (for tagging, analytics, distillation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    /// Reasoning effort / thinking budget (e.g., "low", "medium", "high" or token count).
+    /// Controls extended thinking intensity for reasoning models.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
 }
 
 fn default_temperature() -> f32 {
@@ -269,15 +319,40 @@ fn default_temperature() -> f32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InferenceResponse {
     /// Provider-assigned response ID.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     pub model: String,
     pub content: Vec<ContentBlock>,
     pub usage: TokenUsage,
     pub finish_reason: FinishReason,
     /// Tool calls extracted from content (convenience accessor).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
+    /// Log probabilities for output tokens (when requested).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logprobs: Option<Vec<LogprobEntry>>,
+    /// Provider system fingerprint (model snapshot identifier for reproducibility).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_fingerprint: Option<String>,
+}
+
+/// A log probability entry for a single output token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogprobEntry {
+    /// The token text.
+    pub token: String,
+    /// Log probability of this token.
+    pub logprob: f64,
+    /// Top alternative tokens and their log probabilities.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub top_logprobs: Vec<TokenLogprob>,
+}
+
+/// A token and its log probability.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TokenLogprob {
+    pub token: String,
+    pub logprob: f64,
 }
 
 /// Why inference stopped.
@@ -289,6 +364,39 @@ pub enum FinishReason {
     ContentFilter,
     ToolUse,
     Error,
+    /// Model declined due to recitation/copyright (Gemini).
+    Recitation,
+}
+
+/// Safety rating category (Gemini-aligned).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SafetyCategory {
+    HateSpeech,
+    Harassment,
+    SexuallyExplicit,
+    DangerousContent,
+    CivicIntegrity,
+}
+
+/// Probability level for a safety rating.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum SafetyProbability {
+    Negligible,
+    Low,
+    Medium,
+    High,
+}
+
+/// A safety rating for generated content.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SafetyRating {
+    pub category: SafetyCategory,
+    pub probability: SafetyProbability,
+    /// Whether this rating caused the content to be blocked.
+    #[serde(default)]
+    pub blocked: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -299,13 +407,33 @@ pub enum FinishReason {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[non_exhaustive]
 pub enum StreamEvent {
+    /// A new content block has started.
+    ContentBlockStart {
+        /// Block index (0-based).
+        index: u32,
+        /// The initial content block (may have partial data).
+        content_block: ContentBlock,
+    },
     /// Incremental text delta.
-    Delta { text: String },
+    Delta {
+        /// Block index this delta belongs to.
+        #[serde(default)]
+        index: Option<u32>,
+        text: String,
+    },
     /// Incremental tool call arguments.
     ToolCallDelta {
+        /// Block index for parallel tool calls.
+        #[serde(default)]
+        index: Option<u32>,
         id: String,
         name: Option<String>,
         arguments_delta: String,
+    },
+    /// A content block has finished.
+    ContentBlockStop {
+        /// Block index (0-based).
+        index: u32,
     },
     /// Token usage update (may arrive mid-stream or at end).
     Usage(TokenUsage),
@@ -313,6 +441,8 @@ pub enum StreamEvent {
     Done { finish_reason: FinishReason },
     /// Stream error.
     Error { message: String },
+    /// Keep-alive ping.
+    Ping,
 }
 
 // ---------------------------------------------------------------------------
@@ -325,7 +455,7 @@ pub struct EmbeddingRequest {
     pub model: String,
     pub inputs: Vec<String>,
     /// Desired output dimensionality (if supported by model).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dimensions: Option<u32>,
 }
 
@@ -370,11 +500,61 @@ pub struct ModelCapabilities {
     #[serde(default)]
     pub supports_streaming: bool,
     /// Input cost per million tokens (USD).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_cost_per_mtok: Option<f64>,
     /// Output cost per million tokens (USD).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub output_cost_per_mtok: Option<f64>,
+    /// Whether the model supports extended thinking / reasoning.
+    #[serde(default)]
+    pub supports_thinking: bool,
+    /// Whether the model supports audio input/output.
+    #[serde(default)]
+    pub supports_audio: bool,
+    /// Whether the model supports source citations.
+    #[serde(default)]
+    pub supports_citations: bool,
+    /// Model deprecation date (ISO 8601).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deprecation_date: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Batch API
+// ---------------------------------------------------------------------------
+
+/// A single request within a batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchRequest {
+    /// Caller-assigned ID for correlating results.
+    pub custom_id: String,
+    /// The inference request to execute.
+    pub request: InferenceRequest,
+}
+
+/// Status of a batch processing job.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum BatchStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+    Cancelled,
+    Expired,
+}
+
+/// Result for a single request within a batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BatchResult {
+    /// Caller-assigned ID matching the request.
+    pub custom_id: String,
+    /// The inference response (if successful).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response: Option<InferenceResponse>,
+    /// Error message (if failed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -385,19 +565,19 @@ pub struct ModelCapabilities {
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
 pub struct RateLimitInfo {
     /// Maximum requests allowed in the current window.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit_requests: Option<u32>,
     /// Remaining requests in the current window.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remaining_requests: Option<u32>,
     /// Maximum tokens allowed in the current window.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub limit_tokens: Option<u64>,
     /// Remaining tokens in the current window.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remaining_tokens: Option<u64>,
     /// Seconds until the rate limit resets.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reset_seconds: Option<f64>,
 }
 
@@ -437,6 +617,9 @@ mod tests {
             system: None,
             logprobs: false,
             top_logprobs: None,
+            service_tier: None,
+            metadata: None,
+            reasoning_effort: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -492,6 +675,8 @@ mod tests {
             },
             finish_reason: FinishReason::Stop,
             tool_calls: vec![],
+            logprobs: None,
+            system_fingerprint: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceResponse = serde_json::from_str(&json).unwrap();
@@ -578,6 +763,7 @@ mod tests {
                     arguments: serde_json::json!({"q": "test"}),
                 },
             ],
+            cache_control: None,
         };
         let json = serde_json::to_string(&m).unwrap();
         let back: Message = serde_json::from_str(&json).unwrap();
@@ -594,6 +780,7 @@ mod tests {
                 "type": "object",
                 "properties": {"query": {"type": "string"}}
             }),
+            cache_control: None,
         };
         let json = serde_json::to_string(&t).unwrap();
         let back: ToolDefinition = serde_json::from_str(&json).unwrap();
@@ -657,9 +844,11 @@ mod tests {
     fn stream_event_serde_roundtrip() {
         let events = vec![
             StreamEvent::Delta {
+                index: Some(0),
                 text: "hello".into(),
             },
             StreamEvent::ToolCallDelta {
+                index: Some(1),
                 id: "call_1".into(),
                 name: Some("search".into()),
                 arguments_delta: "{\"q\":".into(),
@@ -703,12 +892,16 @@ mod tests {
                 name: "search".into(),
                 description: "Web search".into(),
                 parameters: serde_json::json!({"type": "object"}),
+                cache_control: None,
             }],
             tool_choice: Some(ToolChoice::Auto),
             response_format: Some(ResponseFormat::JsonObject),
             system: Some("You are a search assistant.".into()),
             logprobs: true,
             top_logprobs: Some(5),
+            service_tier: None,
+            metadata: None,
+            reasoning_effort: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceRequest = serde_json::from_str(&json).unwrap();
@@ -739,6 +932,8 @@ mod tests {
                 name: "search".into(),
                 arguments: serde_json::json!({"query": "rust"}),
             }],
+            logprobs: None,
+            system_fingerprint: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: InferenceResponse = serde_json::from_str(&json).unwrap();
@@ -881,6 +1076,10 @@ mod tests {
             supports_streaming: true,
             input_cost_per_mtok: Some(3.0),
             output_cost_per_mtok: Some(15.0),
+            supports_thinking: true,
+            supports_audio: false,
+            supports_citations: true,
+            deprecation_date: None,
         };
         let json = serde_json::to_string(&mc).unwrap();
         let back: ModelCapabilities = serde_json::from_str(&json).unwrap();
@@ -903,5 +1102,100 @@ mod tests {
         let back: RateLimitInfo = serde_json::from_str(&json).unwrap();
         assert_eq!(back.remaining_requests, Some(950));
         assert_eq!(back.remaining_tokens, Some(85_000));
+    }
+
+    #[test]
+    fn safety_rating_serde_roundtrip() {
+        let r = SafetyRating {
+            category: SafetyCategory::HateSpeech,
+            probability: SafetyProbability::Low,
+            blocked: false,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: SafetyRating = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.category, SafetyCategory::HateSpeech);
+        assert_eq!(back.probability, SafetyProbability::Low);
+        assert!(!back.blocked);
+    }
+
+    #[test]
+    fn safety_probability_ordering() {
+        assert!(SafetyProbability::Negligible < SafetyProbability::Low);
+        assert!(SafetyProbability::Low < SafetyProbability::Medium);
+        assert!(SafetyProbability::Medium < SafetyProbability::High);
+    }
+
+    #[test]
+    fn batch_request_serde_roundtrip() {
+        let br = BatchRequest {
+            custom_id: "req-001".into(),
+            request: InferenceRequest {
+                model: "gpt-4".into(),
+                prompt: "hello".into(),
+                messages: vec![],
+                max_tokens: Some(100),
+                sampling: SamplingParams::default(),
+                stream: false,
+                tools: vec![],
+                tool_choice: None,
+                response_format: None,
+                system: None,
+                logprobs: false,
+                top_logprobs: None,
+                service_tier: None,
+                metadata: None,
+                reasoning_effort: None,
+            },
+        };
+        let json = serde_json::to_string(&br).unwrap();
+        let back: BatchRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.custom_id, "req-001");
+        assert_eq!(back.request.model, "gpt-4");
+    }
+
+    #[test]
+    fn batch_status_serde_roundtrip() {
+        for variant in [
+            BatchStatus::Pending,
+            BatchStatus::InProgress,
+            BatchStatus::Completed,
+            BatchStatus::Failed,
+            BatchStatus::Cancelled,
+            BatchStatus::Expired,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: BatchStatus = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn logprob_entry_serde_roundtrip() {
+        let entry = LogprobEntry {
+            token: "hello".into(),
+            logprob: -0.5,
+            top_logprobs: vec![
+                TokenLogprob {
+                    token: "hello".into(),
+                    logprob: -0.5,
+                },
+                TokenLogprob {
+                    token: "hi".into(),
+                    logprob: -1.2,
+                },
+            ],
+        };
+        let json = serde_json::to_string(&entry).unwrap();
+        let back: LogprobEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.token, "hello");
+        assert_eq!(back.top_logprobs.len(), 2);
+    }
+
+    #[test]
+    fn cache_control_serde_roundtrip() {
+        let cc = CacheControl::Ephemeral;
+        let json = serde_json::to_string(&cc).unwrap();
+        let back: CacheControl = serde_json::from_str(&json).unwrap();
+        assert_eq!(cc, back);
     }
 }

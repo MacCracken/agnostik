@@ -37,10 +37,10 @@ pub struct ResourceLimits {
     pub max_file_descriptors: u32,
     pub max_processes: u32,
     /// Maximum disk usage in bytes.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_disk_bytes: Option<u64>,
     /// Maximum network bandwidth in bytes per second.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_bandwidth_bps: Option<u64>,
 }
 
@@ -63,7 +63,7 @@ pub struct LifecycleHook {
     /// Command to execute.
     pub command: Vec<String>,
     /// Timeout for the hook in seconds.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout_secs: Option<u32>,
 }
 
@@ -71,16 +71,16 @@ pub struct LifecycleHook {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LifecycleHooks {
     /// Runs before the agent process starts.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pre_start: Option<LifecycleHook>,
     /// Runs after the agent process starts successfully.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_start: Option<LifecycleHook>,
     /// Runs before sending the stop signal.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pre_stop: Option<LifecycleHook>,
     /// Runs after the agent process exits.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub post_stop: Option<LifecycleHook>,
 }
 
@@ -106,9 +106,65 @@ pub enum RestartPolicy {
     OnFailure,
 }
 
+/// Backoff configuration for agent restarts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RestartBackoff {
+    /// Initial delay before first restart in milliseconds.
+    #[serde(default = "default_restart_delay")]
+    pub initial_delay_ms: u64,
+    /// Multiplier applied after each restart (delay *= multiplier).
+    #[serde(default = "default_restart_multiplier")]
+    pub multiplier: f64,
+    /// Maximum delay between restarts in milliseconds.
+    #[serde(default = "default_restart_max_delay")]
+    pub max_delay_ms: u64,
+    /// Add random jitter to avoid thundering herd.
+    #[serde(default)]
+    pub jitter: bool,
+}
+
+fn default_restart_delay() -> u64 {
+    1000
+}
+fn default_restart_multiplier() -> f64 {
+    2.0
+}
+fn default_restart_max_delay() -> u64 {
+    60_000
+}
+
+impl Default for RestartBackoff {
+    fn default() -> Self {
+        Self {
+            initial_delay_ms: default_restart_delay(),
+            multiplier: default_restart_multiplier(),
+            max_delay_ms: default_restart_max_delay(),
+            jitter: true,
+        }
+    }
+}
+
+/// Health check probe type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum ProbeType {
+    /// Combined liveness + readiness (default for backward compatibility).
+    #[default]
+    LivenessReadiness,
+    /// Liveness only — failure triggers restart.
+    Liveness,
+    /// Readiness only — failure removes from routing, does not restart.
+    Readiness,
+    /// Startup probe — checked only during startup, overrides liveness.
+    Startup,
+}
+
 /// Health check configuration (liveness/readiness probes).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HealthCheck {
+    /// Probe type (liveness, readiness, or combined).
+    #[serde(default)]
+    pub probe_type: ProbeType,
     /// Interval between health checks in seconds.
     #[serde(default = "default_health_interval")]
     pub interval_secs: u32,
@@ -136,6 +192,7 @@ fn default_health_retries() -> u32 {
 impl Default for HealthCheck {
     fn default() -> Self {
         Self {
+            probe_type: ProbeType::default(),
             interval_secs: default_health_interval(),
             timeout_secs: default_health_timeout(),
             retries: default_health_retries(),
@@ -152,7 +209,7 @@ pub struct AgentConfig {
     pub resource_limits: ResourceLimits,
     #[serde(default)]
     pub sandbox: SandboxConfig,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<Permission>,
     pub metadata: serde_json::Value,
     /// Restart policy on failure.
@@ -162,17 +219,20 @@ pub struct AgentConfig {
     #[serde(default)]
     pub max_restarts: u32,
     /// Health check configuration.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub health_check: Option<HealthCheck>,
     /// Maximum seconds to wait for startup before marking failed.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup_timeout_secs: Option<u32>,
     /// Graceful shutdown timeout in seconds (SIGTERM → SIGKILL delay).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shutdown_timeout_secs: Option<u32>,
     /// Lifecycle hooks (pre/post start/stop).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifecycle_hooks: Option<LifecycleHooks>,
+    /// Backoff configuration for restart delays.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub restart_backoff: Option<RestartBackoff>,
 }
 
 impl Default for AgentConfig {
@@ -190,6 +250,7 @@ impl Default for AgentConfig {
             startup_timeout_secs: None,
             shutdown_timeout_secs: None,
             lifecycle_hooks: None,
+            restart_backoff: None,
         }
     }
 }
@@ -216,15 +277,15 @@ pub struct AgentManifest {
     pub version: Version,
     #[serde(default)]
     pub homepage: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub requested_permissions: Vec<Permission>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub permission_rationale: HashMap<String, String>,
     #[serde(default)]
     pub resource_limits: ResourceLimits,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub data_accessed: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub external_services: Vec<String>,
 }
 
@@ -276,10 +337,10 @@ pub struct AgentMessage {
     pub sender: AgentId,
     pub receiver: AgentId,
     /// Correlation ID for request/response pairing.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_id: Option<uuid::Uuid>,
     /// ID of message this is replying to.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reply_to: Option<uuid::Uuid>,
     pub payload: serde_json::Value,
     pub timestamp: chrono::DateTime<chrono::Utc>,
@@ -295,7 +356,7 @@ pub struct AgentDependency {
     /// The agent that is required.
     pub required_agent: String,
     /// Minimum version required (SemVer).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_version: Option<Version>,
     /// Whether the dependency is mandatory or optional.
     #[serde(default = "default_true")]
@@ -311,7 +372,7 @@ fn default_true() -> bool {
 pub struct ResourceRequest {
     pub agent_id: AgentId,
     pub requested_limits: ResourceLimits,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub justification: Option<String>,
 }
 
@@ -321,8 +382,273 @@ pub struct ResourceGrant {
     pub agent_id: AgentId,
     pub granted_limits: ResourceLimits,
     pub approved: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+}
+
+// ---------------------------------------------------------------------------
+// Task / Execution identity
+// ---------------------------------------------------------------------------
+
+/// Unique identifier for a discrete unit of agent work.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct TaskId(pub uuid::Uuid);
+
+impl TaskId {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
+
+impl Default for TaskId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for TaskId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+/// Unique identifier for a single execution attempt of a task.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionId(pub uuid::Uuid);
+
+impl ExecutionId {
+    #[must_use]
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4())
+    }
+}
+
+impl Default for ExecutionId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ExecutionId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Retry policy
+// ---------------------------------------------------------------------------
+
+/// Retry policy with exponential backoff for failed operations.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryPolicy {
+    /// Maximum number of retry attempts.
+    pub max_retries: u32,
+    /// Initial delay between retries in milliseconds.
+    #[serde(default = "default_initial_delay")]
+    pub initial_delay_ms: u64,
+    /// Backoff multiplier (delay *= multiplier after each retry).
+    #[serde(default = "default_backoff_multiplier")]
+    pub backoff_multiplier: f64,
+    /// Maximum delay between retries in milliseconds.
+    #[serde(default = "default_max_delay")]
+    pub max_delay_ms: u64,
+    /// Whether to add random jitter to the delay.
+    #[serde(default)]
+    pub jitter: bool,
+}
+
+fn default_initial_delay() -> u64 {
+    1000
+}
+fn default_backoff_multiplier() -> f64 {
+    2.0
+}
+fn default_max_delay() -> u64 {
+    30_000
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            initial_delay_ms: default_initial_delay(),
+            backoff_multiplier: default_backoff_multiplier(),
+            max_delay_ms: default_max_delay(),
+            jitter: true,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Circuit breaker
+// ---------------------------------------------------------------------------
+
+/// Circuit breaker state for downstream service protection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
+#[non_exhaustive]
+pub enum CircuitBreakerState {
+    /// Normal operation — requests pass through.
+    #[default]
+    Closed,
+    /// Failures exceeded threshold — requests are rejected.
+    Open,
+    /// Testing recovery — limited requests pass through.
+    HalfOpen,
+}
+
+// ---------------------------------------------------------------------------
+// Agent pool / group
+// ---------------------------------------------------------------------------
+
+/// Configuration for a pool of identical agents (replica set).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AgentPool {
+    /// Pool name.
+    pub name: String,
+    /// Agent config template for pool members.
+    pub agent_config: AgentConfig,
+    /// Desired number of running replicas.
+    #[serde(default = "default_replicas")]
+    pub replicas: u32,
+    /// Minimum replicas (for autoscaling).
+    #[serde(default = "default_replicas")]
+    pub min_replicas: u32,
+    /// Maximum replicas (for autoscaling).
+    #[serde(default = "default_max_replicas")]
+    pub max_replicas: u32,
+}
+
+fn default_replicas() -> u32 {
+    1
+}
+fn default_max_replicas() -> u32 {
+    10
+}
+
+// ---------------------------------------------------------------------------
+// Agent capabilities advertisement
+// ---------------------------------------------------------------------------
+
+/// Capabilities that an agent advertises for matchmaking.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct AgentCapabilities {
+    /// Skills or capabilities this agent provides (e.g., "code-review", "translation").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub skills: Vec<String>,
+    /// Input types this agent accepts (e.g., "text", "image", "code").
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_types: Vec<String>,
+    /// Output types this agent produces.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_types: Vec<String>,
+    /// Maximum concurrent tasks this agent can handle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_concurrent_tasks: Option<u32>,
+}
+
+// ---------------------------------------------------------------------------
+// Scheduling / Placement
+// ---------------------------------------------------------------------------
+
+/// Scheduling constraints for agent placement.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SchedulingConstraints {
+    /// Node labels the agent prefers to run on (soft preference).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_affinity: Vec<LabelSelector>,
+    /// Node labels the agent must NOT run on.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub node_anti_affinity: Vec<LabelSelector>,
+    /// Agent names that should be co-located.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pod_affinity: Vec<String>,
+    /// Agent names that should NOT be co-located.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pod_anti_affinity: Vec<String>,
+    /// Priority class (higher = more important, can preempt lower-priority agents).
+    #[serde(default)]
+    pub priority: i32,
+    /// Whether this agent can preempt lower-priority agents for resources.
+    #[serde(default)]
+    pub preemptible: bool,
+}
+
+/// A label selector for node matching.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabelSelector {
+    /// Label key (e.g., "gpu", "zone", "arch").
+    pub key: String,
+    /// Match operator.
+    pub operator: LabelOperator,
+    /// Values to match against.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub values: Vec<String>,
+}
+
+/// Label match operator for scheduling selectors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LabelOperator {
+    /// Label value must equal one of the specified values.
+    In,
+    /// Label value must not equal any of the specified values.
+    NotIn,
+    /// Label must exist (values ignored).
+    Exists,
+    /// Label must not exist (values ignored).
+    DoesNotExist,
+}
+
+// ---------------------------------------------------------------------------
+// Inter-agent pub/sub
+// ---------------------------------------------------------------------------
+
+/// A topic/channel for pub/sub agent communication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Topic {
+    /// Topic name (e.g., "task.completed", "alert.security").
+    pub name: String,
+    /// Optional topic description.
+    #[serde(default)]
+    pub description: String,
+    /// Maximum message TTL in seconds (None = no expiry).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message_ttl_secs: Option<u64>,
+}
+
+/// A subscription to a topic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Subscription {
+    /// Subscriber agent ID.
+    pub agent_id: AgentId,
+    /// Topic name to subscribe to.
+    pub topic: String,
+    /// Optional filter expression (e.g., "severity >= 'error'").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter: Option<String>,
+}
+
+/// A message published to a topic.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TopicMessage {
+    /// Unique message ID.
+    pub id: uuid::Uuid,
+    /// Topic this message was published to.
+    pub topic: String,
+    /// Publisher agent ID.
+    pub publisher: AgentId,
+    /// Message payload.
+    pub payload: serde_json::Value,
+    /// Message timestamp.
+    pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// Message priority (higher = more urgent).
+    #[serde(default)]
+    pub priority: u8,
+    /// Message TTL in seconds (overrides topic default).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ttl_secs: Option<u64>,
 }
 
 #[cfg(test)]
@@ -487,6 +813,7 @@ mod tests {
     #[test]
     fn health_check_serde_roundtrip() {
         let h = HealthCheck {
+            probe_type: ProbeType::Liveness,
             interval_secs: 10,
             timeout_secs: 2,
             retries: 5,
@@ -662,5 +989,183 @@ mod tests {
         let json = serde_json::to_string(&rg).unwrap();
         let back: ResourceGrant = serde_json::from_str(&json).unwrap();
         assert!(back.approved);
+    }
+
+    #[test]
+    fn task_id_unique() {
+        assert_ne!(TaskId::new(), TaskId::new());
+    }
+
+    #[test]
+    fn task_id_serde_roundtrip() {
+        let id = TaskId::new();
+        let json = serde_json::to_string(&id).unwrap();
+        let back: TaskId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn execution_id_serde_roundtrip() {
+        let id = ExecutionId::new();
+        let json = serde_json::to_string(&id).unwrap();
+        let back: ExecutionId = serde_json::from_str(&json).unwrap();
+        assert_eq!(id, back);
+    }
+
+    #[test]
+    fn retry_policy_default() {
+        let rp = RetryPolicy::default();
+        assert_eq!(rp.max_retries, 3);
+        assert_eq!(rp.initial_delay_ms, 1000);
+        assert!((rp.backoff_multiplier - 2.0).abs() < f64::EPSILON);
+        assert!(rp.jitter);
+    }
+
+    #[test]
+    fn retry_policy_serde_roundtrip() {
+        let rp = RetryPolicy {
+            max_retries: 5,
+            initial_delay_ms: 500,
+            backoff_multiplier: 1.5,
+            max_delay_ms: 60_000,
+            jitter: false,
+        };
+        let json = serde_json::to_string(&rp).unwrap();
+        let back: RetryPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.max_retries, 5);
+        assert!(!back.jitter);
+    }
+
+    #[test]
+    fn circuit_breaker_state_serde_roundtrip() {
+        for variant in [
+            CircuitBreakerState::Closed,
+            CircuitBreakerState::Open,
+            CircuitBreakerState::HalfOpen,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: CircuitBreakerState = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn probe_type_serde_roundtrip() {
+        for variant in [
+            ProbeType::LivenessReadiness,
+            ProbeType::Liveness,
+            ProbeType::Readiness,
+            ProbeType::Startup,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: ProbeType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn agent_capabilities_serde_roundtrip() {
+        let ac = AgentCapabilities {
+            skills: vec!["code-review".into(), "translation".into()],
+            input_types: vec!["text".into()],
+            output_types: vec!["text".into()],
+            max_concurrent_tasks: Some(5),
+        };
+        let json = serde_json::to_string(&ac).unwrap();
+        let back: AgentCapabilities = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.skills.len(), 2);
+        assert_eq!(back.max_concurrent_tasks, Some(5));
+    }
+
+    #[test]
+    fn agent_pool_serde_roundtrip() {
+        let pool = AgentPool {
+            name: "workers".into(),
+            agent_config: AgentConfig::default(),
+            replicas: 3,
+            min_replicas: 1,
+            max_replicas: 10,
+        };
+        let json = serde_json::to_string(&pool).unwrap();
+        let back: AgentPool = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "workers");
+        assert_eq!(back.replicas, 3);
+    }
+
+    #[test]
+    fn scheduling_constraints_serde_roundtrip() {
+        let sc = SchedulingConstraints {
+            node_affinity: vec![LabelSelector {
+                key: "gpu".into(),
+                operator: LabelOperator::Exists,
+                values: vec![],
+            }],
+            node_anti_affinity: vec![],
+            pod_affinity: vec!["helper-agent".into()],
+            pod_anti_affinity: vec![],
+            priority: 100,
+            preemptible: false,
+        };
+        let json = serde_json::to_string(&sc).unwrap();
+        let back: SchedulingConstraints = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.node_affinity.len(), 1);
+        assert_eq!(back.priority, 100);
+    }
+
+    #[test]
+    fn label_operator_serde_roundtrip() {
+        for variant in [
+            LabelOperator::In,
+            LabelOperator::NotIn,
+            LabelOperator::Exists,
+            LabelOperator::DoesNotExist,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: LabelOperator = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn topic_serde_roundtrip() {
+        let t = Topic {
+            name: "task.completed".into(),
+            description: "Emitted when a task finishes".into(),
+            message_ttl_secs: Some(3600),
+        };
+        let json = serde_json::to_string(&t).unwrap();
+        let back: Topic = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "task.completed");
+        assert_eq!(back.message_ttl_secs, Some(3600));
+    }
+
+    #[test]
+    fn topic_message_serde_roundtrip() {
+        let tm = TopicMessage {
+            id: uuid::Uuid::new_v4(),
+            topic: "alerts".into(),
+            publisher: AgentId::new(),
+            payload: serde_json::json!({"level": "critical"}),
+            timestamp: chrono::Utc::now(),
+            priority: 10,
+            ttl_secs: Some(60),
+        };
+        let json = serde_json::to_string(&tm).unwrap();
+        let back: TopicMessage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.topic, "alerts");
+        assert_eq!(back.priority, 10);
+    }
+
+    #[test]
+    fn subscription_serde_roundtrip() {
+        let s = Subscription {
+            agent_id: AgentId::new(),
+            topic: "alerts".into(),
+            filter: Some("severity >= 'error'".into()),
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let back: Subscription = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.topic, "alerts");
+        assert!(back.filter.is_some());
     }
 }

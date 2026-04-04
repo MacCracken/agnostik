@@ -66,39 +66,47 @@ pub use types::*;
 // Feature-gated re-exports
 #[cfg(feature = "agent")]
 pub use agent::{
-    AgentConfig, AgentDependency, AgentEvent, AgentInfo, AgentManifest, AgentMessage,
-    AgentRateLimit, AgentStats, AgentStatus, AgentType, HealthCheck, LifecycleHook, LifecycleHooks,
-    ResourceGrant, ResourceLimits, ResourceRequest, ResourceUsage, RestartPolicy, StopReason,
+    AgentCapabilities, AgentConfig, AgentDependency, AgentEvent, AgentInfo, AgentManifest,
+    AgentMessage, AgentPool, AgentRateLimit, AgentStats, AgentStatus, AgentType,
+    CircuitBreakerState, ExecutionId, HealthCheck, LabelOperator, LabelSelector, LifecycleHook,
+    LifecycleHooks, ProbeType, ResourceGrant, ResourceLimits, ResourceRequest, ResourceUsage,
+    RestartBackoff, RestartPolicy, RetryPolicy, SchedulingConstraints, StopReason, Subscription,
+    TaskId, Topic, TopicMessage,
 };
 
 #[cfg(feature = "security")]
 pub use security::{
-    AuthContext, CapabilitySet, CgroupLimits, ConditionOperator, EncryptedStorageConfig,
-    FilesystemRule, FsAccess, IdMapping, LandlockFsAccess, LandlockFsRule, LandlockNetAccess,
-    LandlockNetRule, LandlockRuleset, LinuxCapability, MountPropagation, NamespaceConfig,
-    NetworkAccess, NetworkPolicy, Permission, PermissionCondition, PolicyEffect, Role,
-    RolePermission, SandboxCapabilities, SandboxConfig, SeccompAction, SeccompArch, SeccompArg,
-    SeccompArgOp, SeccompMode, SeccompProfile, SeccompRule, SecurityContext, SecurityPolicy,
-    SystemFeature, TokenPayload,
+    AuthContext, CapabilitySet, CgroupLimits, ConditionOperator, DeviceRule, DeviceType,
+    EncryptedStorageConfig, FilesystemRule, FsAccess, IdMapping, LandlockFsAccess, LandlockFsRule,
+    LandlockNetAccess, LandlockNetRule, LandlockRuleset, LandlockScope, LinuxCapability,
+    MountPropagation, NamespaceConfig, NamespaceEntry, NetworkAccess, NetworkPolicy, Permission,
+    PermissionCondition, PolicyEffect, Rlimit, RlimitType, Role, RolePermission,
+    SandboxCapabilities, SandboxConfig, SeccompAction, SeccompArch, SeccompArg, SeccompArgOp,
+    SeccompMode, SeccompProfile, SeccompRule, SecurityContext, SecurityPolicy, SystemFeature,
+    TokenPayload,
 };
 
 #[cfg(feature = "telemetry")]
 pub use telemetry::{
-    AggregationTemporality, EventType, Exemplar, InstrumentDescriptor, LogRecord, LogSeverity,
-    MetricDataPoint, MetricKind, MetricSink, MetricValue, Resource, Span, SpanCollector, SpanEvent,
-    SpanId, SpanKind, SpanLink, SpanStatus, TRACE_FLAG_SAMPLED, TelemetryConfig, TraceContext,
-    TraceId,
+    AggregationTemporality, Baggage, BaggageEntry, EventType, Exemplar, InstrumentDescriptor,
+    InstrumentationScope, LogRecord, LogSeverity, MetricDataPoint, MetricKind, MetricSink,
+    MetricValue, Resource, Span, SpanCollector, SpanEvent, SpanId, SpanKind, SpanLink, SpanStatus,
+    TRACE_FLAG_SAMPLED, TelemetryConfig, TextMapCarrier, TextMapPropagator, TraceContext, TraceId,
 };
 
 #[cfg(feature = "audit")]
-pub use audit::{AuditEntry, AuditResult, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFields};
+pub use audit::{
+    AuditEntry, AuditResult, AuditSeverity, AuditSink, GENESIS_HASH, IntegrityFields,
+    RetentionPolicy,
+};
 
 #[cfg(feature = "llm")]
 pub use llm::{
-    ContentBlock, EmbeddingRequest, EmbeddingResponse, FinishReason, InferenceRequest,
-    InferenceResponse, LlmProvider, Message, MessageRole, ModelCapabilities, RateLimitInfo,
-    ResponseFormat, SamplingParams, StreamEvent, TokenUsage, ToolCall, ToolChoice, ToolDefinition,
-    ToolResult,
+    BatchRequest, BatchResult, BatchStatus, CacheControl, ContentBlock, EmbeddingRequest,
+    EmbeddingResponse, FinishReason, InferenceRequest, InferenceResponse, LlmProvider,
+    LogprobEntry, Message, MessageRole, ModelCapabilities, RateLimitInfo, ResponseFormat,
+    SafetyCategory, SafetyProbability, SafetyRating, SamplingParams, StreamEvent, TokenLogprob,
+    TokenUsage, ToolCall, ToolChoice, ToolDefinition, ToolResult,
 };
 
 #[cfg(feature = "secrets")]

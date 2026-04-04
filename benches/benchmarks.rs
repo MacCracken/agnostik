@@ -89,12 +89,16 @@ fn bench_inference_request_serde(c: &mut Criterion) {
             name: "search".into(),
             description: "Search the web".into(),
             parameters: serde_json::json!({"type": "object", "properties": {"query": {"type": "string"}}}),
+            cache_control: None,
         }],
         tool_choice: None,
         response_format: None,
         system: None,
         logprobs: false,
         top_logprobs: None,
+        service_tier: None,
+        metadata: None,
+        reasoning_effort: None,
     };
     let json = serde_json::to_string(&req).unwrap();
 

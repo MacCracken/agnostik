@@ -67,24 +67,24 @@ pub enum SecretKind {
 pub struct SecretMetadata {
     pub name: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rotation_policy: Option<String>,
     /// Kind of secret.
     #[serde(default)]
     pub kind: SecretKind,
     /// Searchable tags.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     /// Owner (user or service that created this secret).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
     /// When the secret was last accessed.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_accessed_at: Option<chrono::DateTime<chrono::Utc>>,
     /// When the secret was last rotated.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_rotated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 

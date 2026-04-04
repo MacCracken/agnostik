@@ -152,6 +152,7 @@ fn agent_config_cross_feature_serde() {
         startup_timeout_secs: Some(30),
         shutdown_timeout_secs: Some(10),
         lifecycle_hooks: None,
+        restart_backoff: None,
     };
     let json = serde_json::to_string(&config).unwrap();
     let back: AgentConfig = serde_json::from_str(&json).unwrap();
@@ -303,6 +304,7 @@ fn llm_inference_request_full_roundtrip() {
             name: "search".into(),
             description: "Web search".into(),
             parameters: serde_json::json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+            cache_control: None,
         }],
         tool_choice: Some(ToolChoice::Required),
         response_format: Some(ResponseFormat::JsonSchema {
@@ -312,6 +314,9 @@ fn llm_inference_request_full_roundtrip() {
         system: Some("You are a helpful assistant.".into()),
         logprobs: false,
         top_logprobs: None,
+        service_tier: None,
+        metadata: None,
+        reasoning_effort: None,
     };
     let json = serde_json::to_string(&req).unwrap();
     let back: InferenceRequest = serde_json::from_str(&json).unwrap();

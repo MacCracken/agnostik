@@ -94,7 +94,28 @@ pub struct Resource {
     #[serde(default)]
     pub service_instance_id: String,
     /// Additional resource attributes (OTel semantic conventions).
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub attributes: std::collections::HashMap<String, String>,
+    /// Schema URL for semantic convention versioning (OTel).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_url: Option<String>,
+}
+
+/// Identifies the instrumentation library producing telemetry (OTel InstrumentationScope).
+///
+/// Groups spans, metrics, and logs by the library/module that created them.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct InstrumentationScope {
+    /// Library or module name (e.g., "agnostik.telemetry").
+    pub name: String,
+    /// Library version.
     #[serde(default)]
+    pub version: String,
+    /// Schema URL for semantic convention versioning.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub schema_url: Option<String>,
+    /// Additional scope attributes.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub attributes: std::collections::HashMap<String, String>,
 }
 
@@ -103,7 +124,7 @@ pub struct Resource {
 pub struct TraceContext {
     pub trace_id: TraceId,
     pub span_id: SpanId,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_span_id: Option<SpanId>,
     /// W3C trace flags (bit 0 = sampled).
     #[serde(default = "default_trace_flags")]
@@ -234,7 +255,7 @@ pub struct SpanEvent {
     /// Event name (e.g., "exception", "message").
     pub name: String,
     pub timestamp: chrono::DateTime<chrono::Utc>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub attributes: std::collections::HashMap<String, String>,
 }
 
@@ -243,7 +264,7 @@ pub struct SpanEvent {
 pub struct SpanLink {
     pub trace_id: TraceId,
     pub span_id: SpanId,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub attributes: std::collections::HashMap<String, String>,
 }
 
@@ -262,11 +283,20 @@ pub struct Span {
     pub duration_ms: u64,
     pub attributes: std::collections::HashMap<String, String>,
     /// Timestamped events recorded during the span (OTel span events).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub events: Vec<SpanEvent>,
     /// Links to related spans in other traces (OTel span links).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub links: Vec<SpanLink>,
+    /// Number of attributes dropped due to limits (OTel).
+    #[serde(default)]
+    pub dropped_attributes_count: u32,
+    /// Number of events dropped due to limits (OTel).
+    #[serde(default)]
+    pub dropped_events_count: u32,
+    /// Number of links dropped due to limits (OTel).
+    #[serde(default)]
+    pub dropped_links_count: u32,
 }
 
 /// Telemetry configuration.
@@ -339,6 +369,29 @@ pub enum MetricValue {
         #[serde(default)]
         max: Option<f64>,
     },
+    /// Base-2 exponential histogram (OTel preferred histogram type).
+    ExponentialHistogram {
+        sum: f64,
+        count: u64,
+        /// Exponent scale factor (higher = finer granularity).
+        scale: i32,
+        /// Number of values exactly equal to zero.
+        zero_count: u64,
+        /// Bucket counts for positive values (index 0 = lowest bucket).
+        positive_bucket_counts: Vec<u64>,
+        /// Offset for the positive bucket range.
+        positive_offset: i32,
+        /// Bucket counts for negative values.
+        #[serde(default)]
+        negative_bucket_counts: Vec<u64>,
+        /// Offset for the negative bucket range.
+        #[serde(default)]
+        negative_offset: i32,
+        #[serde(default)]
+        min: Option<f64>,
+        #[serde(default)]
+        max: Option<f64>,
+    },
 }
 
 /// Describes a metric instrument.
@@ -392,22 +445,41 @@ pub enum LogSeverity {
     Fatal,
 }
 
+impl LogSeverity {
+    /// OTel severity number (1-24). Returns the baseline number for each group.
+    #[must_use]
+    pub fn severity_number(self) -> u8 {
+        match self {
+            Self::Trace => 1,
+            Self::Debug => 5,
+            Self::Info => 9,
+            Self::Warn => 13,
+            Self::Error => 17,
+            Self::Fatal => 21,
+        }
+    }
+}
+
 /// A structured log record (OTel Log data model).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LogRecord {
+    /// When the event occurred.
     pub timestamp: chrono::DateTime<chrono::Utc>,
+    /// When the log was observed/collected (may differ from timestamp).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_timestamp: Option<chrono::DateTime<chrono::Utc>>,
     pub severity: LogSeverity,
     /// Log body (human-readable message or structured data).
     pub body: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub attributes: std::collections::HashMap<String, String>,
     /// Trace context for correlating logs with spans.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trace_id: Option<TraceId>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub span_id: Option<SpanId>,
     /// Resource producing this log.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub resource: Option<Resource>,
 }
 
@@ -422,8 +494,80 @@ pub struct Exemplar {
     pub span_id: SpanId,
     pub value: f64,
     pub timestamp: chrono::DateTime<chrono::Utc>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub attributes: std::collections::HashMap<String, String>,
+}
+
+// ---------------------------------------------------------------------------
+// Baggage (W3C Baggage / OTel Baggage)
+// ---------------------------------------------------------------------------
+
+/// A single baggage entry for cross-cutting context propagation.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BaggageEntry {
+    /// Baggage value.
+    pub value: String,
+    /// Optional metadata string (W3C baggage property).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
+}
+
+/// Cross-cutting context propagated across agent boundaries (OTel Baggage).
+///
+/// Carries tenant IDs, session IDs, agent lineage, and other cross-cutting
+/// concerns without polluting span attributes.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct Baggage {
+    /// Key-value entries.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub entries: std::collections::HashMap<String, BaggageEntry>,
+}
+
+impl Baggage {
+    /// Create empty baggage.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Insert or update a baggage entry.
+    pub fn set(&mut self, key: impl Into<String>, value: impl Into<String>) {
+        self.entries.insert(
+            key.into(),
+            BaggageEntry {
+                value: value.into(),
+                metadata: None,
+            },
+        );
+    }
+
+    /// Get a baggage value by key.
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&str> {
+        self.entries.get(key).map(|e| e.value.as_str())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Context propagation
+// ---------------------------------------------------------------------------
+
+/// Trait for injecting/extracting trace context into/from carriers (OTel TextMapPropagator).
+pub trait TextMapPropagator: Send + Sync {
+    /// Inject trace context into a carrier (e.g., HTTP headers).
+    fn inject(&self, context: &TraceContext, carrier: &mut dyn TextMapCarrier);
+
+    /// Extract trace context from a carrier.
+    fn extract(&self, carrier: &dyn TextMapCarrier) -> Option<TraceContext>;
+}
+
+/// Carrier for text-based context propagation (e.g., HTTP headers).
+pub trait TextMapCarrier {
+    /// Get a value by key.
+    fn get(&self, key: &str) -> Option<&str>;
+
+    /// Set a key-value pair.
+    fn set(&mut self, key: &str, value: &str);
 }
 
 // ---------------------------------------------------------------------------
@@ -563,6 +707,7 @@ mod tests {
             attributes: [("host.name".into(), "node-01".into())]
                 .into_iter()
                 .collect(),
+            schema_url: None,
         };
         let json = serde_json::to_string(&r).unwrap();
         let back: Resource = serde_json::from_str(&json).unwrap();
@@ -618,6 +763,9 @@ mod tests {
                 span_id: SpanId::new(),
                 attributes: Default::default(),
             }],
+            dropped_attributes_count: 0,
+            dropped_events_count: 0,
+            dropped_links_count: 0,
         };
         let json = serde_json::to_string(&s).unwrap();
         let back: Span = serde_json::from_str(&json).unwrap();
@@ -915,6 +1063,7 @@ mod tests {
     fn log_record_serde_roundtrip() {
         let lr = LogRecord {
             timestamp: chrono::Utc::now(),
+            observed_timestamp: None,
             severity: LogSeverity::Error,
             body: "connection refused".into(),
             attributes: [("component".into(), "database".into())]
@@ -957,5 +1106,112 @@ mod tests {
         let back: Exemplar = serde_json::from_str(&json).unwrap();
         assert_eq!(back.trace_id, e.trace_id);
         assert!((back.value - 42.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn log_severity_number() {
+        assert_eq!(LogSeverity::Trace.severity_number(), 1);
+        assert_eq!(LogSeverity::Debug.severity_number(), 5);
+        assert_eq!(LogSeverity::Info.severity_number(), 9);
+        assert_eq!(LogSeverity::Warn.severity_number(), 13);
+        assert_eq!(LogSeverity::Error.severity_number(), 17);
+        assert_eq!(LogSeverity::Fatal.severity_number(), 21);
+    }
+
+    #[test]
+    fn span_dropped_counts_default() {
+        let json = r#"{"name":"test","trace_id":1,"span_id":1,"parent_span_id":null,"status":"Ok","kind":"Internal","started_at":"2026-01-01T00:00:00Z","duration_ms":10,"attributes":{}}"#;
+        let s: Span = serde_json::from_str(json).unwrap();
+        assert_eq!(s.dropped_attributes_count, 0);
+        assert_eq!(s.dropped_events_count, 0);
+        assert_eq!(s.dropped_links_count, 0);
+    }
+
+    #[test]
+    fn log_record_observed_timestamp() {
+        let lr = LogRecord {
+            timestamp: chrono::Utc::now(),
+            observed_timestamp: Some(chrono::Utc::now()),
+            severity: LogSeverity::Info,
+            body: "test".into(),
+            attributes: Default::default(),
+            trace_id: None,
+            span_id: None,
+            resource: None,
+        };
+        let json = serde_json::to_string(&lr).unwrap();
+        let back: LogRecord = serde_json::from_str(&json).unwrap();
+        assert!(back.observed_timestamp.is_some());
+    }
+
+    #[test]
+    fn resource_schema_url() {
+        let r = Resource {
+            service_name: "test".into(),
+            schema_url: Some("https://opentelemetry.io/schemas/1.21.0".into()),
+            ..Resource::default()
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: Resource = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.schema_url.as_deref(),
+            Some("https://opentelemetry.io/schemas/1.21.0")
+        );
+    }
+
+    #[test]
+    fn instrumentation_scope_serde_roundtrip() {
+        let scope = InstrumentationScope {
+            name: "agnostik.telemetry".into(),
+            version: "0.90.0".into(),
+            schema_url: Some("https://opentelemetry.io/schemas/1.21.0".into()),
+            attributes: Default::default(),
+        };
+        let json = serde_json::to_string(&scope).unwrap();
+        let back: InstrumentationScope = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.name, "agnostik.telemetry");
+        assert_eq!(back.version, "0.90.0");
+    }
+
+    #[test]
+    fn exponential_histogram_serde_roundtrip() {
+        let v = MetricValue::ExponentialHistogram {
+            sum: 250.0,
+            count: 20,
+            scale: 3,
+            zero_count: 2,
+            positive_bucket_counts: vec![1, 3, 5, 4, 3, 2],
+            positive_offset: 0,
+            negative_bucket_counts: vec![],
+            negative_offset: 0,
+            min: Some(0.5),
+            max: Some(42.0),
+        };
+        let json = serde_json::to_string(&v).unwrap();
+        let back: MetricValue = serde_json::from_str(&json).unwrap();
+        if let MetricValue::ExponentialHistogram { scale, count, .. } = back {
+            assert_eq!(scale, 3);
+            assert_eq!(count, 20);
+        } else {
+            panic!("expected ExponentialHistogram");
+        }
+    }
+
+    #[test]
+    fn baggage_operations() {
+        let mut bag = Baggage::new();
+        bag.set("tenant_id", "acme-corp");
+        bag.set("session_id", "abc-123");
+        assert_eq!(bag.get("tenant_id"), Some("acme-corp"));
+        assert_eq!(bag.get("missing"), None);
+    }
+
+    #[test]
+    fn baggage_serde_roundtrip() {
+        let mut bag = Baggage::new();
+        bag.set("tenant_id", "acme-corp");
+        let json = serde_json::to_string(&bag).unwrap();
+        let back: Baggage = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.get("tenant_id"), Some("acme-corp"));
     }
 }

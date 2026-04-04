@@ -18,10 +18,10 @@ pub struct ValidationWarning {
     pub message: String,
     pub severity: ValidationSeverity,
     /// Character position where the issue was detected.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<usize>,
     /// Pattern or snippet that triggered the warning.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pattern: Option<String>,
 }
 
@@ -33,19 +33,19 @@ pub struct ValidationResult {
     /// Sanitized version of the input.
     pub sanitized: String,
     /// Warnings generated during validation.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<ValidationWarning>,
     /// Whether the input was blocked entirely.
     #[serde(default)]
     pub blocked: bool,
     /// Reason for blocking (if blocked).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block_reason: Option<String>,
     /// Injection threat score (0.0 = safe, 1.0 = highly suspicious).
     #[serde(default)]
     pub injection_score: f64,
     /// Per-injection-type scores (0.0–1.0).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub injection_scores: Option<InjectionScores>,
 }
 

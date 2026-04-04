@@ -66,7 +66,7 @@ pub struct AuditEntry {
     /// Unique entry ID.
     pub id: String,
     /// Correlation ID for tracing across services.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub correlation_id: Option<String>,
     pub timestamp: chrono::DateTime<chrono::Utc>,
     pub agent_id: AgentId,
@@ -77,22 +77,35 @@ pub struct AuditEntry {
     pub result: AuditResult,
     pub details: serde_json::Value,
     /// User who triggered the action (if applicable).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub user_id: Option<UserId>,
     /// Source IP address of the request (if applicable).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_ip: Option<String>,
     /// Resource that was the target of the action.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub target_resource: Option<String>,
     /// Duration of the audited operation in milliseconds.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
     /// Searchable tags for filtering.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<String>,
     /// Integrity chain fields.
     pub integrity: IntegrityFields,
+}
+
+/// Audit log retention policy (SOC2 CC7.2 compliance).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetentionPolicy {
+    /// Minimum retention period in days (e.g., 90 for SOC2).
+    pub min_retention_days: u32,
+    /// Maximum retention period in days (for GDPR right-to-erasure).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_retention_days: Option<u32>,
+    /// Whether to archive entries after the retention period (vs. delete).
+    #[serde(default)]
+    pub archive_on_expiry: bool,
 }
 
 /// Trait for audit log destinations.
@@ -264,5 +277,19 @@ mod tests {
         assert!(e.target_resource.is_none());
         assert!(e.duration_ms.is_none());
         assert!(e.tags.is_empty());
+    }
+
+    #[test]
+    fn retention_policy_serde_roundtrip() {
+        let rp = RetentionPolicy {
+            min_retention_days: 90,
+            max_retention_days: Some(365),
+            archive_on_expiry: true,
+        };
+        let json = serde_json::to_string(&rp).unwrap();
+        let back: RetentionPolicy = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.min_retention_days, 90);
+        assert_eq!(back.max_retention_days, Some(365));
+        assert!(back.archive_on_expiry);
     }
 }

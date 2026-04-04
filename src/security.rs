@@ -37,6 +37,9 @@ pub enum SeccompAction {
     Trace(u32),
     /// Log the syscall (SECCOMP_RET_LOG).
     Log,
+    /// Forward to userspace supervisor for decision (SECCOMP_RET_USER_NOTIF).
+    /// Enables supervisor-mediated syscall brokering for agent sandboxes.
+    Notify,
 }
 
 /// Seccomp argument comparison operator (OCI runtime spec).
@@ -145,7 +148,7 @@ pub struct SeccompRule {
     pub names: Vec<String>,
     pub action: SeccompAction,
     /// Argument conditions (all must match for the action to apply).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub args: Vec<SeccompArg>,
 }
 
@@ -155,14 +158,20 @@ pub struct SeccompProfile {
     /// Action to take when no rule matches.
     pub default_action: SeccompAction,
     /// Architectures this profile applies to.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub architectures: Vec<SeccompArch>,
     /// Seccomp filter flags.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub flags: Vec<String>,
     /// Syscall rules (evaluated in order).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub syscalls: Vec<SeccompRule>,
+    /// Path to the seccomp notify listener socket (for SCMP_ACT_NOTIFY).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listener_path: Option<String>,
+    /// Opaque metadata passed to the seccomp notify listener.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listener_metadata: Option<String>,
 }
 
 /// Per-agent network firewall policy.
@@ -209,25 +218,34 @@ pub struct SandboxConfig {
     pub filesystem_rules: Vec<FilesystemRule>,
     pub network_access: NetworkAccess,
     /// Full seccomp filter profile (preferred over legacy `seccomp_rules`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seccomp: Option<SeccompProfile>,
     pub isolate_network: bool,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_policy: Option<NetworkPolicy>,
     /// AppArmor profile name (e.g., "runtime/default").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apparmor_profile: Option<String>,
     /// SELinux process label (e.g., "system_u:system_r:container_t:s0").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selinux_label: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encrypted_storage: Option<EncryptedStorageConfig>,
     /// Paths hidden from the agent (OCI maskedPaths, e.g., "/proc/kcore").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub masked_paths: Vec<String>,
     /// Paths mounted read-only (OCI readonlyPaths, e.g., "/proc/sys").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub readonly_paths: Vec<String>,
+    /// Namespace-scoped sysctl overrides (OCI sysctl, e.g., "net.ipv4.ip_forward" → "0").
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub sysctl: std::collections::HashMap<String, String>,
+    /// POSIX resource limits for the sandboxed process.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rlimits: Vec<Rlimit>,
+    /// Device access rules (OCI devices). Empty = deny all devices.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<DeviceRule>,
 }
 
 impl Default for SandboxConfig {
@@ -251,6 +269,9 @@ impl Default for SandboxConfig {
             encrypted_storage: None,
             masked_paths: Vec::new(),
             readonly_paths: Vec::new(),
+            sysctl: std::collections::HashMap::new(),
+            rlimits: Vec::new(),
+            devices: Vec::new(),
         }
     }
 }
@@ -262,14 +283,21 @@ pub struct SecurityContext {
     pub permissions: Vec<Permission>,
     pub sandbox: SandboxConfig,
     /// Run the agent process as this UID.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as_user: Option<u32>,
     /// Run the agent process as this GID.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_as_group: Option<u32>,
     /// Mount the root filesystem as read-only.
     #[serde(default)]
     pub readonly_root_filesystem: bool,
+    /// Prevent gaining new privileges via execve (PR_SET_NO_NEW_PRIVS).
+    #[serde(default = "default_true_security")]
+    pub no_new_privs: bool,
+}
+
+fn default_true_security() -> bool {
+    true
 }
 
 /// Security policy effect.
@@ -309,26 +337,127 @@ pub type Capability = SystemFeature;
 // ---------------------------------------------------------------------------
 
 /// Cgroup v2 resource limits for agent sandboxing.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CgroupLimits {
     /// Hard memory limit in bytes (`memory.max`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_max: Option<u64>,
     /// Soft memory limit in bytes (`memory.high`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_high: Option<u64>,
     /// CPU bandwidth: max microseconds per period (`cpu.max`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_max_usec: Option<u64>,
     /// CPU bandwidth period in microseconds (default 100000).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_period_usec: Option<u64>,
     /// CPU weight 1-10000 (`cpu.weight`, default 100).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cpu_weight: Option<u16>,
     /// Max number of PIDs (`pids.max`).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pids_max: Option<u32>,
+    /// IO weight 1-10000 (`io.weight`, default 100).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_weight: Option<u16>,
+    /// IO bandwidth max in bytes/sec per device (`io.max rbps=`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_max_read_bps: Option<u64>,
+    /// IO bandwidth max in bytes/sec per device (`io.max wbps=`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io_max_write_bps: Option<u64>,
+    /// Allowed CPUs (`cpuset.cpus`, e.g., "0-3,8").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpuset_cpus: Option<String>,
+    /// Allowed memory nodes (`cpuset.mems`, e.g., "0-1").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpuset_mems: Option<String>,
+    /// Swap limit in bytes (`memory.swap.max`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub memory_swap_max: Option<u64>,
+}
+
+// ---------------------------------------------------------------------------
+// Rlimits (POSIX resource limits)
+// ---------------------------------------------------------------------------
+
+/// POSIX resource limit type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum RlimitType {
+    /// Max open file descriptors (RLIMIT_NOFILE).
+    Nofile,
+    /// Max user processes (RLIMIT_NPROC).
+    Nproc,
+    /// Max address space in bytes (RLIMIT_AS).
+    AddressSpace,
+    /// Max file size in bytes (RLIMIT_FSIZE).
+    FileSize,
+    /// Max core dump size in bytes (RLIMIT_CORE).
+    Core,
+    /// Max data segment size (RLIMIT_DATA).
+    Data,
+    /// Max stack size (RLIMIT_STACK).
+    Stack,
+    /// Max locked memory (RLIMIT_MEMLOCK).
+    Memlock,
+    /// Max pending signals (RLIMIT_SIGPENDING).
+    Sigpending,
+    /// Max message queue bytes (RLIMIT_MSGQUEUE).
+    Msgqueue,
+}
+
+/// A POSIX resource limit (soft + hard).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Rlimit {
+    #[serde(rename = "type")]
+    pub limit_type: RlimitType,
+    /// Soft limit (current enforced value).
+    pub soft: u64,
+    /// Hard limit (ceiling for soft limit).
+    pub hard: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Device access control (OCI runtime spec)
+// ---------------------------------------------------------------------------
+
+/// Device type (OCI devices).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum DeviceType {
+    /// Character device.
+    #[serde(rename = "c")]
+    Char,
+    /// Block device.
+    #[serde(rename = "b")]
+    Block,
+    /// All device types.
+    #[serde(rename = "a")]
+    All,
+}
+
+/// A device access rule (OCI devices + resources.devices).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeviceRule {
+    /// Allow or deny this device.
+    pub allow: bool,
+    /// Device type.
+    #[serde(rename = "type")]
+    pub device_type: DeviceType,
+    /// Major device number (None = wildcard).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub major: Option<i64>,
+    /// Minor device number (None = wildcard).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub minor: Option<i64>,
+    /// Access permissions: combination of 'r' (read), 'w' (write), 'm' (mknod).
+    #[serde(default = "default_device_access")]
+    pub access: String,
+}
+
+fn default_device_access() -> String {
+    "rwm".into()
 }
 
 // ---------------------------------------------------------------------------
@@ -355,6 +484,18 @@ pub struct NamespaceConfig {
     /// Time namespace (kernel 5.6+).
     #[serde(default)]
     pub time: bool,
+}
+
+/// A namespace to join or create, with optional path for joining existing namespaces.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NamespaceEntry {
+    /// Namespace type (e.g., "pid", "net", "mount").
+    #[serde(rename = "type")]
+    pub ns_type: String,
+    /// Path to an existing namespace to join (e.g., "/proc/1234/ns/net").
+    /// If absent, a new namespace is created.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
 }
 
 /// UID/GID mapping for user namespaces.
@@ -412,13 +553,26 @@ pub struct LandlockNetRule {
     pub allowed_access: Vec<LandlockNetAccess>,
 }
 
+/// Landlock scope restrictions (v5+).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[non_exhaustive]
+pub enum LandlockScope {
+    /// Restrict abstract Unix socket connections.
+    AbstractUnixSocket,
+    /// Restrict signal delivery between sandboxed processes.
+    Signal,
+}
+
 /// Complete Landlock ruleset for an agent.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct LandlockRuleset {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fs_rules: Vec<LandlockFsRule>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub net_rules: Vec<LandlockNetRule>,
+    /// Scope restrictions (Landlock v5+).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scoped: Vec<LandlockScope>,
 }
 
 // ---------------------------------------------------------------------------
@@ -473,15 +627,15 @@ pub enum LinuxCapability {
 /// Linux capability sets for a sandboxed process.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CapabilitySet {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effective: Vec<LinuxCapability>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permitted: Vec<LinuxCapability>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inheritable: Vec<LinuxCapability>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub bounding: Vec<LinuxCapability>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ambient: Vec<LinuxCapability>,
 }
 
@@ -566,7 +720,7 @@ pub struct PermissionCondition {
 pub struct RolePermission {
     pub resource: String,
     pub actions: Vec<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub conditions: Vec<PermissionCondition>,
 }
 
@@ -576,7 +730,7 @@ pub struct TokenPayload {
     /// Subject (user or agent ID).
     pub sub: String,
     pub role: Role,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<String>,
     /// Issued-at timestamp (Unix seconds).
     pub iat: u64,
@@ -584,9 +738,9 @@ pub struct TokenPayload {
     pub exp: u64,
     /// Token ID (for revocation).
     pub jti: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub email: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
 }
 
@@ -770,6 +924,8 @@ mod tests {
                 action: SeccompAction::Allow,
                 args: vec![],
             }],
+            listener_path: None,
+            listener_metadata: None,
         };
         let json = serde_json::to_string(&p).unwrap();
         let back: SeccompProfile = serde_json::from_str(&json).unwrap();
@@ -836,6 +992,7 @@ mod tests {
             run_as_user: Some(1000),
             run_as_group: Some(1000),
             readonly_root_filesystem: true,
+            no_new_privs: true,
         };
         let json = serde_json::to_string(&ctx).unwrap();
         let back: SecurityContext = serde_json::from_str(&json).unwrap();
@@ -906,6 +1063,7 @@ mod tests {
             cpu_period_usec: Some(100000),
             cpu_weight: Some(100),
             pids_max: Some(64),
+            ..CgroupLimits::default()
         };
         let json = serde_json::to_string(&c).unwrap();
         let back: CgroupLimits = serde_json::from_str(&json).unwrap();
@@ -1000,6 +1158,7 @@ mod tests {
                 port: 443,
                 allowed_access: vec![LandlockNetAccess::ConnectTcp],
             }],
+            scoped: vec![LandlockScope::Signal],
         };
         let json = serde_json::to_string(&rs).unwrap();
         let back: LandlockRuleset = serde_json::from_str(&json).unwrap();
@@ -1204,5 +1363,125 @@ mod tests {
             "jti must be redacted in Debug"
         );
         assert!(debug.contains("[redacted]"));
+    }
+
+    #[test]
+    fn cgroup_limits_io_cpuset_defaults() {
+        let c = CgroupLimits::default();
+        assert!(c.io_weight.is_none());
+        assert!(c.io_max_read_bps.is_none());
+        assert!(c.io_max_write_bps.is_none());
+        assert!(c.cpuset_cpus.is_none());
+        assert!(c.cpuset_mems.is_none());
+        assert!(c.memory_swap_max.is_none());
+    }
+
+    #[test]
+    fn cgroup_limits_io_cpuset_serde_roundtrip() {
+        let c = CgroupLimits {
+            io_weight: Some(200),
+            io_max_read_bps: Some(100_000_000),
+            io_max_write_bps: Some(50_000_000),
+            cpuset_cpus: Some("0-3".into()),
+            cpuset_mems: Some("0".into()),
+            memory_swap_max: Some(2 * 1024 * 1024 * 1024),
+            ..CgroupLimits::default()
+        };
+        let json = serde_json::to_string(&c).unwrap();
+        let back: CgroupLimits = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.io_weight, Some(200));
+        assert_eq!(back.cpuset_cpus.as_deref(), Some("0-3"));
+        assert_eq!(back.memory_swap_max, Some(2 * 1024 * 1024 * 1024));
+    }
+
+    #[test]
+    fn security_context_no_new_privs_default() {
+        let json = r#"{"agent_id":"00000000-0000-0000-0000-000000000000","permissions":[],"sandbox":{"filesystem_rules":[],"network_access":"None","isolate_network":false}}"#;
+        let sc: SecurityContext = serde_json::from_str(json).unwrap();
+        assert!(sc.no_new_privs, "no_new_privs should default to true");
+    }
+
+    #[test]
+    fn sandbox_config_sysctl() {
+        let mut cfg = SandboxConfig::default();
+        cfg.sysctl.insert("net.ipv4.ip_forward".into(), "0".into());
+        let json = serde_json::to_string(&cfg).unwrap();
+        let back: SandboxConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            back.sysctl.get("net.ipv4.ip_forward").map(|s| s.as_str()),
+            Some("0")
+        );
+    }
+
+    #[test]
+    fn namespace_entry_serde_roundtrip() {
+        let e = NamespaceEntry {
+            ns_type: "net".into(),
+            path: Some("/proc/1234/ns/net".into()),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        let back: NamespaceEntry = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.ns_type, "net");
+        assert_eq!(back.path.as_deref(), Some("/proc/1234/ns/net"));
+    }
+
+    #[test]
+    fn landlock_scope_serde_roundtrip() {
+        for variant in [LandlockScope::AbstractUnixSocket, LandlockScope::Signal] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: LandlockScope = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn rlimit_serde_roundtrip() {
+        let r = Rlimit {
+            limit_type: RlimitType::Nofile,
+            soft: 1024,
+            hard: 4096,
+        };
+        let json = serde_json::to_string(&r).unwrap();
+        let back: Rlimit = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.limit_type, RlimitType::Nofile);
+        assert_eq!(back.soft, 1024);
+        assert_eq!(back.hard, 4096);
+    }
+
+    #[test]
+    fn rlimit_type_serde_roundtrip() {
+        for variant in [
+            RlimitType::Nofile,
+            RlimitType::Nproc,
+            RlimitType::AddressSpace,
+            RlimitType::FileSize,
+            RlimitType::Core,
+        ] {
+            let json = serde_json::to_string(&variant).unwrap();
+            let back: RlimitType = serde_json::from_str(&json).unwrap();
+            assert_eq!(variant, back);
+        }
+    }
+
+    #[test]
+    fn device_rule_serde_roundtrip() {
+        let d = DeviceRule {
+            allow: false,
+            device_type: DeviceType::All,
+            major: None,
+            minor: None,
+            access: "rwm".into(),
+        };
+        let json = serde_json::to_string(&d).unwrap();
+        let back: DeviceRule = serde_json::from_str(&json).unwrap();
+        assert!(!back.allow);
+    }
+
+    #[test]
+    fn seccomp_notify_action_serde_roundtrip() {
+        let action = SeccompAction::Notify;
+        let json = serde_json::to_string(&action).unwrap();
+        let back: SeccompAction = serde_json::from_str(&json).unwrap();
+        assert_eq!(action, back);
     }
 }

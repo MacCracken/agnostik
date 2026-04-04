@@ -43,16 +43,16 @@ pub struct ClassificationResult {
     /// Level determined by automatic detection rules.
     pub auto_level: ClassificationLevel,
     /// Names of rules that triggered.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rules_triggered: Vec<String>,
     /// PII types found in the content.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pii_found: Vec<PiiKind>,
     /// Sensitive keywords found.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub keywords_found: Vec<String>,
     /// Confidence score of the classification (0.0–1.0).
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub confidence: Option<f64>,
 }
 

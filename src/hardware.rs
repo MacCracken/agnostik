@@ -108,25 +108,25 @@ pub struct AcceleratorDevice {
     #[serde(default)]
     pub utilization_percent: u32,
     /// GPU temperature in Celsius.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub temperature_celsius: Option<f32>,
     /// Driver version string.
     #[serde(default)]
     pub driver_version: String,
     /// CUDA compute capability (e.g. "8.9").
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compute_capability: Option<String>,
     /// Compute framework availability flags.
     #[serde(default)]
     pub flags: AcceleratorFlags,
     /// Thermal design power in watts.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub power_watts: Option<f32>,
     /// Memory bandwidth in GB/s.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_bandwidth_gbps: Option<f32>,
     /// Memory technology type.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_type: Option<MemoryType>,
     /// Device health status.
     #[serde(default)]
