@@ -571,7 +571,7 @@ pub struct RolePermission {
 }
 
 /// JWT-style token payload for authentication.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct TokenPayload {
     /// Subject (user or agent ID).
     pub sub: String,
@@ -588,6 +588,24 @@ pub struct TokenPayload {
     pub email: Option<String>,
     #[serde(default)]
     pub display_name: Option<String>,
+}
+
+impl std::fmt::Debug for TokenPayload {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokenPayload")
+            .field("sub", &self.sub)
+            .field("role", &self.role)
+            .field("permissions", &self.permissions)
+            .field("iat", &self.iat)
+            .field("exp", &self.exp)
+            .field("jti", &"[redacted]")
+            .field("email", &self.email.as_ref().map(|_| "[redacted]"))
+            .field(
+                "display_name",
+                &self.display_name.as_ref().map(|_| "[redacted]"),
+            )
+            .finish()
+    }
 }
 
 /// Authentication context for an operation.
@@ -1158,5 +1176,33 @@ mod tests {
         let back: AuthContext = serde_json::from_str(&json).unwrap();
         assert_eq!(back.role, Role::Admin);
         assert_eq!(back.permissions.len(), 1);
+    }
+
+    #[test]
+    fn token_payload_debug_redacts_sensitive_fields() {
+        let tp = TokenPayload {
+            sub: "user-001".into(),
+            role: Role::Operator,
+            permissions: vec![],
+            iat: 1711324800,
+            exp: 1711411200,
+            jti: "tok-abc-123".into(),
+            email: Some("user@example.com".into()),
+            display_name: Some("Test User".into()),
+        };
+        let debug = format!("{:?}", tp);
+        assert!(
+            !debug.contains("user@example.com"),
+            "email must be redacted in Debug"
+        );
+        assert!(
+            !debug.contains("Test User"),
+            "display_name must be redacted in Debug"
+        );
+        assert!(
+            !debug.contains("tok-abc-123"),
+            "jti must be redacted in Debug"
+        );
+        assert!(debug.contains("[redacted]"));
     }
 }

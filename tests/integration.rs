@@ -78,6 +78,7 @@ fn error_from_serde_json() {
 // Security + Agent (default features)
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "security")]
 #[test]
 fn sandbox_config_defaults() {
     let c = SandboxConfig::default();
@@ -85,6 +86,7 @@ fn sandbox_config_defaults() {
     assert!(c.isolate_network);
 }
 
+#[cfg(feature = "telemetry")]
 #[test]
 fn trace_context_parent_child() {
     let parent = TraceContext::new();
@@ -93,6 +95,7 @@ fn trace_context_parent_child() {
     assert_eq!(child.parent_span_id, Some(parent.span_id));
 }
 
+#[cfg(feature = "telemetry")]
 #[test]
 fn trace_context_sampled_flag_propagation() {
     let mut parent = TraceContext::new();
@@ -104,6 +107,7 @@ fn trace_context_sampled_flag_propagation() {
     assert_eq!(child.trace_state, "vendor=value");
 }
 
+#[cfg(feature = "telemetry")]
 #[test]
 fn trace_id_span_id_hex_roundtrip() {
     let tid = TraceId::new();
@@ -115,6 +119,7 @@ fn trace_id_span_id_hex_roundtrip() {
     assert_eq!(sid, parsed);
 }
 
+#[cfg(feature = "security")]
 #[test]
 fn rbac_role_serde_roundtrip() {
     for role in [
@@ -130,6 +135,7 @@ fn rbac_role_serde_roundtrip() {
     }
 }
 
+#[cfg(feature = "agent")]
 #[test]
 fn agent_config_cross_feature_serde() {
     // agent implies security — verify sandbox + permissions always present
@@ -159,6 +165,7 @@ fn agent_config_cross_feature_serde() {
     assert_eq!(back.shutdown_timeout_secs, Some(10));
 }
 
+#[cfg(feature = "classification")]
 #[test]
 fn classification_level_ordering() {
     assert!(ClassificationLevel::Public < ClassificationLevel::Internal);
@@ -166,6 +173,7 @@ fn classification_level_ordering() {
     assert!(ClassificationLevel::Confidential < ClassificationLevel::Restricted);
 }
 
+#[cfg(feature = "classification")]
 #[test]
 fn classification_result_serde_with_defaults() {
     // Deserialize with missing optional fields
@@ -177,6 +185,7 @@ fn classification_result_serde_with_defaults() {
     assert!(r.keywords_found.is_empty());
 }
 
+#[cfg(feature = "validation")]
 #[test]
 fn validation_result_blocked_vs_clean() {
     let blocked = ValidationResult {
@@ -215,6 +224,7 @@ fn validation_result_blocked_vs_clean() {
     assert!(!back.blocked);
 }
 
+#[cfg(feature = "hardware")]
 #[test]
 fn hardware_accelerator_summary_filter() {
     let summary = AcceleratorSummary {
@@ -268,6 +278,7 @@ fn hardware_accelerator_summary_filter() {
     assert!(tpus.is_empty());
 }
 
+#[cfg(feature = "llm")]
 #[test]
 fn llm_inference_request_full_roundtrip() {
     let req = InferenceRequest {
@@ -317,6 +328,7 @@ fn llm_inference_request_full_roundtrip() {
     ));
 }
 
+#[cfg(feature = "llm")]
 #[test]
 fn llm_inference_request_minimal_deserialize() {
     // Only required field is model — everything else has serde defaults
@@ -331,6 +343,7 @@ fn llm_inference_request_minimal_deserialize() {
     assert!((req.sampling.temperature - 0.7).abs() < f32::EPSILON);
 }
 
+#[cfg(feature = "audit")]
 #[test]
 fn audit_entry_integrity_chain() {
     let genesis = AuditEntry {
@@ -387,6 +400,7 @@ fn audit_entry_integrity_chain() {
     assert!(back2.user_id.is_some());
 }
 
+#[cfg(feature = "secrets")]
 #[test]
 fn secrets_debug_never_leaks() {
     let s = Secret::new("super-secret-api-key-12345");
@@ -396,6 +410,7 @@ fn secrets_debug_never_leaks() {
     assert!(!debug.contains("12345"));
 }
 
+#[cfg(feature = "secrets")]
 #[test]
 fn secrets_zeroize_on_drop() {
     let s = Secret::new("ephemeral");
@@ -405,6 +420,7 @@ fn secrets_zeroize_on_drop() {
     drop(s);
 }
 
+#[cfg(feature = "config")]
 #[test]
 fn config_environment_profile_serde() {
     let profiles = [
@@ -419,6 +435,7 @@ fn config_environment_profile_serde() {
     }
 }
 
+#[cfg(feature = "agent")]
 #[test]
 fn cross_module_agent_manifest_with_typed_versions() {
     let manifest = AgentManifest {
@@ -439,6 +456,7 @@ fn cross_module_agent_manifest_with_typed_versions() {
     assert_eq!(back.requested_permissions.len(), 3);
 }
 
+#[cfg(feature = "agent")]
 #[test]
 fn agent_dependency_typed_version() {
     let dep = AgentDependency {

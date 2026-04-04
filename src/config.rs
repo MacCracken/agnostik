@@ -145,6 +145,20 @@ mod tests {
     }
 
     #[test]
+    fn edge_resource_overrides_serde_roundtrip() {
+        let e = EdgeResourceOverrides {
+            max_memory: Some(1024 * 1024 * 1024),
+            max_cpu_time: Some(5000),
+            max_agents: Some(8),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        let back: EdgeResourceOverrides = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.max_memory, Some(1024 * 1024 * 1024));
+        assert_eq!(back.max_cpu_time, Some(5000));
+        assert_eq!(back.max_agents, Some(8));
+    }
+
+    #[test]
     fn fleet_config_serde_roundtrip() {
         let fc = FleetConfig {
             profiles: vec![ProfileDefinition {

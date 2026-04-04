@@ -78,3 +78,163 @@ Benchmarking serde/accelerator_device_deserialize: Warming up for 3.0000 s
 Benchmarking serde/accelerator_device_deserialize: Collecting 100 samples in estimated 5.0011 s (11M iterations)
 Benchmarking serde/accelerator_device_deserialize: Analyzing
                         time:   [443.43 ns 445.00 ns 446.67 ns]
+Benchmarking agent/agent_id_new
+Benchmarking agent/agent_id_new: Warming up for 3.0000 s
+Benchmarking agent/agent_id_new: Collecting 100 samples in estimated 5.0002 s (115M iterations)
+Benchmarking agent/agent_id_new: Analyzing
+agent/agent_id_new      time:   [42.852 ns 43.117 ns 43.402 ns]
+Benchmarking telemetry/trace_context_new
+Benchmarking telemetry/trace_context_new: Warming up for 3.0000 s
+Benchmarking telemetry/trace_context_new: Collecting 100 samples in estimated 5.0003 s (59M iterations)
+Benchmarking telemetry/trace_context_new: Analyzing
+                        time:   [85.475 ns 85.821 ns 86.160 ns]
+Benchmarking telemetry/trace_context_child
+Benchmarking telemetry/trace_context_child: Warming up for 3.0000 s
+Benchmarking telemetry/trace_context_child: Collecting 100 samples in estimated 5.0000 s (105M iterations)
+Benchmarking telemetry/trace_context_child: Analyzing
+                        time:   [47.710 ns 47.903 ns 48.095 ns]
+Benchmarking security/sandbox_config_default
+Benchmarking security/sandbox_config_default: Warming up for 3.0000 s
+Benchmarking security/sandbox_config_default: Collecting 100 samples in estimated 5.0001 s (157M iterations)
+Benchmarking security/sandbox_config_default: Analyzing
+                        time:   [31.722 ns 31.952 ns 32.182 ns]
+Benchmarking serde/trace_context_serialize
+Benchmarking serde/trace_context_serialize: Warming up for 3.0000 s
+Benchmarking serde/trace_context_serialize: Collecting 100 samples in estimated 5.0008 s (32M iterations)
+Benchmarking serde/trace_context_serialize: Analyzing
+                        time:   [156.28 ns 156.90 ns 157.57 ns]
+Benchmarking serde/trace_context_deserialize
+Benchmarking serde/trace_context_deserialize: Warming up for 3.0000 s
+Benchmarking serde/trace_context_deserialize: Collecting 100 samples in estimated 5.0013 s (17M iterations)
+Benchmarking serde/trace_context_deserialize: Analyzing
+                        time:   [301.86 ns 303.43 ns 305.04 ns]
+Benchmarking serde/sandbox_config_serialize
+Benchmarking serde/sandbox_config_serialize: Warming up for 3.0000 s
+Benchmarking serde/sandbox_config_serialize: Collecting 100 samples in estimated 5.0000 s (13M iterations)
+Benchmarking serde/sandbox_config_serialize: Analyzing
+                        time:   [377.55 ns 379.07 ns 380.53 ns]
+Benchmarking serde/sandbox_config_deserialize
+Benchmarking serde/sandbox_config_deserialize: Warming up for 3.0000 s
+Benchmarking serde/sandbox_config_deserialize: Collecting 100 samples in estimated 5.0025 s (9.2M iterations)
+Benchmarking serde/sandbox_config_deserialize: Analyzing
+                        time:   [533.27 ns 535.69 ns 538.39 ns]
+Benchmarking serde/agent_id_serialize
+Benchmarking serde/agent_id_serialize: Warming up for 3.0000 s
+Benchmarking serde/agent_id_serialize: Collecting 100 samples in estimated 5.0001 s (165M iterations)
+Benchmarking serde/agent_id_serialize: Analyzing
+                        time:   [30.063 ns 30.178 ns 30.293 ns]
+Benchmarking serde/agent_id_deserialize
+Benchmarking serde/agent_id_deserialize: Warming up for 3.0000 s
+Benchmarking serde/agent_id_deserialize: Collecting 100 samples in estimated 5.0000 s (92M iterations)
+Benchmarking serde/agent_id_deserialize: Analyzing
+                        time:   [55.706 ns 55.848 ns 55.998 ns]
+Benchmarking serde/inference_request_serialize
+Benchmarking serde/inference_request_serialize: Warming up for 3.0000 s
+Benchmarking serde/inference_request_serialize: Collecting 100 samples in estimated 5.0010 s (7.0M iterations)
+Benchmarking serde/inference_request_serialize: Analyzing
+                        time:   [714.16 ns 716.67 ns 719.41 ns]
+Benchmarking serde/inference_request_deserialize
+Benchmarking serde/inference_request_deserialize: Warming up for 3.0000 s
+Benchmarking serde/inference_request_deserialize: Collecting 100 samples in estimated 5.0056 s (3.8M iterations)
+Benchmarking serde/inference_request_deserialize: Analyzing
+                        time:   [1.3053 µs 1.3099 µs 1.3148 µs]
+Benchmarking serde/audit_entry_serialize
+Benchmarking serde/audit_entry_serialize: Warming up for 3.0000 s
+Benchmarking serde/audit_entry_serialize: Collecting 100 samples in estimated 5.0022 s (5.4M iterations)
+Benchmarking serde/audit_entry_serialize: Analyzing
+                        time:   [869.73 ns 872.54 ns 875.31 ns]
+Benchmarking serde/audit_entry_deserialize
+Benchmarking serde/audit_entry_deserialize: Warming up for 3.0000 s
+Benchmarking serde/audit_entry_deserialize: Collecting 100 samples in estimated 5.0054 s (4.1M iterations)
+Benchmarking serde/audit_entry_deserialize: Analyzing
+                        time:   [1.2114 µs 1.2151 µs 1.2190 µs]
+Benchmarking serde/accelerator_device_serialize
+Benchmarking serde/accelerator_device_serialize: Warming up for 3.0000 s
+Benchmarking serde/accelerator_device_serialize: Collecting 100 samples in estimated 5.0020 s (8.2M iterations)
+Benchmarking serde/accelerator_device_serialize: Analyzing
+                        time:   [611.96 ns 614.98 ns 618.81 ns]
+Benchmarking serde/accelerator_device_deserialize
+Benchmarking serde/accelerator_device_deserialize: Warming up for 3.0000 s
+Benchmarking serde/accelerator_device_deserialize: Collecting 100 samples in estimated 5.0017 s (7.2M iterations)
+Benchmarking serde/accelerator_device_deserialize: Analyzing
+                        time:   [689.32 ns 691.93 ns 694.54 ns]
+Benchmarking agent/agent_id_new
+Benchmarking agent/agent_id_new: Warming up for 3.0000 s
+Benchmarking agent/agent_id_new: Collecting 100 samples in estimated 5.0002 s (101M iterations)
+Benchmarking agent/agent_id_new: Analyzing
+agent/agent_id_new      time:   [45.267 ns 45.370 ns 45.480 ns]
+Benchmarking telemetry/trace_context_new
+Benchmarking telemetry/trace_context_new: Warming up for 3.0000 s
+Benchmarking telemetry/trace_context_new: Collecting 100 samples in estimated 5.0000 s (55M iterations)
+Benchmarking telemetry/trace_context_new: Analyzing
+                        time:   [92.527 ns 94.532 ns 97.075 ns]
+Benchmarking telemetry/trace_context_child
+Benchmarking telemetry/trace_context_child: Warming up for 3.0000 s
+Benchmarking telemetry/trace_context_child: Collecting 100 samples in estimated 5.0001 s (98M iterations)
+Benchmarking telemetry/trace_context_child: Analyzing
+                        time:   [51.545 ns 53.325 ns 55.499 ns]
+Benchmarking security/sandbox_config_default
+Benchmarking security/sandbox_config_default: Warming up for 3.0000 s
+Benchmarking security/sandbox_config_default: Collecting 100 samples in estimated 5.0000 s (145M iterations)
+Benchmarking security/sandbox_config_default: Analyzing
+                        time:   [34.625 ns 36.428 ns 38.700 ns]
+Benchmarking serde/trace_context_serialize
+Benchmarking serde/trace_context_serialize: Warming up for 3.0000 s
+Benchmarking serde/trace_context_serialize: Collecting 100 samples in estimated 5.0002 s (29M iterations)
+Benchmarking serde/trace_context_serialize: Analyzing
+                        time:   [167.16 ns 167.88 ns 168.73 ns]
+Benchmarking serde/trace_context_deserialize
+Benchmarking serde/trace_context_deserialize: Warming up for 3.0000 s
+Benchmarking serde/trace_context_deserialize: Collecting 100 samples in estimated 5.0009 s (15M iterations)
+Benchmarking serde/trace_context_deserialize: Analyzing
+                        time:   [316.90 ns 317.71 ns 318.53 ns]
+Benchmarking serde/sandbox_config_serialize
+Benchmarking serde/sandbox_config_serialize: Warming up for 3.0000 s
+Benchmarking serde/sandbox_config_serialize: Collecting 100 samples in estimated 5.0004 s (12M iterations)
+Benchmarking serde/sandbox_config_serialize: Analyzing
+                        time:   [394.52 ns 396.73 ns 399.77 ns]
+Benchmarking serde/sandbox_config_deserialize
+Benchmarking serde/sandbox_config_deserialize: Warming up for 3.0000 s
+Benchmarking serde/sandbox_config_deserialize: Collecting 100 samples in estimated 5.0026 s (8.4M iterations)
+Benchmarking serde/sandbox_config_deserialize: Analyzing
+                        time:   [548.28 ns 549.88 ns 551.69 ns]
+Benchmarking serde/agent_id_serialize
+Benchmarking serde/agent_id_serialize: Warming up for 3.0000 s
+Benchmarking serde/agent_id_serialize: Collecting 100 samples in estimated 5.0000 s (152M iterations)
+Benchmarking serde/agent_id_serialize: Analyzing
+                        time:   [32.896 ns 33.535 ns 34.379 ns]
+Benchmarking serde/agent_id_deserialize
+Benchmarking serde/agent_id_deserialize: Warming up for 3.0000 s
+Benchmarking serde/agent_id_deserialize: Collecting 100 samples in estimated 5.0003 s (79M iterations)
+Benchmarking serde/agent_id_deserialize: Analyzing
+                        time:   [58.041 ns 58.236 ns 58.447 ns]
+Benchmarking serde/inference_request_serialize
+Benchmarking serde/inference_request_serialize: Warming up for 3.0000 s
+Benchmarking serde/inference_request_serialize: Collecting 100 samples in estimated 5.0029 s (6.6M iterations)
+Benchmarking serde/inference_request_serialize: Analyzing
+                        time:   [786.62 ns 815.97 ns 852.50 ns]
+Benchmarking serde/inference_request_deserialize
+Benchmarking serde/inference_request_deserialize: Warming up for 3.0000 s
+Benchmarking serde/inference_request_deserialize: Collecting 100 samples in estimated 5.0057 s (3.7M iterations)
+Benchmarking serde/inference_request_deserialize: Analyzing
+                        time:   [1.3694 µs 1.4157 µs 1.4751 µs]
+Benchmarking serde/audit_entry_serialize
+Benchmarking serde/audit_entry_serialize: Warming up for 3.0000 s
+Benchmarking serde/audit_entry_serialize: Collecting 100 samples in estimated 5.0024 s (5.7M iterations)
+Benchmarking serde/audit_entry_serialize: Analyzing
+                        time:   [882.63 ns 925.60 ns 979.85 ns]
+Benchmarking serde/audit_entry_deserialize
+Benchmarking serde/audit_entry_deserialize: Warming up for 3.0000 s
+Benchmarking serde/audit_entry_deserialize: Collecting 100 samples in estimated 5.0028 s (3.9M iterations)
+Benchmarking serde/audit_entry_deserialize: Analyzing
+                        time:   [1.2622 µs 1.2733 µs 1.2884 µs]
+Benchmarking serde/accelerator_device_serialize
+Benchmarking serde/accelerator_device_serialize: Warming up for 3.0000 s
+Benchmarking serde/accelerator_device_serialize: Collecting 100 samples in estimated 5.0021 s (7.4M iterations)
+Benchmarking serde/accelerator_device_serialize: Analyzing
+                        time:   [626.46 ns 628.21 ns 630.00 ns]
+Benchmarking serde/accelerator_device_deserialize
+Benchmarking serde/accelerator_device_deserialize: Warming up for 3.0000 s
+Benchmarking serde/accelerator_device_deserialize: Collecting 100 samples in estimated 5.0007 s (6.4M iterations)
+Benchmarking serde/accelerator_device_deserialize: Analyzing
+                        time:   [694.70 ns 696.76 ns 698.87 ns]

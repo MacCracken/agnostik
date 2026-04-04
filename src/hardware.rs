@@ -29,22 +29,31 @@ pub enum DeviceVendor {
 /// Compute framework availability flags.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AcceleratorFlags {
+    /// NVIDIA CUDA runtime available.
     #[serde(default)]
     pub cuda_available: bool,
+    /// AMD ROCm runtime available.
     #[serde(default)]
     pub rocm_available: bool,
+    /// Apple Metal API available.
     #[serde(default)]
     pub metal_available: bool,
+    /// Vulkan compute API available.
     #[serde(default)]
     pub vulkan_available: bool,
+    /// Intel oneAPI runtime available.
     #[serde(default)]
     pub oneapi_available: bool,
+    /// Google TPU runtime available.
     #[serde(default)]
     pub tpu_available: bool,
+    /// SYCL runtime available.
     #[serde(default)]
     pub sycl_available: bool,
+    /// Intel OpenVINO runtime available.
     #[serde(default)]
     pub openvino_available: bool,
+    /// Microsoft DirectML runtime available.
     #[serde(default)]
     pub directml_available: bool,
 }
@@ -81,9 +90,13 @@ pub enum MemoryType {
 /// A detected hardware accelerator device.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AcceleratorDevice {
+    /// Device index on the host (0-based).
     pub index: u32,
+    /// Device product name.
     pub name: String,
+    /// Hardware vendor.
     pub vendor: DeviceVendor,
+    /// Device family (GPU, TPU, NPU, etc.).
     pub family: DeviceFamily,
     /// Total VRAM in megabytes.
     #[serde(default)]
@@ -97,11 +110,13 @@ pub struct AcceleratorDevice {
     /// GPU temperature in Celsius.
     #[serde(default)]
     pub temperature_celsius: Option<f32>,
+    /// Driver version string.
     #[serde(default)]
     pub driver_version: String,
     /// CUDA compute capability (e.g. "8.9").
     #[serde(default)]
     pub compute_capability: Option<String>,
+    /// Compute framework availability flags.
     #[serde(default)]
     pub flags: AcceleratorFlags,
     /// Thermal design power in watts.
@@ -121,6 +136,7 @@ pub struct AcceleratorDevice {
 /// Summary of all detected accelerators on the host.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AcceleratorSummary {
+    /// All detected accelerator devices.
     pub devices: Vec<AcceleratorDevice>,
     /// Total VRAM across all devices in megabytes.
     #[serde(default)]
