@@ -105,7 +105,7 @@ pub trait SecretStore: Send + Sync {
     /// Rotate a secret: generate a new value and return it.
     fn rotate(&self, _name: &str) -> crate::Result<Secret> {
         Err(crate::AgnostikError::NotSupported(
-            "rotation not implemented".into(),
+            "SecretStore::rotate".into(),
         ))
     }
 
@@ -113,7 +113,7 @@ pub trait SecretStore: Send + Sync {
     fn search_by_tag(&self, tag: &str) -> crate::Result<Vec<SecretMetadata>> {
         let _ = tag;
         Err(crate::AgnostikError::NotSupported(
-            "search not implemented".into(),
+            "SecretStore::search_by_tag".into(),
         ))
     }
 }

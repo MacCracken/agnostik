@@ -139,7 +139,7 @@ impl std::str::FromStr for Version {
         let parts: Vec<&str> = core.split('.').collect();
         if parts.len() != 3 {
             return Err(crate::error::AgnostikError::InvalidArgument(format!(
-                "expected MAJOR.MINOR.PATCH, got: {s}"
+                "invalid version: {s} (expected MAJOR.MINOR.PATCH)"
             )));
         }
         let parse = |p: &str| {

@@ -120,7 +120,7 @@ pub trait AuditSink: Send + Sync {
     fn verify_entry(&self, entry: &AuditEntry) -> crate::Result<bool> {
         let _ = entry;
         Err(crate::AgnostikError::NotSupported(
-            "single-entry verification not implemented".into(),
+            "AuditSink::verify_entry".into(),
         ))
     }
 
@@ -131,14 +131,14 @@ pub trait AuditSink: Send + Sync {
         _to: chrono::DateTime<chrono::Utc>,
     ) -> crate::Result<Vec<AuditEntry>> {
         Err(crate::AgnostikError::NotSupported(
-            "query not implemented".into(),
+            "AuditSink::query".into(),
         ))
     }
 
     /// Seal the current chain state (periodic integrity proof for compliance).
     fn seal(&self) -> crate::Result<String> {
         Err(crate::AgnostikError::NotSupported(
-            "seal not implemented".into(),
+            "AuditSink::seal".into(),
         ))
     }
 }
