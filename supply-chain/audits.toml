@@ -6,6 +6,16 @@ who = "Robert MacCracken <robert.maccracken@gmail.com>"
 criteria = "safe-to-deploy"
 delta = "1.2.58 -> 1.2.59"
 
+[[audits.winapi-i686-pc-windows-gnu]]
+who = "Robert MacCracken <robert.maccracken@gmail.com>"
+criteria = "safe-to-run"
+version = "0.4.0"
+
+[[audits.winapi-x86_64-pc-windows-gnu]]
+who = "Robert MacCracken <robert.maccracken@gmail.com>"
+criteria = "safe-to-run"
+version = "0.4.0"
+
 [[trusted.cc]]
 criteria = "safe-to-deploy"
 user-id = 55123

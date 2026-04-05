@@ -59,10 +59,6 @@ criteria = "safe-to-run"
 version = "0.5.1"
 criteria = "safe-to-run"
 
-[[exemptions.criterion-plot]]
-version = "0.5.0"
-criteria = "safe-to-run"
-
 [[exemptions.crossbeam-deque]]
 version = "0.8.6"
 criteria = "safe-to-run"
@@ -91,10 +87,6 @@ criteria = "safe-to-deploy"
 version = "0.16.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.hermit-abi]]
-version = "0.5.2"
-criteria = "safe-to-run"
-
 [[exemptions.iana-time-zone]]
 version = "0.1.65"
 criteria = "safe-to-deploy"
@@ -102,10 +94,6 @@ criteria = "safe-to-deploy"
 [[exemptions.id-arena]]
 version = "2.3.0"
 criteria = "safe-to-deploy"
-
-[[exemptions.is-terminal]]
-version = "0.4.17"
-criteria = "safe-to-run"
 
 [[exemptions.itoa]]
 version = "1.0.18"
