@@ -137,9 +137,7 @@ pub trait AuditSink: Send + Sync {
 
     /// Seal the current chain state (periodic integrity proof for compliance).
     fn seal(&self) -> crate::Result<String> {
-        Err(crate::AgnostikError::NotSupported(
-            "AuditSink::seal".into(),
-        ))
+        Err(crate::AgnostikError::NotSupported("AuditSink::seal".into()))
     }
 }
 

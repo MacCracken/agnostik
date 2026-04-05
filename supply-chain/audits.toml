@@ -1,10 +1,25 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.cc]]
+who = "Robert MacCracken <robert.maccracken@gmail.com>"
+criteria = "safe-to-deploy"
+delta = "1.2.58 -> 1.2.59"
+
+[[trusted.cc]]
+criteria = "safe-to-deploy"
+user-id = 55123
+start = "2022-10-29"
+end = "2027-04-05"
 
 [[trusted.indexmap]]
 criteria = "safe-to-deploy"
 user-id = 539 # Josh Stone (cuviper)
 start = "2020-01-15"
 end = "2027-04-03"
+
+[[trusted.semver]]
+criteria = "safe-to-deploy"
+user-id = 3618 # David Tolnay (dtolnay)
+start = "2021-05-25"
+end = "2027-04-05"
