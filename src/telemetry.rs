@@ -184,6 +184,7 @@ impl TraceContext {
     /// Parse a W3C `traceparent` header value.
     ///
     /// Expected format: `{version}-{trace_id}-{parent_id}-{flags}`
+    #[must_use = "parsing result must be used"]
     pub fn from_traceparent(header: &str) -> crate::Result<Self> {
         let parts: Vec<&str> = header.split('-').collect();
         if parts.len() != 4 {
@@ -274,6 +275,7 @@ pub struct Span {
     pub name: String,
     pub trace_id: TraceId,
     pub span_id: SpanId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent_span_id: Option<SpanId>,
     pub status: SpanStatus,
     /// Span kind (OTel: Internal, Server, Client, Producer, Consumer).
@@ -304,6 +306,7 @@ pub struct Span {
 pub struct TelemetryConfig {
     pub enabled: bool,
     pub sample_rate: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub export_endpoint: Option<String>,
 }
 
@@ -322,6 +325,7 @@ impl Default for TelemetryConfig {
 pub struct CrashReport {
     pub agent_id: AgentId,
     pub error: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backtrace: Option<String>,
     pub timestamp: chrono::DateTime<chrono::Utc>,
 }
@@ -1213,5 +1217,32 @@ mod tests {
         let json = serde_json::to_string(&bag).unwrap();
         let back: Baggage = serde_json::from_str(&json).unwrap();
         assert_eq!(back.get("tenant_id"), Some("acme-corp"));
+    }
+
+    #[test]
+    fn span_parent_span_id_defaults_when_missing() {
+        let json = r#"{"name":"test","trace_id":1,"span_id":1,"status":"Ok","kind":"Internal","started_at":"2026-01-01T00:00:00Z","duration_ms":10,"attributes":{}}"#;
+        let s: Span = serde_json::from_str(json).unwrap();
+        assert!(s.parent_span_id.is_none());
+    }
+
+    #[test]
+    fn telemetry_config_export_endpoint_defaults_when_missing() {
+        let json = r#"{"enabled":true,"sample_rate":0.5}"#;
+        let c: TelemetryConfig = serde_json::from_str(json).unwrap();
+        assert!(c.export_endpoint.is_none());
+        assert!((c.sample_rate - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn crash_report_backtrace_defaults_when_missing() {
+        let agent_id = crate::AgentId::new();
+        let json = format!(
+            r#"{{"agent_id":"{}","error":"oom","timestamp":"2026-01-01T00:00:00Z"}}"#,
+            agent_id
+        );
+        let cr: CrashReport = serde_json::from_str(&json).unwrap();
+        assert!(cr.backtrace.is_none());
+        assert_eq!(cr.error, "oom");
     }
 }

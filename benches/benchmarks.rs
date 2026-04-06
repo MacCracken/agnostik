@@ -1,4 +1,6 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn bench_agent_id_new(c: &mut Criterion) {
     c.bench_function("agent/agent_id_new", |b| {
