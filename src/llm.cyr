@@ -1,14 +1,21 @@
-enum LlmProvider { LLM_OLLAMA; LLM_OPENAI; LLM_ANTHROPIC; LLM_GOOGLE; LLM_DEEPSEEK; LLM_CUSTOM; }
+enum LlmProvider { LLM_OLLAMA; LLM_LLAMA_CPP; LLM_OPENAI; LLM_ANTHROPIC; LLM_GOOGLE; LLM_DEEPSEEK; LLM_MISTRAL; LLM_GROK; LLM_GROQ; LLM_OPENROUTER; LLM_LMSTUDIO; LLM_LOCALAI; LLM_CUSTOM; }
 fn llm_provider_name(p) {
-    if (p == LLM_OLLAMA)    { return "Ollama"; }
-    if (p == LLM_OPENAI)    { return "OpenAI"; }
-    if (p == LLM_ANTHROPIC) { return "Anthropic"; }
-    if (p == LLM_GOOGLE)    { return "Google"; }
-    if (p == LLM_DEEPSEEK)  { return "DeepSeek"; }
+    if (p == LLM_OLLAMA)     { return "Ollama"; }
+    if (p == LLM_LLAMA_CPP)  { return "LlamaCpp"; }
+    if (p == LLM_OPENAI)     { return "OpenAI"; }
+    if (p == LLM_ANTHROPIC)  { return "Anthropic"; }
+    if (p == LLM_GOOGLE)     { return "Google"; }
+    if (p == LLM_DEEPSEEK)   { return "DeepSeek"; }
+    if (p == LLM_MISTRAL)    { return "Mistral"; }
+    if (p == LLM_GROK)       { return "Grok"; }
+    if (p == LLM_GROQ)       { return "Groq"; }
+    if (p == LLM_OPENROUTER) { return "OpenRouter"; }
+    if (p == LLM_LMSTUDIO)   { return "LMStudio"; }
+    if (p == LLM_LOCALAI)    { return "LocalAI"; }
     return "Custom";
 }
 enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; }
-enum ContentBlockType { CB_TEXT; CB_IMAGE; CB_TOOL_USE; CB_TOOL_RESULT; CB_THINKING; }
+enum ContentBlockType { CB_TEXT; CB_IMAGE; CB_DOCUMENT; CB_TOOL_USE; CB_TOOL_RESULT; CB_THINKING; CB_AUDIO; CB_CITATION; }
 fn content_text(text) { return tagged_new(CB_TEXT, text); }
 fn content_tool_use(tid, tname, targs) {
     var tu = alloc(24);
@@ -17,11 +24,30 @@ fn content_tool_use(tid, tname, targs) {
     store64(tu + 16, targs);
     return tagged_new(CB_TOOL_USE, tu);
 }
+fn content_tool_result(tuid, tcontent, tiserr) {
+    var tr = alloc(24);
+    store64(tr, tuid);
+    store64(tr + 8, tcontent);
+    store64(tr + 16, tiserr);
+    return tagged_new(CB_TOOL_RESULT, tr);
+}
 fn content_thinking(text) { return tagged_new(CB_THINKING, text); }
+fn content_image(source, media_type, is_url) {
+    var img = alloc(24);
+    store64(img, source);
+    store64(img + 8, media_type);
+    store64(img + 16, is_url);
+    return tagged_new(CB_IMAGE, img);
+}
 fn content_block_type(cb)    { return tag(cb); }
 fn content_block_payload(cb) { return payload(cb); }
-enum FinishReason { FINISH_STOP; FINISH_LENGTH; FINISH_CONTENT_FILTER; FINISH_TOOL_USE; FINISH_ERROR; }
-enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; }
+enum FinishReason { FINISH_STOP; FINISH_LENGTH; FINISH_CONTENT_FILTER; FINISH_TOOL_USE; FINISH_ERROR; FINISH_RECITATION; }
+enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
+enum ResponseFormat { RESP_TEXT; RESP_JSON_OBJECT; RESP_JSON_SCHEMA; }
+enum SafetyCategory { SAFETY_HATE; SAFETY_HARASSMENT; SAFETY_SEXUAL; SAFETY_DANGEROUS; SAFETY_CIVIC; }
+enum SafetyProbability { SAFETY_NEGLIGIBLE; SAFETY_LOW; SAFETY_MEDIUM; SAFETY_HIGH; }
+enum StreamEventType { STREAM_CONTENT_BLOCK_START; STREAM_DELTA; STREAM_TOOL_CALL_DELTA; STREAM_CONTENT_BLOCK_STOP; STREAM_USAGE; STREAM_DONE; STREAM_ERROR; STREAM_PING; }
+enum BatchStatus { BATCH_PENDING; BATCH_IN_PROGRESS; BATCH_COMPLETED; BATCH_FAILED; BATCH_CANCELLED; BATCH_EXPIRED; }
 fn message_new(role) {
     var m = alloc(24);
     store64(m, role);
@@ -44,7 +70,9 @@ fn tool_definition_new(tname, desc, params) {
     store64(t + 24, 0);
     return t;
 }
-fn tooldef_name(t) { return load64(t); }
+fn tooldef_name(t)   { return load64(t); }
+fn tooldef_desc(t)   { return load64(t + 8); }
+fn tooldef_params(t) { return load64(t + 16); }
 fn tool_call_new(tid, tname, targs) {
     var tc = alloc(24);
     store64(tc, tid);
@@ -52,6 +80,9 @@ fn tool_call_new(tid, tname, targs) {
     store64(tc + 16, targs);
     return tc;
 }
+fn tcall_id(tc)   { return load64(tc); }
+fn tcall_name(tc) { return load64(tc + 8); }
+fn tcall_args(tc) { return load64(tc + 16); }
 fn sampling_params_new() {
     var s = alloc(56);
     store64(s, 1000);
@@ -60,8 +91,17 @@ fn sampling_params_new() {
     store64(s + 40, vec_new());
     return s;
 }
-fn samp_temperature(s) { return load64(s); }
+fn samp_temperature(s)  { return load64(s); }
+fn samp_top_p(s)        { return load64(s + 8); }
+fn samp_top_k(s)        { return load64(s + 16); }
+fn samp_freq_penalty(s) { return load64(s + 24); }
+fn samp_pres_penalty(s) { return load64(s + 32); }
+fn samp_stop_seqs(s)    { return load64(s + 40); }
+fn samp_seed(s)         { return load64(s + 48); }
 fn samp_set_temperature(s, v) { store64(s, v); return 0; }
+fn samp_set_top_p(s, v)       { store64(s + 8, v); return 0; }
+fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
+fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
 fn token_usage_new() {
     var u = alloc(40);
     var i = 0;
@@ -71,11 +111,13 @@ fn token_usage_new() {
 fn tusage_prompt(u)      { return load64(u); }
 fn tusage_completion(u)  { return load64(u + 8); }
 fn tusage_total(u)       { return load64(u + 16); }
+fn tusage_cache_create(u){ return load64(u + 24); }
+fn tusage_cache_read(u)  { return load64(u + 32); }
 fn tusage_set_prompt(u, v)     { store64(u, v); return 0; }
 fn tusage_set_completion(u, v) { store64(u + 8, v); return 0; }
 fn tusage_set_total(u, v)      { store64(u + 16, v); return 0; }
 fn inference_request_new(model) {
-    var r = alloc(80);
+    var r = alloc(112);
     store64(r, model);
     store64(r + 8, str_from(""));
     store64(r + 16, 0);
@@ -86,36 +128,72 @@ fn inference_request_new(model) {
     store64(r + 56, vec_new());
     store64(r + 64, 0);
     store64(r + 72, 0);
+    store64(r + 80, 0);
+    store64(r + 88, 0);
+    store64(r + 96, 0);
+    store64(r + 104, 0);
     return r;
 }
 fn ireq_model(r)         { return load64(r); }
+fn ireq_prompt(r)        { return load64(r + 8); }
+fn ireq_system(r)        { return load64(r + 16); }
 fn ireq_messages(r)      { return load64(r + 24); }
 fn ireq_max_tokens(r)    { return load64(r + 32); }
 fn ireq_sampling(r)      { return load64(r + 40); }
 fn ireq_stream(r)        { return load64(r + 48); }
 fn ireq_tools(r)         { return load64(r + 56); }
+fn ireq_tool_choice(r)   { return load64(r + 64); }
 fn ireq_set_system(r, v)     { store64(r + 16, v); return 0; }
 fn ireq_set_max_tokens(r, v) { store64(r + 32, v); return 0; }
 fn ireq_set_stream(r, v)     { store64(r + 48, v); return 0; }
+fn ireq_set_tool_choice(r, v){ store64(r + 64, v); return 0; }
 fn inference_response_new(model) {
-    var r = alloc(48);
+    var r = alloc(64);
     store64(r, 0);
     store64(r + 8, model);
     store64(r + 16, vec_new());
     store64(r + 24, token_usage_new());
     store64(r + 32, FINISH_STOP);
     store64(r + 40, vec_new());
+    store64(r + 48, 0);
+    store64(r + 56, 0);
     return r;
 }
+fn iresp_id(r)             { return load64(r); }
 fn iresp_model(r)          { return load64(r + 8); }
 fn iresp_content(r)        { return load64(r + 16); }
 fn iresp_usage(r)          { return load64(r + 24); }
 fn iresp_finish_reason(r)  { return load64(r + 32); }
 fn iresp_tool_calls(r)     { return load64(r + 40); }
+fn iresp_set_id(r, v)            { store64(r, v); return 0; }
 fn iresp_set_finish_reason(r, v) { store64(r + 32, v); return 0; }
+fn stream_delta(text) { return tagged_new(STREAM_DELTA, text); }
+fn stream_done(finish_reason) { return tagged_new(STREAM_DONE, finish_reason); }
+fn stream_error(errmsg) { return tagged_new(STREAM_ERROR, errmsg); }
+fn stream_usage(usage_ptr) { return tagged_new(STREAM_USAGE, usage_ptr); }
+fn stream_ping() { return tagged_new(STREAM_PING, 0); }
+fn model_capabilities_new(model_id, provider) {
+    var m = alloc(96);
+    store64(m, model_id);
+    store64(m + 8, model_id);
+    store64(m + 16, provider);
+    var i = 24;
+    while (i < 96) { store64(m + i, 0); i = i + 8; }
+    return m;
+}
+fn mcap_model_id(m)       { return load64(m); }
+fn mcap_provider(m)       { return load64(m + 16); }
+fn mcap_context_window(m) { return load64(m + 24); }
+fn mcap_max_output(m)     { return load64(m + 32); }
+fn mcap_supports_vision(m){ return load64(m + 40); }
+fn mcap_supports_tools(m) { return load64(m + 48); }
 fn rate_limit_info_new() {
     var r = alloc(40);
     var i = 0;
     while (i < 40) { store64(r + i, 0); i = i + 8; }
     return r;
 }
+fn rli_limit_requests(r)     { return load64(r); }
+fn rli_remaining_requests(r) { return load64(r + 8); }
+fn rli_limit_tokens(r)       { return load64(r + 16); }
+fn rli_remaining_tokens(r)   { return load64(r + 24); }

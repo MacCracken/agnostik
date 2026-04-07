@@ -1,6 +1,12 @@
 enum ClassificationLevel { CLASS_PUBLIC; CLASS_INTERNAL; CLASS_CONFIDENTIAL; CLASS_RESTRICTED; }
-var PII_EMAIL = 0;
-var PII_SSN = 2;
+fn classification_level_name(l) {
+    if (l == CLASS_PUBLIC)       { return "Public"; }
+    if (l == CLASS_INTERNAL)     { return "Internal"; }
+    if (l == CLASS_CONFIDENTIAL) { return "Confidential"; }
+    if (l == CLASS_RESTRICTED)   { return "Restricted"; }
+    return "Unknown";
+}
+enum PiiKind { PII_EMAIL; PII_PHONE; PII_SSN; PII_CREDIT_CARD; PII_IP_ADDRESS; PII_PASSPORT; PII_DRIVERS_LICENSE; PII_DATE_OF_BIRTH; PII_FULL_NAME; PII_STREET_ADDRESS; PII_BANK_ACCOUNT; PII_TAX_ID; PII_NATIONAL_ID; PII_MEDICAL_RECORD; PII_BIOMETRIC_DATA; PII_CUSTOM; }
 fn classification_result_new(level) {
     var r = alloc(48);
     store64(r, level);
@@ -13,6 +19,7 @@ fn classification_result_new(level) {
 }
 fn cresult_level(r)       { return load64(r); }
 fn cresult_auto_level(r)  { return load64(r + 8); }
+fn cresult_rules(r)       { return load64(r + 16); }
 fn cresult_pii(r)         { return load64(r + 24); }
 fn cresult_keywords(r)    { return load64(r + 32); }
 fn cresult_confidence(r)  { return load64(r + 40); }

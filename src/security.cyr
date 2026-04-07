@@ -4,10 +4,20 @@ enum NetworkAccess { NET_NONE; NET_LOCALHOST_ONLY; NET_RESTRICTED; NET_FULL; }
 enum SeccompAction { SECCOMP_ALLOW; SECCOMP_KILL; SECCOMP_KILL_PROCESS; SECCOMP_TRAP; SECCOMP_LOG; SECCOMP_NOTIFY; }
 fn seccomp_errno(errno_val) { return tagged_new(100, errno_val); }
 fn seccomp_trace(trace_val) { return tagged_new(101, trace_val); }
+enum SeccompArgOp { ARG_NOT_EQUAL; ARG_LESS_THAN; ARG_LESS_EQUAL; ARG_EQUAL; ARG_GREATER_EQUAL; ARG_GREATER_THAN; ARG_MASKED_EQUAL; }
+enum SeccompArch { ARCH_X86; ARCH_X86_64; ARCH_X32; ARCH_ARM; ARCH_AARCH64; ARCH_MIPS; ARCH_MIPS64; ARCH_MIPS64N32; ARCH_MIPSEL; ARCH_MIPSEL64; ARCH_MIPSEL64N32; ARCH_PPC; ARCH_PPC64; ARCH_PPC64LE; ARCH_S390; ARCH_S390X; ARCH_RISCV64; }
 enum MountPropagation { MOUNT_PRIVATE; MOUNT_SHARED; MOUNT_SLAVE; MOUNT_UNBINDABLE; }
 enum PolicyEffect { POLICY_ALLOW; POLICY_DENY; POLICY_AUDIT; }
 enum Role { ROLE_ADMIN; ROLE_OPERATOR; ROLE_AUDITOR; ROLE_VIEWER; ROLE_SERVICE; }
+enum ConditionOperator { COND_EQ; COND_NEQ; COND_IN; COND_NIN; COND_GT; COND_GTE; COND_LT; COND_LTE; }
 enum SeccompMode { SECCOMP_DISABLED; SECCOMP_STRICT; SECCOMP_FILTER; SECCOMP_UNSUPPORTED; }
+enum SystemFeature { FEAT_LANDLOCK; FEAT_SECCOMP; FEAT_NAMESPACES; FEAT_CGROUPS; FEAT_TPM; FEAT_SECURE_BOOT; }
+enum LinuxCapability { CAP_CHOWN; CAP_DAC_OVERRIDE; CAP_DAC_READ_SEARCH; CAP_FOWNER; CAP_FSETID; CAP_KILL; CAP_SETGID; CAP_SETUID; CAP_SETPCAP; CAP_LINUX_IMMUTABLE; CAP_NET_BIND_SERVICE; CAP_NET_BROADCAST; CAP_NET_ADMIN; CAP_NET_RAW; CAP_IPC_LOCK; CAP_IPC_OWNER; CAP_SYS_MODULE; CAP_SYS_RAWIO; CAP_SYS_CHROOT; CAP_SYS_PTRACE; CAP_SYS_PACCT; CAP_SYS_ADMIN; CAP_SYS_BOOT; CAP_SYS_NICE; CAP_SYS_RESOURCE; CAP_SYS_TIME; CAP_SYS_TTY_CONFIG; CAP_MKNOD; CAP_LEASE; CAP_AUDIT_WRITE; CAP_AUDIT_READ; CAP_AUDIT_CONTROL; CAP_SETFCAP; CAP_SYSLOG; CAP_WAKE_ALARM; CAP_BLOCK_SUSPEND; CAP_BPF; CAP_CHECKPOINT_RESTORE; CAP_PERFMON; }
+enum LandlockFsAccess { LL_EXECUTE; LL_WRITE_FILE; LL_READ_FILE; LL_READ_DIR; LL_REMOVE_DIR; LL_REMOVE_FILE; LL_MAKE_CHAR; LL_MAKE_DIR; LL_MAKE_REG; LL_MAKE_SOCK; LL_MAKE_FIFO; LL_MAKE_BLOCK; LL_MAKE_SYM; LL_REFER; LL_TRUNCATE; }
+enum LandlockNetAccess { LL_BIND_TCP; LL_CONNECT_TCP; }
+enum LandlockScope { LL_SCOPE_ABSTRACT_UNIX; LL_SCOPE_SIGNAL; }
+enum DeviceType { DEV_CHAR; DEV_BLOCK; DEV_ALL; }
+enum RlimitType { RLIM_NOFILE; RLIM_NPROC; RLIM_ADDRESS_SPACE; RLIM_FILE_SIZE; RLIM_CORE; RLIM_DATA; RLIM_STACK; RLIM_MEMLOCK; RLIM_SIGPENDING; RLIM_MSGQUEUE; }
 fn network_policy_new() {
     var p = alloc(32);
     store64(p, vec_new());
@@ -26,6 +36,10 @@ fn cgroup_limits_new() {
     return c;
 }
 fn cglim_memory_max(c)      { return load64(c); }
+fn cglim_memory_high(c)     { return load64(c + 8); }
+fn cglim_cpu_max(c)         { return load64(c + 16); }
+fn cglim_cpu_weight(c)      { return load64(c + 32); }
+fn cglim_pids_max(c)        { return load64(c + 40); }
 fn cglim_set_memory_max(c, v) { store64(c, v); return 0; }
 fn cglim_set_pids_max(c, v)   { store64(c + 40, v); return 0; }
 fn namespace_config_new() {
@@ -36,6 +50,12 @@ fn namespace_config_new() {
 }
 fn ns_pid(n)    { return load64(n); }
 fn ns_net(n)    { return load64(n + 8); }
+fn ns_mount(n)  { return load64(n + 16); }
+fn ns_user(n)   { return load64(n + 24); }
+fn ns_uts(n)    { return load64(n + 32); }
+fn ns_ipc(n)    { return load64(n + 40); }
+fn ns_cgroup(n) { return load64(n + 48); }
+fn ns_time(n)   { return load64(n + 56); }
 fn ns_set_pid(n, v)    { store64(n, v); return 0; }
 fn ns_set_net(n, v)    { store64(n + 8, v); return 0; }
 fn ns_set_mount(n, v)  { store64(n + 16, v); return 0; }
@@ -55,13 +75,17 @@ fn sandbox_config_new() {
     store64(s + 80, map_new());
     return s;
 }
+fn sandbox_fs_rules(s)      { return load64(s); }
 fn sandbox_net_access(s)    { return load64(s + 8); }
+fn sandbox_seccomp(s)       { return load64(s + 16); }
 fn sandbox_isolate_net(s)   { return load64(s + 24); }
 fn sandbox_masked_paths(s)  { return load64(s + 64); }
+fn sandbox_readonly_paths(s){ return load64(s + 72); }
 fn sandbox_sysctl(s)        { return load64(s + 80); }
 fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
 fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
 fn sandbox_set_apparmor(s, v)     { store64(s + 40, v); return 0; }
+fn sandbox_set_selinux(s, v)      { store64(s + 48, v); return 0; }
 fn security_context_new(agent_id) {
     var ctx = alloc(56);
     store64(ctx, agent_id);
@@ -76,6 +100,9 @@ fn security_context_new(agent_id) {
 fn secctx_agent_id(c)        { return load64(c); }
 fn secctx_permissions(c)     { return load64(c + 8); }
 fn secctx_sandbox(c)         { return load64(c + 16); }
+fn secctx_run_as_user(c)     { return load64(c + 24); }
+fn secctx_run_as_group(c)    { return load64(c + 32); }
+fn secctx_readonly_root(c)   { return load64(c + 40); }
 fn secctx_no_new_privs(c)    { return load64(c + 48); }
 fn security_policy_new(name, effect) {
     var p = alloc(24);
@@ -98,14 +125,21 @@ fn capability_set_new() {
 }
 fn capset_effective(c)   { return load64(c); }
 fn capset_permitted(c)   { return load64(c + 8); }
+fn capset_inheritable(c) { return load64(c + 16); }
+fn capset_bounding(c)    { return load64(c + 24); }
+fn capset_ambient(c)     { return load64(c + 32); }
 fn sandbox_capabilities_new() {
     var c = alloc(48);
     var i = 0;
     while (i < 48) { store64(c + i, 0); i = i + 8; }
     return c;
 }
-fn sbcap_seccomp(c)    { return load64(c); }
-fn sbcap_landlock(c)   { return load64(c + 16); }
+fn sbcap_seccomp(c)      { return load64(c); }
+fn sbcap_seccomp_mode(c) { return load64(c + 8); }
+fn sbcap_landlock(c)     { return load64(c + 16); }
+fn sbcap_ll_abi(c)       { return load64(c + 24); }
+fn sbcap_cgroup_v2(c)    { return load64(c + 32); }
+fn sbcap_namespaces(c)   { return load64(c + 40); }
 fn token_payload_new(sub, role) {
     var t = alloc(64);
     store64(t, sub);
@@ -120,6 +154,12 @@ fn token_payload_new(sub, role) {
 }
 fn token_sub(t)          { return load64(t); }
 fn token_role(t)         { return load64(t + 8); }
+fn token_permissions(t)  { return load64(t + 16); }
+fn token_iat(t)          { return load64(t + 24); }
+fn token_exp(t)          { return load64(t + 32); }
+fn token_jti(t)          { return load64(t + 40); }
+fn token_email(t)        { return load64(t + 48); }
+fn token_display_name(t) { return load64(t + 56); }
 fn auth_context_new(agent_id, role) {
     var a = alloc(24);
     store64(a, agent_id);

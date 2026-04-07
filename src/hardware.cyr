@@ -1,18 +1,40 @@
 enum DeviceFamily { DEV_GPU; DEV_TPU; DEV_NPU; DEV_AI_ASIC; DEV_CPU; }
-var VENDOR_NVIDIA = 0;
-var HEALTH_OK = 0;
+enum DeviceVendor { VENDOR_NVIDIA; VENDOR_AMD; VENDOR_INTEL; VENDOR_APPLE; VENDOR_GOOGLE; VENDOR_QUALCOMM; VENDOR_HABANA; VENDOR_AWS; VENDOR_CUSTOM; }
+fn device_vendor_name(v) {
+    if (v == VENDOR_NVIDIA)   { return "Nvidia"; }
+    if (v == VENDOR_AMD)      { return "AMD"; }
+    if (v == VENDOR_INTEL)    { return "Intel"; }
+    if (v == VENDOR_APPLE)    { return "Apple"; }
+    if (v == VENDOR_GOOGLE)   { return "Google"; }
+    if (v == VENDOR_QUALCOMM) { return "Qualcomm"; }
+    if (v == VENDOR_HABANA)   { return "Habana"; }
+    if (v == VENDOR_AWS)      { return "AWS"; }
+    return "Custom";
+}
+enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
+enum MemoryType { MEM_GDDR5; MEM_GDDR6; MEM_GDDR6X; MEM_HBM2; MEM_HBM2E; MEM_HBM3; MEM_LPDDR4; MEM_LPDDR5; MEM_LPDDR5X; MEM_DDR4; MEM_DDR5; MEM_UNKNOWN; }
 fn accelerator_flags_new() {
     var f = alloc(72);
     var i = 0;
     while (i < 72) { store64(f + i, 0); i = i + 8; }
     return f;
 }
-fn aflags_cuda(f) { return load64(f); }
-fn aflags_set_cuda(f, v) { store64(f, v); return 0; }
-fn accelerator_device_new(index, name, vendor, family) {
+fn aflags_cuda(f)     { return load64(f); }
+fn aflags_rocm(f)     { return load64(f + 8); }
+fn aflags_metal(f)    { return load64(f + 16); }
+fn aflags_vulkan(f)   { return load64(f + 24); }
+fn aflags_oneapi(f)   { return load64(f + 32); }
+fn aflags_tpu(f)      { return load64(f + 40); }
+fn aflags_sycl(f)     { return load64(f + 48); }
+fn aflags_openvino(f) { return load64(f + 56); }
+fn aflags_directml(f) { return load64(f + 64); }
+fn aflags_set_cuda(f, v)   { store64(f, v); return 0; }
+fn aflags_set_rocm(f, v)   { store64(f + 8, v); return 0; }
+fn aflags_set_vulkan(f, v) { store64(f + 24, v); return 0; }
+fn accelerator_device_new(index, dname, vendor, family) {
     var d = alloc(120);
     store64(d, index);
-    store64(d + 8, name);
+    store64(d + 8, dname);
     store64(d + 16, vendor);
     store64(d + 24, family);
     var i = 32;
@@ -29,10 +51,12 @@ fn adev_name(d)        { return load64(d + 8); }
 fn adev_vendor(d)      { return load64(d + 16); }
 fn adev_family(d)      { return load64(d + 24); }
 fn adev_vram_total(d)  { return load64(d + 32); }
+fn adev_vram_used(d)   { return load64(d + 40); }
 fn adev_utilization(d) { return load64(d + 48); }
 fn adev_flags(d)       { return load64(d + 80); }
 fn adev_health(d)      { return load64(d + 112); }
 fn adev_set_vram_total(d, v)  { store64(d + 32, v); return 0; }
+fn adev_set_vram_used(d, v)   { store64(d + 40, v); return 0; }
 fn adev_set_utilization(d, v) { store64(d + 48, v); return 0; }
 fn adev_set_health(d, v)      { store64(d + 112, v); return 0; }
 fn accelerator_summary_new() {
@@ -55,6 +79,17 @@ fn asum_by_family(s, family) {
     while (i < vec_len(devices)) {
         var dev = vec_get(devices, i);
         if (adev_family(dev) == family) { vec_push(result, dev); }
+        i = i + 1;
+    }
+    return result;
+}
+fn asum_by_vendor(s, vendor) {
+    var devices = load64(s);
+    var result = vec_new();
+    var i = 0;
+    while (i < vec_len(devices)) {
+        var dev = vec_get(devices, i);
+        if (adev_vendor(dev) == vendor) { vec_push(result, dev); }
         i = i + 1;
     }
     return result;
