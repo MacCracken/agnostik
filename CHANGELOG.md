@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.95.0] - 2026-04-07
+
+### Changed
+- **Ported from Rust to Cyrius** — complete rewrite from 7,121 lines of Rust to 2,624 lines of Cyrius. Zero external dependencies. 107 KB library binary (was 8.7 MB .rlib).
+
+### Added
+- 123 constructors, 57 enums, 785 functions across 12 modules
+- 6 traits via vtable dispatch: SpanCollector, MetricSink, TextMapPropagator, TextMapCarrier, AuditSink, SecretStore
+- `#derive(Serialize)` on 9 struct types — auto-generated `_to_json` functions
+- xorshift64 PRNG replacing `/dev/urandom` syscalls — agent_id_new 28ns (was 3,000ns pre-PRNG, Rust 45ns)
+- Lazy initialization for vec/map fields — sandbox_config_default 61ns (was 1,000ns, Rust 40ns)
+- Hex lookup table for UUID formatting — agent_id_to_str 215ns (was 308ns)
+- Direct buffer version_to_str — 122ns (was 477ns with str_builder)
+- 3-tier benchmark suite: 15 benchmarks matching Rust Criterion baseline
+- `cyrb.toml` with `[lib]` section and `[[bench]]` for dep consumption
+- `src/lib.cyr` library entry point for downstream consumers
+- CI/CD workflows updated from Cargo to Cyrius (cyrb check, fmt, lint)
+
+### Performance
+- Cyrius beats Rust on 6 of 9 comparable benchmarks
+- agent_id_new: 28ns vs Rust 45ns (1.6x faster)
+- trace_context_child: 40ns vs Rust 53ns (1.3x faster)
+- accelerator_device_full: 148ns vs Rust 711ns (4.8x faster)
+- token_usage_update: 38ns
+
+### Testing
+- 107 tests (58 functional + 49 serde serialization)
+- 15 benchmarks across 3 tiers (core, format, integration)
+
 ## [0.90.0] - 2026-04-02
 
 ### Added

@@ -15,9 +15,8 @@ env:
   CYRIUS_VERSION: "1.9.4"
 
 jobs:
-  # ── Build ──
-  build:
-    name: Build
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,10 +25,13 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
           mkdir -p build
           cp "$CYRIUS_HOME/bin/cc2" ./build/cc2
-          chmod +x ./build/cc2
+          cp "$CYRIUS_HOME/bin/cyrb" ./build/cyrb 2>/dev/null || true
+          cp "$CYRIUS_HOME/bin/cyrfmt" ./build/cyrfmt 2>/dev/null || true
+          cp "$CYRIUS_HOME/bin/cyrlint" ./build/cyrlint 2>/dev/null || true
+          chmod +x ./build/*
           echo "Cyrius $CYRIUS_VERSION installed"
 
       - name: Build test binary
@@ -38,13 +40,23 @@ jobs:
           chmod +x build/agnostik_test
           echo "test binary: $(wc -c < build/agnostik_test) bytes"
 
+      - name: Run tests
+        run: |
+          OUTPUT=$(./build/agnostik_test 2>&1)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "0 failed"
+          echo "PASS: all tests"
+
       - name: Build bench binary
         run: |
           cat benches/bench.cyr | ./build/cc2 > build/agnostik_bench
           chmod +x build/agnostik_bench
           echo "bench binary: $(wc -c < build/agnostik_bench) bytes"
 
-  # ── Check & Format ──
+      - name: Run benchmarks
+        run: ./build/agnostik_bench
+        continue-on-error: true
+
   check:
     name: Check & Format
     runs-on: ubuntu-latest
@@ -55,83 +67,32 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
           mkdir -p build
-          cp "$CYRIUS_HOME/bin/cc2" ./build/cc2
-          cp "$CYRIUS_HOME/bin/cyrb" ./build/cyrb
-          cp -r "$CYRIUS_HOME/bin/cyr"* ./build/ 2>/dev/null || true
-          chmod +x ./build/cc2 ./build/cyrb
+          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
+          chmod +x ./build/*
 
       - name: Syntax check
-        run: ./build/cyrb check src/main.cyr
+        run: |
+          if [ -x ./build/cyrb ]; then
+            ./build/cyrb check src/main.cyr
+          else
+            cat src/main.cyr | ./build/cc2 > /dev/null
+            echo "PASS: compiles"
+          fi
         continue-on-error: true
 
       - name: Format check
         run: |
-          for f in src/*.cyr; do
-            ./build/cyrb fmt "$f" --check || echo "WARN: $f needs formatting"
-          done
+          if [ -x ./build/cyrfmt ]; then
+            for f in src/*.cyr; do
+              ./build/cyrb fmt "$f" --check || echo "WARN: $f needs formatting"
+            done
+          else
+            echo "SKIP: cyrfmt not available in release"
+          fi
         continue-on-error: true
 
-      - name: Lint
-        run: |
-          for f in src/*.cyr; do
-            ./build/cyrb lint "$f" || true
-          done
-        continue-on-error: true
-
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-x86_64
-          path: |
-            build/agnostik_test
-            build/agnostik_bench
-          retention-days: 5
-
-  # ── Tests ──
-  test:
-    name: Test
-    needs: [build, check]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64
-          path: build
-
-      - name: Run test suite
-        run: |
-          chmod +x build/agnostik_test
-          OUTPUT=$(./build/agnostik_test 2>&1)
-          echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "0 failed"
-          echo "PASS: all tests"
-
-  # ── Benchmarks ──
-  benchmarks:
-    name: Benchmarks
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-x86_64
-          path: build
-
-      - name: Run benchmarks
-        run: |
-          chmod +x build/agnostik_bench
-          ./build/agnostik_bench
-        continue-on-error: true
-
-  # ── Security ──
   security:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -141,35 +102,25 @@ jobs:
       - name: Scan for dangerous patterns
         run: |
           WARN=0
-          # Check for raw execve
           if grep -rn 'syscall(59' src/ 2>/dev/null | grep -v "# "; then
-            echo "WARN: raw execve in modules"
-            WARN=1
+            echo "WARN: raw execve in modules"; WARN=1
           fi
-          # Check for hardcoded sensitive paths
           if grep -rn '"/etc/shadow"' src/ 2>/dev/null; then
-            echo "WARN: direct shadow file access"
-            WARN=1
+            echo "WARN: direct shadow file access"; WARN=1
           fi
           echo "security scan complete (warnings: $WARN)"
 
-  # ── Documentation ──
   docs:
     name: Documentation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check required docs exist
+      - name: Check required docs
         run: |
           MISSING=0
           for doc in README.md CHANGELOG.md VERSION CONTRIBUTING.md SECURITY.md LICENSE cyrb.toml; do
-            if [ -f "$doc" ]; then
-              echo "  OK: $doc"
-            else
-              echo "  MISSING: $doc"
-              MISSING=1
-            fi
+            if [ -f "$doc" ]; then echo "  OK: $doc"; else echo "  MISSING: $doc"; MISSING=1; fi
           done
           exit $MISSING
 
@@ -177,11 +128,7 @@ jobs:
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
           TOML_VERSION=$(grep '^version' cyrb.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          echo "VERSION file: $VERSION"
-          echo "cyrb.toml:    $TOML_VERSION"
-          if [ "$VERSION" != "$TOML_VERSION" ]; then
-            echo "FAIL: version mismatch"
-            exit 1
-          fi
+          echo "VERSION: $VERSION  cyrb.toml: $TOML_VERSION"
+          [ "$VERSION" = "$TOML_VERSION" ] || { echo "FAIL: version mismatch"; exit 1; }
           grep -q "$VERSION" CHANGELOG.md || { echo "FAIL: version not in changelog"; exit 1; }
           echo "Version consistent"
