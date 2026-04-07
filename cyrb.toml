@@ -1,6 +1,28 @@
 name = "agnostik"
-version = "0.1.0"
+version = "0.95.0"
 license = "GPL-3.0-only"
 entry = "src/main.cyr"
 output = "agnostik"
-description = "agnostik — Cyrius port"
+description = "Shared types and domain primitives for AGNOS"
+repository = "https://github.com/MacCracken/agnostik"
+
+[lib]
+entry = "src/lib.cyr"
+modules = [
+    "src/error.cyr",
+    "src/types.cyr",
+    "src/agent.cyr",
+    "src/security.cyr",
+    "src/telemetry.cyr",
+    "src/audit.cyr",
+    "src/llm.cyr",
+    "src/secrets.cyr",
+    "src/config.cyr",
+    "src/classification.cyr",
+    "src/validation.cyr",
+    "src/hardware.cyr",
+]
+
+[[bench]]
+name = "benchmarks"
+entry = "benches/bench.cyr"

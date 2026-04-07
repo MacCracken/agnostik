@@ -96,3 +96,25 @@ fn retention_policy_new(min_days) {
 fn retpol_min_days(p)    { return load64(p); }
 fn retpol_max_days(p)    { return load64(p + 8); }
 fn retpol_archive(p)     { return load64(p + 16); }
+var AS_APPEND = 0;
+var AS_VERIFY_CHAIN = 1;
+var AS_VERIFY_ENTRY = 2;
+var AS_QUERY = 3;
+var AS_SEAL = 4;
+fn audit_sink_vtable(append_fn, verify_chain_fn) {
+    var vt = alloc(40);
+    store64(vt, append_fn);
+    store64(vt + 8, verify_chain_fn);
+    store64(vt + 16, 0);
+    store64(vt + 24, 0);
+    store64(vt + 32, 0);
+    return vt;
+}
+fn audit_sink_new(vtable, data) { return trait_obj_new(vtable, data); }
+fn as_append(sink, entry)       { return trait_call1(sink, AS_APPEND, entry); }
+fn as_verify_chain(sink)        { return trait_call0(sink, AS_VERIFY_CHAIN); }
+fn as_verify_entry(sink, entry) { return trait_call1(sink, AS_VERIFY_ENTRY, entry); }
+fn as_seal(sink)                { return trait_call0(sink, AS_SEAL); }
+fn audit_sink_set_verify_entry(vt, fn_ptr) { store64(vt + 16, fn_ptr); return 0; }
+fn audit_sink_set_query(vt, fn_ptr) { store64(vt + 24, fn_ptr); return 0; }
+fn audit_sink_set_seal(vt, fn_ptr)  { store64(vt + 32, fn_ptr); return 0; }

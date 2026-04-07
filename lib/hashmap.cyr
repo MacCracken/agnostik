@@ -14,12 +14,17 @@
 # === 42
 #
 # Layout per entry: { key_ptr: i64, value: i64, state: i64 } = 24 bytes
-#   state: 0 = empty, 1 = occupied, 2 = tombstone (deleted)
+#   state: HASH_EMPTY=0, HASH_OCCUPIED=1, HASH_TOMBSTONE=2
 # Map header: { entries_ptr: i64, capacity: i64, count: i64 } = 24 bytes
 
-var HASHMAP_ENTRY_SIZE = 24;
-var HASHMAP_HEADER_SIZE = 24;
-var HASHMAP_INIT_CAP = 16;
+enum HashConst {
+    HASHMAP_ENTRY_SIZE = 24;
+    HASHMAP_HEADER_SIZE = 24;
+    HASHMAP_INIT_CAP = 16;
+    HASH_EMPTY = 0;
+    HASH_OCCUPIED = 1;
+    HASH_TOMBSTONE = 2;
+}
 
 # FNV-1a hash for null-terminated string
 fn hash_str(s) {
@@ -66,16 +71,16 @@ fn _map_find(m, key) {
     while (probes < cap) {
         var ep = entries + idx * HASHMAP_ENTRY_SIZE;
         var st = load64(ep + 16);
-        if (st == 0) {
+        if (st == HASH_EMPTY) {
             # Empty slot — key not in table
             if (first_tomb != 0) { return first_tomb; }
             return ep;
         }
-        if (st == 2) {
+        if (st == HASH_TOMBSTONE) {
             # Tombstone — remember for insert, keep probing for match
             if (first_tomb == 0) { first_tomb = ep; }
         }
-        if (st == 1) {
+        if (st == HASH_OCCUPIED) {
             var ekey = load64(ep);
             if (streq(ekey, key) == 1) { return ep; }
         }
@@ -100,7 +105,7 @@ fn _map_grow(m) {
     var gi = 0;
     while (gi < old_cap) {
         var oep = old_entries + gi * HASHMAP_ENTRY_SIZE;
-        if (load64(oep + 16) == 1) {
+        if (load64(oep + 16) == HASH_OCCUPIED) {
             # Only rehash occupied entries (skip tombstones)
             map_set(m, load64(oep), load64(oep + 8));
         }
@@ -122,8 +127,8 @@ fn map_set(m, key, value) {
     var st = load64(ep + 16);
     store64(ep, key);
     store64(ep + 8, value);
-    store64(ep + 16, 1);
-    if (st != 1) {
+    store64(ep + 16, HASH_OCCUPIED);
+    if (st != HASH_OCCUPIED) {
         store64(m + 16, map_count(m) + 1);
     }
     return 0;
@@ -133,7 +138,7 @@ fn map_set(m, key, value) {
 fn map_get(m, key) {
     var ep = _map_find(m, key);
     if (ep == 0) { return 0; }
-    if (load64(ep + 16) != 1) { return 0; }
+    if (load64(ep + 16) != HASH_OCCUPIED) { return 0; }
     return load64(ep + 8);
 }
 
@@ -141,7 +146,7 @@ fn map_get(m, key) {
 fn map_has(m, key) {
     var ep = _map_find(m, key);
     if (ep == 0) { return 0; }
-    if (load64(ep + 16) != 1) { return 0; }
+    if (load64(ep + 16) != HASH_OCCUPIED) { return 0; }
     return 1;
 }
 
@@ -150,8 +155,8 @@ fn map_has(m, key) {
 fn map_delete(m, key) {
     var ep = _map_find(m, key);
     if (ep == 0) { return 0; }
-    if (load64(ep + 16) != 1) { return 0; }
-    store64(ep + 16, 2);
+    if (load64(ep + 16) != HASH_OCCUPIED) { return 0; }
+    store64(ep + 16, HASH_TOMBSTONE);
     store64(m + 16, map_count(m) - 1);
     return 1;
 }
@@ -164,7 +169,7 @@ fn map_keys(m) {
     var ki = 0;
     while (ki < cap) {
         var ep = entries + ki * HASHMAP_ENTRY_SIZE;
-        if (load64(ep + 16) == 1) {
+        if (load64(ep + 16) == HASH_OCCUPIED) {
             vec_push(keys, load64(ep));
         }
         ki = ki + 1;
@@ -180,7 +185,7 @@ fn map_values(m) {
     var vi = 0;
     while (vi < cap) {
         var ep = entries + vi * HASHMAP_ENTRY_SIZE;
-        if (load64(ep + 16) == 1) {
+        if (load64(ep + 16) == HASH_OCCUPIED) {
             vec_push(vals, load64(ep + 8));
         }
         vi = vi + 1;
@@ -198,24 +203,40 @@ fn map_clear(m) {
 }
 
 # Print map contents
+# Iterate entries without allocating. Calls fn(key, value) for each occupied entry.
+fn map_iter(m, fp) {
+    var entries = map_entries(m);
+    var cap = map_cap(m);
+    var ii = 0;
+    while (ii < cap) {
+        var ep = entries + ii * HASHMAP_ENTRY_SIZE;
+        if (load64(ep + 16) == HASH_OCCUPIED) {
+            fncall2(fp, load64(ep), load64(ep + 8));
+        }
+        ii = ii + 1;
+    }
+    return 0;
+}
+
+# Print map contents as {key: value, ...}
 fn map_print(m) {
     var entries = map_entries(m);
     var cap = map_cap(m);
     syscall(1, 1, "{", 1);
-        var first = 1;
-        var pi = 0;
-        while (pi < cap) {
-            var ep = entries + pi * HASHMAP_ENTRY_SIZE;
-            if (load64(ep + 16) == 1) {
-                if (first == 0) { syscall(1, 1, ", ", 2); }
-                var pk = load64(ep);
-                syscall(1, 1, pk, strlen(pk));
-                syscall(1, 1, ": ", 2);
-                fmt_int(load64(ep + 8));
-                first = 0;
-            }
-            pi = pi + 1;
+    var first = 1;
+    var pi = 0;
+    while (pi < cap) {
+        var ep = entries + pi * HASHMAP_ENTRY_SIZE;
+        if (load64(ep + 16) == HASH_OCCUPIED) {
+            if (first == 0) { syscall(1, 1, ", ", 2); }
+            var pk = load64(ep);
+            syscall(1, 1, pk, strlen(pk));
+            syscall(1, 1, ": ", 2);
+            fmt_int(load64(ep + 8));
+            first = 0;
         }
-        syscall(1, 1, "}", 1);
+        pi = pi + 1;
+    }
+    syscall(1, 1, "}", 1);
     return 0;
 }

@@ -1,0 +1,109 @@
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/json.cyr"
+include "lib/bench.cyr"
+include "src/error.cyr"
+include "src/types.cyr"
+include "src/agent.cyr"
+include "src/security.cyr"
+include "src/telemetry.cyr"
+include "src/audit.cyr"
+include "src/llm.cyr"
+include "src/secrets.cyr"
+include "src/config.cyr"
+include "src/classification.cyr"
+include "src/validation.cyr"
+include "src/hardware.cyr"
+fn _b_agent_id_new() { agent_id_new(); return 0; }
+fn _b_trace_context_new() { trace_context_new(); return 0; }
+var _bench_parent = 0;
+fn _b_trace_context_child() { tctx_child(_bench_parent); return 0; }
+fn _b_sandbox_config() { sandbox_config_new(); return 0; }
+fn _b_agent_id_to_str() { agent_id_to_str(agent_id_new()); return 0; }
+fn _b_agent_id_roundtrip() { agent_id_from_str(agent_id_to_str(agent_id_new())); return 0; }
+fn _b_version_to_str() { version_to_str(version_new(0, 90, 0)); return 0; }
+var _bench_vs = 0;
+fn _b_version_roundtrip() { version_to_str(payload(version_from_str(_bench_vs))); return 0; }
+fn _b_traceparent() { tctx_to_traceparent(trace_context_new()); return 0; }
+fn _b_inference_request() {
+    var r = inference_request_new(str_from("llama3"));
+    ireq_set_max_tokens(r, 1024);
+    vec_push(ireq_messages(r), message_text(ROLE_USER, str_from("hello")));
+    return 0;
+}
+fn _b_audit_entry() {
+    audit_entry_new(str_from("e1"), agent_id_new(), str_from("read"), AUDIT_INFO);
+    return 0;
+}
+fn _b_accel_device() {
+    var d = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
+    adev_set_vram_total(d, 24576);
+    return 0;
+}
+fn _b_token_usage() {
+    var u = token_usage_new();
+    tusage_set_prompt(u, 100);
+    tusage_set_completion(u, 50);
+    tusage_set_total(u, 150);
+    return 0;
+}
+fn _b_security_context() {
+    var ctx = security_context_new(agent_id_new());
+    vec_push(secctx_permissions(ctx), PERM_FILE_READ);
+    vec_push(secctx_permissions(ctx), PERM_NETWORK_ACCESS);
+    return 0;
+}
+fn _b_message_build() {
+    message_text(ROLE_SYSTEM, str_from("You are helpful."));
+    message_text(ROLE_USER, str_from("What is Cyrius?"));
+    message_text(ROLE_ASSISTANT, str_from("A systems language."));
+    return 0;
+}
+fn tier(label) {
+    syscall(SYS_WRITE, 1, "\n", 1);
+    syscall(SYS_WRITE, 1, label, strlen(label));
+    syscall(SYS_WRITE, 1, "\n", 1);
+    return 0;
+}
+fn run(bname, fp, batch, rounds) {
+    var b = bench_new(bname);
+    bench_run_batch(b, fp, batch, rounds);
+    bench_report(b);
+    return 0;
+}
+fn main() {
+    alloc_init();
+    _bench_parent = trace_context_new();
+    _bench_vs = str_from("0.90.0");
+    println("=== agnostik benchmarks (Cyrius v1.9.2) ===");
+    tier("[tier1] core");
+    run("agent_id_new", &_b_agent_id_new, 1000, 10);
+    run("trace_context_new", &_b_trace_context_new, 1000, 10);
+    run("trace_context_child", &_b_trace_context_child, 1000, 10);
+    run("sandbox_config_default", &_b_sandbox_config, 1000, 10);
+    tier("[tier2] format");
+    run("agent_id_to_str", &_b_agent_id_to_str, 1000, 10);
+    run("agent_id_roundtrip", &_b_agent_id_roundtrip, 1000, 10);
+    run("version_to_str", &_b_version_to_str, 1000, 10);
+    run("version_roundtrip", &_b_version_roundtrip, 1000, 10);
+    run("traceparent_format", &_b_traceparent, 500, 10);
+    tier("[tier3] integration");
+    run("inference_request_full", &_b_inference_request, 500, 10);
+    run("audit_entry_full", &_b_audit_entry, 500, 10);
+    run("accelerator_device_full", &_b_accel_device, 500, 10);
+    run("security_context_full", &_b_security_context, 500, 10);
+    run("message_build_3turn", &_b_message_build, 500, 10);
+    run("token_usage_update", &_b_token_usage, 1000, 10);
+    println("\n=== done ===");
+    return 0;
+}
+var r = main();
+syscall(SYS_EXIT, r);

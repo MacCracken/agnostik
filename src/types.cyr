@@ -1,18 +1,33 @@
+var _prng_state = 0;
+fn _prng_init() {
+    if (_prng_state != 0) { return 0; }
+    var buf[16];
+    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
+    if (fd >= 0) {
+        syscall(SYS_READ, fd, &buf, 8);
+        syscall(SYS_CLOSE, fd);
+        _prng_state = load64(&buf);
+    }
+    if (_prng_state == 0) {
+        syscall(228, 4, &buf);
+        _prng_state = load64(&buf) ^ load64(&buf + 8);
+    }
+    if (_prng_state == 0) { _prng_state = 0x853c49e6748fea9b; }
+    return 0;
+}
+fn _prng_next() {
+    _prng_init();
+    var x = _prng_state;
+    x = x ^ (x << 13);
+    x = x ^ (x >> 7);
+    x = x ^ (x << 17);
+    _prng_state = x;
+    return x;
+}
 fn agent_id_new() {
     var id = alloc(16);
-    # Read 16 random bytes from /dev/urandom
-    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
-    if (fd < 0) {
-        # Fallback: use clock as pseudo-random
-        var buf[16];
-        syscall(228, 1, &buf);
-        store64(id, load64(&buf));
-        store64(id + 8, load64(&buf + 8));
-    } else {
-        syscall(SYS_READ, fd, id, 16);
-        syscall(SYS_CLOSE, fd);
-    }
-    # Set UUID v4 version bits (byte 6: 0100xxxx, byte 8: 10xxxxxx)
+    store64(id, _prng_next());
+    store64(id + 8, _prng_next());
     var b6 = load8(id + 6);
     b6 = (b6 & 0x0F) | 0x40;
     store8(id + 6, b6);
@@ -28,13 +43,10 @@ fn agent_id_eq(a, b) {
     if (load64(a + 8) != load64(b + 8)) { return 0; }
     return 1;
 }
+var _hex_lut = "0123456789abcdef";
 fn _hex_byte(buf, offset, byte) {
-    var hi = byte >> 4;
-    var lo = byte & 0x0F;
-    if (hi < 10) { store8(buf + offset, hi + 48); }
-    else { store8(buf + offset, hi + 87); }
-    if (lo < 10) { store8(buf + offset + 1, lo + 48); }
-    else { store8(buf + offset + 1, lo + 87); }
+    store8(buf + offset, load8(_hex_lut + (byte >> 4)));
+    store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
     return 0;
 }
 fn agent_id_to_str(id) {
@@ -108,23 +120,29 @@ fn version_build(v)      { return load64(v + 32); }
 fn version_set_prerelease(v, pre) { store64(v + 24, pre); return 0; }
 fn version_set_build(v, b)        { store64(v + 32, b); return 0; }
 fn version_to_str(v) {
-    var sb = str_builder_new();
-    str_builder_add_int(sb, version_major(v));
-    str_builder_add_cstr(sb, ".");
-    str_builder_add_int(sb, version_minor(v));
-    str_builder_add_cstr(sb, ".");
-    str_builder_add_int(sb, version_patch(v));
+    var buf = alloc(64);
+    var pos = 0;
+    pos = pos + fmt_int_buf(version_major(v), buf + pos);
+    store8(buf + pos, 46); pos = pos + 1;
+    pos = pos + fmt_int_buf(version_minor(v), buf + pos);
+    store8(buf + pos, 46); pos = pos + 1;
+    pos = pos + fmt_int_buf(version_patch(v), buf + pos);
     var pre = version_prerelease(v);
     if (pre != 0) {
-        str_builder_add_cstr(sb, "-");
-        str_builder_add(sb, pre);
+        store8(buf + pos, 45); pos = pos + 1;
+        var plen = str_len(pre);
+        memcpy(buf + pos, str_data(pre), plen);
+        pos = pos + plen;
     }
     var bld = version_build(v);
     if (bld != 0) {
-        str_builder_add_cstr(sb, "+");
-        str_builder_add(sb, bld);
+        store8(buf + pos, 43); pos = pos + 1;
+        var blen = str_len(bld);
+        memcpy(buf + pos, str_data(bld), blen);
+        pos = pos + blen;
     }
-    return str_builder_build(sb);
+    store8(buf + pos, 0);
+    return str_new(buf, pos);
 }
 fn version_from_str(s) {
     var data = str_data(s);

@@ -34,11 +34,7 @@ fn trace_id_from_str(s) {
 fn trace_id_eq(a, b) { return agent_id_eq(a, b); }
 fn span_id_new() {
     var id = alloc(8);
-    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
-    if (fd >= 0) {
-        syscall(SYS_READ, fd, id, 8);
-        syscall(SYS_CLOSE, fd);
-    }
+    store64(id, _prng_next());
     return id;
 }
 fn span_id_to_str(id) {
@@ -200,6 +196,9 @@ fn span_set_status(s, v)      { store64(s + 32, v); return 0; }
 fn span_set_kind(s, v)        { store64(s + 40, v); return 0; }
 fn span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
 fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
+fn span_dropped_attrs(s)  { return load64(s + 88); }
+fn span_dropped_events(s) { return load64(s + 96); }
+fn span_dropped_links(s)  { return load64(s + 104); }
 fn telemetry_config_new() {
     var c = alloc(24);
     store64(c, 1);       # enabled = true
@@ -244,3 +243,152 @@ fn crash_agent_id(cr)  { return load64(cr); }
 fn crash_error(cr)     { return load64(cr + 8); }
 fn crash_backtrace(cr) { return load64(cr + 16); }
 fn crash_timestamp(cr) { return load64(cr + 24); }
+fn instrumentation_scope_new(scope_name, scope_version) {
+    var s = alloc(32);
+    store64(s, scope_name);
+    store64(s + 8, scope_version);
+    store64(s + 16, 0);
+    store64(s + 24, 0);
+    return s;
+}
+fn iscope_name(s)       { return load64(s); }
+fn iscope_version(s)    { return load64(s + 8); }
+fn iscope_schema_url(s) { return load64(s + 16); }
+fn iscope_attributes(s) { return _lazy_map(s + 24); }
+fn span_event_new(evt_name) {
+    var e = alloc(24);
+    store64(e, evt_name);
+    store64(e + 8, now_ns());
+    store64(e + 16, 0);
+    return e;
+}
+fn sevt_name(e)       { return load64(e); }
+fn sevt_timestamp(e)  { return load64(e + 8); }
+fn sevt_attributes(e) { return _lazy_map(e + 16); }
+fn span_link_new(link_trace_id, link_span_id) {
+    var l = alloc(24);
+    store64(l, link_trace_id);
+    store64(l + 8, link_span_id);
+    store64(l + 16, 0);
+    return l;
+}
+fn slink_trace_id(l)   { return load64(l); }
+fn slink_span_id(l)    { return load64(l + 8); }
+fn slink_attributes(l) { return _lazy_map(l + 16); }
+fn exemplar_new(ex_trace_id, ex_span_id, value) {
+    var e = alloc(40);
+    store64(e, ex_trace_id);
+    store64(e + 8, ex_span_id);
+    store64(e + 16, value);
+    store64(e + 24, now_ns());
+    store64(e + 32, 0);
+    return e;
+}
+fn exem_trace_id(e)   { return load64(e); }
+fn exem_span_id(e)    { return load64(e + 8); }
+fn exem_value(e)      { return load64(e + 16); }
+fn exem_timestamp(e)  { return load64(e + 24); }
+fn exem_attributes(e) { return _lazy_map(e + 32); }
+fn baggage_new() {
+    var b = alloc(8);
+    store64(b, 0);
+    return b;
+}
+fn baggage_entries(b) { return _lazy_map(b); }
+fn baggage_set(b, key, value) {
+    map_set(baggage_entries(b), key, value);
+    return 0;
+}
+fn baggage_get(b, key) {
+    return map_get(baggage_entries(b), key);
+}
+fn instrument_descriptor_new(inst_name, desc, unit, kind) {
+    var d = alloc(32);
+    store64(d, inst_name);
+    store64(d + 8, desc);
+    store64(d + 16, unit);
+    store64(d + 24, kind);
+    return d;
+}
+fn idesc_name(d) { return load64(d); }
+fn idesc_desc(d) { return load64(d + 8); }
+fn idesc_unit(d) { return load64(d + 16); }
+fn idesc_kind(d) { return load64(d + 24); }
+enum MetricValueType { MV_INT; MV_FLOAT; MV_HISTOGRAM; MV_EXP_HISTOGRAM; }
+fn metric_int(val)   { return tagged_new(MV_INT, val); }
+fn metric_float(val) { return tagged_new(MV_FLOAT, val); }
+fn metric_value_type(mv) { return tag(mv); }
+fn metric_value_val(mv)  { return payload(mv); }
+fn metric_data_point_new(inst_name, mv) {
+    var dp = alloc(48);
+    store64(dp, inst_name);
+    store64(dp + 8, mv);
+    store64(dp + 16, 0);
+    store64(dp + 24, now_ns());
+    store64(dp + 32, TEMPORALITY_CUMULATIVE);
+    store64(dp + 40, 0);
+    return dp;
+}
+fn mdp_instrument(dp)   { return load64(dp); }
+fn mdp_value(dp)         { return load64(dp + 8); }
+fn mdp_attributes(dp)   { return _lazy_map(dp + 16); }
+fn mdp_timestamp(dp)    { return load64(dp + 24); }
+fn mdp_temporality(dp)  { return load64(dp + 32); }
+fn mdp_is_monotonic(dp) { return load64(dp + 40); }
+var TEXTMAP_GET = 0;
+var TEXTMAP_SET = 1;
+fn textmap_carrier_vtable(get_fn, set_fn) {
+    var vt = alloc(16);
+    store64(vt, get_fn);
+    store64(vt + 8, set_fn);
+    return vt;
+}
+fn textmap_carrier_new(vtable, data) { return trait_obj_new(vtable, data); }
+fn textmap_get(carrier, key) { return trait_call1(carrier, TEXTMAP_GET, key); }
+var _textmap_extra = 0;
+fn textmap_set(carrier, key, value) {
+    _textmap_extra = value;
+    return trait_call1(carrier, TEXTMAP_SET, key);
+}
+var PROPAGATOR_INJECT = 0;
+var PROPAGATOR_EXTRACT = 1;
+fn textmap_propagator_vtable(inject_fn, extract_fn) {
+    var vt = alloc(16);
+    store64(vt, inject_fn);
+    store64(vt + 8, extract_fn);
+    return vt;
+}
+fn propagator_new(vtable, data) { return trait_obj_new(vtable, data); }
+var _propagator_extra = 0;
+fn propagator_inject(prop, context, carrier) {
+    _propagator_extra = carrier;
+    return trait_call1(prop, PROPAGATOR_INJECT, context);
+}
+fn propagator_extract(prop, carrier) {
+    return trait_call1(prop, PROPAGATOR_EXTRACT, carrier);
+}
+var SC_EXPORT = 0;
+var SC_FLUSH = 1;
+var SC_SHUTDOWN = 2;
+fn span_collector_vtable(export_fn, flush_fn, shutdown_fn) {
+    var vt = alloc(24);
+    store64(vt, export_fn);
+    store64(vt + 8, flush_fn);
+    store64(vt + 16, shutdown_fn);
+    return vt;
+}
+fn span_collector_new(vtable, data) { return trait_obj_new(vtable, data); }
+fn sc_export(collector, spans)  { return trait_call1(collector, SC_EXPORT, spans); }
+fn sc_flush(collector)          { return trait_call0(collector, SC_FLUSH); }
+fn sc_shutdown(collector)       { return trait_call0(collector, SC_SHUTDOWN); }
+var MS_EXPORT = 0;
+var MS_FLUSH = 1;
+fn metric_sink_vtable(export_fn, flush_fn) {
+    var vt = alloc(16);
+    store64(vt, export_fn);
+    store64(vt + 8, flush_fn);
+    return vt;
+}
+fn metric_sink_new(vtable, data) { return trait_obj_new(vtable, data); }
+fn ms_export(sink, metrics) { return trait_call1(sink, MS_EXPORT, metrics); }
+fn ms_flush(sink)           { return trait_call0(sink, MS_FLUSH); }

@@ -175,18 +175,27 @@ fn stream_ping() { return tagged_new(STREAM_PING, 0); }
 fn model_capabilities_new(model_id, provider) {
     var m = alloc(96);
     store64(m, model_id);
-    store64(m + 8, model_id);
+    store64(m + 8, model_id);  # display_name defaults to model_id
     store64(m + 16, provider);
     var i = 24;
     while (i < 96) { store64(m + i, 0); i = i + 8; }
     return m;
 }
-fn mcap_model_id(m)       { return load64(m); }
-fn mcap_provider(m)       { return load64(m + 16); }
-fn mcap_context_window(m) { return load64(m + 24); }
-fn mcap_max_output(m)     { return load64(m + 32); }
-fn mcap_supports_vision(m){ return load64(m + 40); }
-fn mcap_supports_tools(m) { return load64(m + 48); }
+fn mcap_model_id(m)        { return load64(m); }
+fn mcap_display_name(m)    { return load64(m + 8); }
+fn mcap_provider(m)        { return load64(m + 16); }
+fn mcap_context_window(m)  { return load64(m + 24); }
+fn mcap_max_output(m)      { return load64(m + 32); }
+fn mcap_supports_vision(m) { return load64(m + 40); }
+fn mcap_supports_tools(m)  { return load64(m + 48); }
+fn mcap_supports_structured(m) { return load64(m + 56); }
+fn mcap_supports_streaming(m)  { return load64(m + 64); }
+fn mcap_supports_thinking(m)   { return load64(m + 72); }
+fn mcap_supports_audio(m)      { return load64(m + 80); }
+fn mcap_supports_citations(m)  { return load64(m + 88); }
+fn mcap_set_display_name(m, v)    { store64(m + 8, v); return 0; }
+fn mcap_set_context_window(m, v)  { store64(m + 24, v); return 0; }
+fn mcap_set_max_output(m, v)      { store64(m + 32, v); return 0; }
 fn rate_limit_info_new() {
     var r = alloc(40);
     var i = 0;
@@ -197,3 +206,83 @@ fn rli_limit_requests(r)     { return load64(r); }
 fn rli_remaining_requests(r) { return load64(r + 8); }
 fn rli_limit_tokens(r)       { return load64(r + 16); }
 fn rli_remaining_tokens(r)   { return load64(r + 24); }
+fn rli_reset_seconds(r)      { return load64(r + 32); }
+fn tool_result_new(tuid, tcontent, tiserr) {
+    var tr = alloc(24);
+    store64(tr, tuid);
+    store64(tr + 8, tcontent);
+    store64(tr + 16, tiserr);
+    return tr;
+}
+fn tresult_tool_use_id(tr) { return load64(tr); }
+fn tresult_content(tr)     { return load64(tr + 8); }
+fn tresult_is_error(tr)    { return load64(tr + 16); }
+fn logprob_entry_new(token, logprob) {
+    var e = alloc(24);
+    store64(e, token);
+    store64(e + 8, logprob);
+    store64(e + 16, 0);
+    return e;
+}
+fn lpe_token(e)       { return load64(e); }
+fn lpe_logprob(e)     { return load64(e + 8); }
+fn lpe_top_logprobs(e){ return _lazy_vec(e + 16); }
+fn token_logprob_new(token, logprob) {
+    var t = alloc(16);
+    store64(t, token);
+    store64(t + 8, logprob);
+    return t;
+}
+fn tlp_token(t)   { return load64(t); }
+fn tlp_logprob(t) { return load64(t + 8); }
+fn safety_rating_new(category, probability, blocked) {
+    var r = alloc(24);
+    store64(r, category);
+    store64(r + 8, probability);
+    store64(r + 16, blocked);
+    return r;
+}
+fn srating_category(r)    { return load64(r); }
+fn srating_probability(r) { return load64(r + 8); }
+fn srating_blocked(r)     { return load64(r + 16); }
+fn embedding_request_new(model) {
+    var r = alloc(24);
+    store64(r, model);
+    store64(r + 8, 0);
+    store64(r + 16, 0);
+    return r;
+}
+fn embreq_model(r)      { return load64(r); }
+fn embreq_inputs(r)     { return _lazy_vec(r + 8); }
+fn embreq_dimensions(r) { return load64(r + 16); }
+fn embreq_set_dimensions(r, v) { store64(r + 16, v); return 0; }
+fn embedding_response_new(model) {
+    var r = alloc(24);
+    store64(r, model);
+    store64(r + 8, 0);
+    store64(r + 16, token_usage_new());
+    return r;
+}
+fn embresp_model(r)      { return load64(r); }
+fn embresp_embeddings(r) { return _lazy_vec(r + 8); }
+fn embresp_usage(r)      { return load64(r + 16); }
+fn batch_request_new(custom_id, request) {
+    var b = alloc(16);
+    store64(b, custom_id);
+    store64(b + 8, request);
+    return b;
+}
+fn breq_custom_id(b) { return load64(b); }
+fn breq_request(b)   { return load64(b + 8); }
+fn batch_result_new(custom_id) {
+    var b = alloc(24);
+    store64(b, custom_id);
+    store64(b + 8, 0);
+    store64(b + 16, 0);
+    return b;
+}
+fn bresult_custom_id(b) { return load64(b); }
+fn bresult_response(b)  { return load64(b + 8); }
+fn bresult_error(b)     { return load64(b + 16); }
+fn bresult_set_response(b, v) { store64(b + 8, v); return 0; }
+fn bresult_set_error(b, v)    { store64(b + 16, v); return 0; }
