@@ -1,0 +1,508 @@
+enum SeccompArch {
+    ARCH_X86;
+    ARCH_X86_64;
+    ARCH_X32;
+    ARCH_ARM;
+    ARCH_AARCH64;
+    ARCH_MIPS;
+    ARCH_MIPS64;
+    ARCH_MIPS64N32;
+    ARCH_MIPSEL;
+    ARCH_MIPSEL64;
+    ARCH_MIPSEL64N32;
+    ARCH_PPC;
+    ARCH_PPC64;
+    ARCH_PPC64LE;
+    ARCH_S390;
+    ARCH_S390X;
+    ARCH_RISCV64;
+}
+
+# ================================================================
+# MountPropagation enum
+# ================================================================
+
+enum MountPropagation {
+    MOUNT_PRIVATE;
+    MOUNT_SHARED;
+    MOUNT_SLAVE;
+    MOUNT_UNBINDABLE;
+}
+
+# ================================================================
+# PolicyEffect enum
+# ================================================================
+
+enum PolicyEffect {
+    POLICY_ALLOW;
+    POLICY_DENY;
+    POLICY_AUDIT;
+}
+
+# ================================================================
+# Role enum (RBAC)
+# ================================================================
+
+enum Role {
+    ROLE_ADMIN;
+    ROLE_OPERATOR;
+    ROLE_AUDITOR;
+    ROLE_VIEWER;
+    ROLE_SERVICE;
+}
+
+# ================================================================
+# ConditionOperator enum
+# ================================================================
+
+enum ConditionOperator {
+    COND_EQ;
+    COND_NEQ;
+    COND_IN;
+    COND_NIN;
+    COND_GT;
+    COND_GTE;
+    COND_LT;
+    COND_LTE;
+}
+
+# ================================================================
+# SeccompMode enum
+# ================================================================
+
+enum SeccompMode {
+    SECCOMP_DISABLED;
+    SECCOMP_STRICT;
+    SECCOMP_FILTER;
+    SECCOMP_UNSUPPORTED;
+}
+
+# ================================================================
+# SystemFeature (Capability alias) enum
+# ================================================================
+
+enum SystemFeature {
+    FEAT_LANDLOCK;
+    FEAT_SECCOMP;
+    FEAT_NAMESPACES;
+    FEAT_CGROUPS;
+    FEAT_TPM;
+    FEAT_SECURE_BOOT;
+}
+
+# ================================================================
+# LinuxCapability enum (39 variants)
+# ================================================================
+
+enum LinuxCapability {
+    CAP_CHOWN;
+    CAP_DAC_OVERRIDE;
+    CAP_DAC_READ_SEARCH;
+    CAP_FOWNER;
+    CAP_FSETID;
+    CAP_KILL;
+    CAP_SETGID;
+    CAP_SETUID;
+    CAP_SETPCAP;
+    CAP_LINUX_IMMUTABLE;
+    CAP_NET_BIND_SERVICE;
+    CAP_NET_BROADCAST;
+    CAP_NET_ADMIN;
+    CAP_NET_RAW;
+    CAP_IPC_LOCK;
+    CAP_IPC_OWNER;
+    CAP_SYS_MODULE;
+    CAP_SYS_RAWIO;
+    CAP_SYS_CHROOT;
+    CAP_SYS_PTRACE;
+    CAP_SYS_PACCT;
+    CAP_SYS_ADMIN;
+    CAP_SYS_BOOT;
+    CAP_SYS_NICE;
+    CAP_SYS_RESOURCE;
+    CAP_SYS_TIME;
+    CAP_SYS_TTY_CONFIG;
+    CAP_MKNOD;
+    CAP_LEASE;
+    CAP_AUDIT_WRITE;
+    CAP_AUDIT_READ;
+    CAP_AUDIT_CONTROL;
+    CAP_SETFCAP;
+    CAP_SYSLOG;
+    CAP_WAKE_ALARM;
+    CAP_BLOCK_SUSPEND;
+    CAP_BPF;
+    CAP_CHECKPOINT_RESTORE;
+    CAP_PERFMON;
+}
+
+# ================================================================
+# LandlockFsAccess enum
+# ================================================================
+
+enum LandlockFsAccess {
+    LL_EXECUTE;
+    LL_WRITE_FILE;
+    LL_READ_FILE;
+    LL_READ_DIR;
+    LL_REMOVE_DIR;
+    LL_REMOVE_FILE;
+    LL_MAKE_CHAR;
+    LL_MAKE_DIR;
+    LL_MAKE_REG;
+    LL_MAKE_SOCK;
+    LL_MAKE_FIFO;
+    LL_MAKE_BLOCK;
+    LL_MAKE_SYM;
+    LL_REFER;
+    LL_TRUNCATE;
+}
+
+# ================================================================
+# LandlockNetAccess enum
+# ================================================================
+
+enum LandlockNetAccess {
+    LL_BIND_TCP;
+    LL_CONNECT_TCP;
+}
+
+# ================================================================
+# DeviceType enum
+# ================================================================
+
+enum DeviceType {
+    DEV_CHAR;
+    DEV_BLOCK;
+    DEV_ALL;
+}
+
+# ================================================================
+# RlimitType enum
+# ================================================================
+
+enum RlimitType {
+    RLIM_NOFILE;
+    RLIM_NPROC;
+    RLIM_ADDRESS_SPACE;
+    RLIM_FILE_SIZE;
+    RLIM_CORE;
+    RLIM_DATA;
+    RLIM_STACK;
+    RLIM_MEMLOCK;
+    RLIM_SIGPENDING;
+    RLIM_MSGQUEUE;
+}
+
+# ================================================================
+# NetworkPolicy struct
+# Layout (40 bytes):
+#   +0  allowed_outbound_ports (vec ptr)
+#   +8  allowed_outbound_hosts (vec ptr)
+#   +16 allowed_inbound_ports  (vec ptr)
+#   +24 enable_nat             (i64, bool)
+# ================================================================
+
+fn network_policy_new() {
+    var p = alloc(32);
+    store64(p, vec_new());
+    store64(p + 8, vec_new());
+    store64(p + 16, vec_new());
+    store64(p + 24, 0);
+    return p;
+}
+
+fn netpol_outbound_ports(p) { return load64(p); }
+fn netpol_outbound_hosts(p) { return load64(p + 8); }
+fn netpol_inbound_ports(p)  { return load64(p + 16); }
+fn netpol_enable_nat(p)     { return load64(p + 24); }
+
+# ================================================================
+# CgroupLimits struct
+# Layout (96 bytes — 12 optional i64 fields)
+#   +0  memory_max       +8  memory_high
+#   +16 cpu_max_usec     +24 cpu_period_usec
+#   +32 cpu_weight       +40 pids_max
+#   +48 io_weight        +56 io_max_read_bps
+#   +64 io_max_write_bps +72 cpuset_cpus (Str ptr)
+#   +80 cpuset_mems (Str) +88 memory_swap_max
+# 0 = unset for all numeric fields, 0 = unset for Str ptrs
+# ================================================================
+
+fn cgroup_limits_new() {
+    var c = alloc(96);
+    var i = 0;
+    while (i < 96) {
+        store64(c + i, 0);
+        i = i + 8;
+    }
+    return c;
+}
+
+fn cglim_memory_max(c)      { return load64(c); }
+fn cglim_memory_high(c)     { return load64(c + 8); }
+fn cglim_cpu_max(c)         { return load64(c + 16); }
+fn cglim_cpu_period(c)      { return load64(c + 24); }
+fn cglim_cpu_weight(c)      { return load64(c + 32); }
+fn cglim_pids_max(c)        { return load64(c + 40); }
+fn cglim_io_weight(c)       { return load64(c + 48); }
+
+fn cglim_set_memory_max(c, v) { store64(c, v); return 0; }
+fn cglim_set_pids_max(c, v)   { store64(c + 40, v); return 0; }
+
+# ================================================================
+# NamespaceConfig struct
+# Layout (64 bytes — 8 bool fields):
+#   +0 pid  +8 net  +16 mount  +24 user
+#   +32 uts +40 ipc +48 cgroup +56 time
+# ================================================================
+
+fn namespace_config_new() {
+    var n = alloc(64);
+    var i = 0;
+    while (i < 64) {
+        store64(n + i, 0);
+        i = i + 8;
+    }
+    return n;
+}
+
+fn ns_pid(n)    { return load64(n); }
+fn ns_net(n)    { return load64(n + 8); }
+fn ns_mount(n)  { return load64(n + 16); }
+fn ns_user(n)   { return load64(n + 24); }
+fn ns_uts(n)    { return load64(n + 32); }
+fn ns_ipc(n)    { return load64(n + 40); }
+fn ns_cgroup(n) { return load64(n + 48); }
+fn ns_time(n)   { return load64(n + 56); }
+
+fn ns_set_pid(n, v)    { store64(n, v); return 0; }
+fn ns_set_net(n, v)    { store64(n + 8, v); return 0; }
+fn ns_set_mount(n, v)  { store64(n + 16, v); return 0; }
+fn ns_set_user(n, v)   { store64(n + 24, v); return 0; }
+
+# ================================================================
+# SandboxConfig struct
+# Layout (88 bytes):
+#   +0  filesystem_rules (vec ptr)
+#   +8  network_access   (i64)
+#   +16 seccomp          (ptr or 0)
+#   +24 isolate_network  (i64, bool)
+#   +32 network_policy   (ptr or 0)
+#   +40 apparmor_profile (Str ptr or 0)
+#   +48 selinux_label    (Str ptr or 0)
+#   +56 encrypted_storage (ptr or 0)
+#   +64 masked_paths     (vec ptr)
+#   +72 readonly_paths   (vec ptr)
+#   +80 sysctl           (hashmap ptr)
+# ================================================================
+
+fn sandbox_config_new() {
+    var s = alloc(88);
+    store64(s, vec_new());
+    store64(s + 8, NET_NONE);
+    store64(s + 16, 0);
+    store64(s + 24, 1);
+    store64(s + 32, 0);
+    store64(s + 40, 0);
+    store64(s + 48, 0);
+    store64(s + 56, 0);
+    store64(s + 64, vec_new());
+    store64(s + 72, vec_new());
+    store64(s + 80, map_new());
+    return s;
+}
+
+fn sandbox_fs_rules(s)      { return load64(s); }
+fn sandbox_net_access(s)    { return load64(s + 8); }
+fn sandbox_seccomp(s)       { return load64(s + 16); }
+fn sandbox_isolate_net(s)   { return load64(s + 24); }
+fn sandbox_masked_paths(s)  { return load64(s + 64); }
+fn sandbox_readonly_paths(s){ return load64(s + 72); }
+fn sandbox_sysctl(s)        { return load64(s + 80); }
+
+fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
+fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
+fn sandbox_set_apparmor(s, v)     { store64(s + 40, v); return 0; }
+fn sandbox_set_selinux(s, v)      { store64(s + 48, v); return 0; }
+
+# ================================================================
+# SecurityContext struct
+# Layout (56 bytes):
+#   +0  agent_id              (ptr)
+#   +8  permissions           (vec ptr)
+#   +16 sandbox               (ptr)
+#   +24 run_as_user           (i64, 0 = unset)
+#   +32 run_as_group          (i64, 0 = unset)
+#   +40 readonly_root_fs      (i64, bool)
+#   +48 no_new_privs          (i64, bool)
+# ================================================================
+
+fn security_context_new(agent_id) {
+    var ctx = alloc(56);
+    store64(ctx, agent_id);
+    store64(ctx + 8, vec_new());
+    store64(ctx + 16, sandbox_config_new());
+    store64(ctx + 24, 0);
+    store64(ctx + 32, 0);
+    store64(ctx + 40, 0);
+    store64(ctx + 48, 1);   # no_new_privs = true by default
+    return ctx;
+}
+
+fn secctx_agent_id(c)        { return load64(c); }
+fn secctx_permissions(c)     { return load64(c + 8); }
+fn secctx_sandbox(c)         { return load64(c + 16); }
+fn secctx_run_as_user(c)     { return load64(c + 24); }
+fn secctx_run_as_group(c)    { return load64(c + 32); }
+fn secctx_readonly_root(c)   { return load64(c + 40); }
+fn secctx_no_new_privs(c)    { return load64(c + 48); }
+
+# ================================================================
+# SecurityPolicy struct
+# Layout (24 bytes):
+#   +0  name        (Str ptr)
+#   +8  effect      (i64)
+#   +16 permissions (vec ptr)
+# ================================================================
+
+fn security_policy_new(name, effect) {
+    var p = alloc(24);
+    store64(p, name);
+    store64(p + 8, effect);
+    store64(p + 16, vec_new());
+    return p;
+}
+
+fn secpol_name(p)        { return load64(p); }
+fn secpol_effect(p)      { return load64(p + 8); }
+fn secpol_permissions(p) { return load64(p + 16); }
+
+# ================================================================
+# CapabilitySet struct
+# Layout (40 bytes — 5 vec ptrs):
+#   +0  effective   +8 permitted  +16 inheritable
+#   +24 bounding    +32 ambient
+# ================================================================
+
+fn capability_set_new() {
+    var c = alloc(40);
+    store64(c, vec_new());
+    store64(c + 8, vec_new());
+    store64(c + 16, vec_new());
+    store64(c + 24, vec_new());
+    store64(c + 32, vec_new());
+    return c;
+}
+
+fn capset_effective(c)   { return load64(c); }
+fn capset_permitted(c)   { return load64(c + 8); }
+fn capset_inheritable(c) { return load64(c + 16); }
+fn capset_bounding(c)    { return load64(c + 24); }
+fn capset_ambient(c)     { return load64(c + 32); }
+
+# ================================================================
+# SandboxCapabilities struct
+# Layout (48 bytes):
+#   +0  seccomp_available     (i64, bool)
+#   +8  seccomp_mode          (i64)
+#   +16 landlock_available    (i64, bool)
+#   +24 landlock_abi          (i64)
+#   +32 cgroup_v2             (i64, bool)
+#   +40 namespaces_available  (i64, bool)
+# ================================================================
+
+fn sandbox_capabilities_new() {
+    var c = alloc(48);
+    var i = 0;
+    while (i < 48) {
+        store64(c + i, 0);
+        i = i + 8;
+    }
+    return c;
+}
+
+fn sbcap_seccomp(c)    { return load64(c); }
+fn sbcap_seccomp_mode(c) { return load64(c + 8); }
+fn sbcap_landlock(c)   { return load64(c + 16); }
+fn sbcap_ll_abi(c)     { return load64(c + 24); }
+fn sbcap_cgroup_v2(c)  { return load64(c + 32); }
+fn sbcap_namespaces(c) { return load64(c + 40); }
+
+# ================================================================
+# TokenPayload struct (JWT claims)
+# Layout (64 bytes):
+#   +0  sub          (Str ptr)
+#   +8  role         (i64)
+#   +16 permissions  (vec of Str)
+#   +24 iat          (i64, unix timestamp)
+#   +32 exp          (i64, unix timestamp)
+#   +40 jti          (Str ptr)
+#   +48 email        (Str ptr or 0)
+#   +56 display_name (Str ptr or 0)
+# ================================================================
+
+fn token_payload_new(sub, role) {
+    var t = alloc(64);
+    store64(t, sub);
+    store64(t + 8, role);
+    store64(t + 16, vec_new());
+    store64(t + 24, 0);
+    store64(t + 32, 0);
+    store64(t + 40, str_from(""));
+    store64(t + 48, 0);
+    store64(t + 56, 0);
+    return t;
+}
+
+fn token_sub(t)          { return load64(t); }
+fn token_role(t)         { return load64(t + 8); }
+fn token_permissions(t)  { return load64(t + 16); }
+fn token_iat(t)          { return load64(t + 24); }
+fn token_exp(t)          { return load64(t + 32); }
+fn token_jti(t)          { return load64(t + 40); }
+fn token_email(t)        { return load64(t + 48); }
+fn token_display_name(t) { return load64(t + 56); }
+
+# ================================================================
+# AuthContext struct
+# Layout (24 bytes):
+#   +0  agent_id    (ptr)
+#   +8  role        (i64)
+#   +16 permissions (vec ptr)
+# ================================================================
+
+fn auth_context_new(agent_id, role) {
+    var a = alloc(24);
+    store64(a, agent_id);
+    store64(a + 8, role);
+    store64(a + 16, vec_new());
+    return a;
+}
+
+fn authctx_agent_id(a)    { return load64(a); }
+fn authctx_role(a)        { return load64(a + 8); }
+fn authctx_permissions(a) { return load64(a + 16); }
+
+# ================================================================
+# Name helpers
+# ================================================================
+
+fn permission_name(p) {
+    if (p == PERM_FILE_READ)       { return "FileRead"; }
+    if (p == PERM_FILE_WRITE)      { return "FileWrite"; }
+    if (p == PERM_NETWORK_ACCESS)  { return "NetworkAccess"; }
+    if (p == PERM_PROCESS_SPAWN)   { return "ProcessSpawn"; }
+    if (p == PERM_LLM_INFERENCE)   { return "LlmInference"; }
+    if (p == PERM_AUDIT_READ)      { return "AuditRead"; }
+    return "Unknown";
+}
+
+fn role_name(r) {
+    if (r == ROLE_ADMIN)    { return "Admin"; }
+    if (r == ROLE_OPERATOR) { return "Operator"; }
+    if (r == ROLE_AUDITOR)  { return "Auditor"; }
+    if (r == ROLE_VIEWER)   { return "Viewer"; }
+    if (r == ROLE_SERVICE)  { return "Service"; }
+    return "Unknown";
+}

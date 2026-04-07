@@ -1,0 +1,18 @@
+enum ClassificationLevel { CLASS_PUBLIC; CLASS_INTERNAL; CLASS_CONFIDENTIAL; CLASS_RESTRICTED; }
+var PII_EMAIL = 0;
+var PII_SSN = 2;
+fn classification_result_new(level) {
+    var r = alloc(48);
+    store64(r, level);
+    store64(r + 8, level);
+    store64(r + 16, vec_new());
+    store64(r + 24, vec_new());
+    store64(r + 32, vec_new());
+    store64(r + 40, 0);
+    return r;
+}
+fn cresult_level(r)       { return load64(r); }
+fn cresult_auto_level(r)  { return load64(r + 8); }
+fn cresult_pii(r)         { return load64(r + 24); }
+fn cresult_keywords(r)    { return load64(r + 32); }
+fn cresult_confidence(r)  { return load64(r + 40); }

@@ -1,0 +1,6 @@
+name = "agnostik"
+version = "0.1.0"
+license = "GPL-3.0-only"
+entry = "src/main.cyr"
+output = "agnostik"
+description = "agnostik — Cyrius port"

@@ -1,0 +1,61 @@
+enum DeviceFamily { DEV_GPU; DEV_TPU; DEV_NPU; DEV_AI_ASIC; DEV_CPU; }
+var VENDOR_NVIDIA = 0;
+var HEALTH_OK = 0;
+fn accelerator_flags_new() {
+    var f = alloc(72);
+    var i = 0;
+    while (i < 72) { store64(f + i, 0); i = i + 8; }
+    return f;
+}
+fn aflags_cuda(f) { return load64(f); }
+fn aflags_set_cuda(f, v) { store64(f, v); return 0; }
+fn accelerator_device_new(index, name, vendor, family) {
+    var d = alloc(120);
+    store64(d, index);
+    store64(d + 8, name);
+    store64(d + 16, vendor);
+    store64(d + 24, family);
+    var i = 32;
+    while (i < 80) { store64(d + i, 0); i = i + 8; }
+    store64(d + 80, accelerator_flags_new());
+    store64(d + 88, 0);
+    store64(d + 96, 0);
+    store64(d + 104, 0 - 1);
+    store64(d + 112, HEALTH_OK);
+    return d;
+}
+fn adev_index(d)       { return load64(d); }
+fn adev_name(d)        { return load64(d + 8); }
+fn adev_vendor(d)      { return load64(d + 16); }
+fn adev_family(d)      { return load64(d + 24); }
+fn adev_vram_total(d)  { return load64(d + 32); }
+fn adev_utilization(d) { return load64(d + 48); }
+fn adev_flags(d)       { return load64(d + 80); }
+fn adev_health(d)      { return load64(d + 112); }
+fn adev_set_vram_total(d, v)  { store64(d + 32, v); return 0; }
+fn adev_set_utilization(d, v) { store64(d + 48, v); return 0; }
+fn adev_set_health(d, v)      { store64(d + 112, v); return 0; }
+fn accelerator_summary_new() {
+    var s = alloc(16);
+    store64(s, vec_new());
+    store64(s + 8, 0);
+    return s;
+}
+fn asum_devices(s)    { return load64(s); }
+fn asum_total_vram(s) { return load64(s + 8); }
+fn asum_add_device(s, dev) {
+    vec_push(load64(s), dev);
+    store64(s + 8, load64(s + 8) + adev_vram_total(dev));
+    return 0;
+}
+fn asum_by_family(s, family) {
+    var devices = load64(s);
+    var result = vec_new();
+    var i = 0;
+    while (i < vec_len(devices)) {
+        var dev = vec_get(devices, i);
+        if (adev_family(dev) == family) { vec_push(result, dev); }
+        i = i + 1;
+    }
+    return result;
+}

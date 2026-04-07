@@ -1,0 +1,233 @@
+enum AgentType {
+    AGENT_TYPE_SYSTEM;
+    AGENT_TYPE_USER;
+    AGENT_TYPE_SERVICE;
+}
+enum AgentStatus {
+    AGENT_PENDING;
+    AGENT_STARTING;
+    AGENT_RUNNING;
+    AGENT_PAUSED;
+    AGENT_STOPPING;
+    AGENT_STOPPED;
+    AGENT_RESTARTING;
+    AGENT_TERMINATED;
+    AGENT_FAILED;
+}
+enum RestartPolicy {
+    RESTART_NEVER;
+    RESTART_ALWAYS;
+    RESTART_ON_FAILURE;
+}
+enum ProbeType {
+    PROBE_LIVENESS_READINESS;
+    PROBE_LIVENESS;
+    PROBE_READINESS;
+    PROBE_STARTUP;
+}
+enum StopReason {
+    STOP_USER_REQUESTED;
+    STOP_RESOURCE_EXHAUSTED;
+    STOP_ERROR;
+    STOP_TIMEOUT;
+    STOP_SYSTEM_SHUTDOWN;
+}
+fn stop_reason_new(kind, message) {
+    return tagged_new(kind, message);
+}
+fn stop_reason_kind(sr) { return tag(sr); }
+fn stop_reason_message(sr) { return payload(sr); }
+enum CircuitBreakerState {
+    CB_CLOSED;
+    CB_OPEN;
+    CB_HALF_OPEN;
+}
+fn resource_limits_new() {
+    var r = alloc(48);
+    store64(r, 268435456);     # 256 MB default
+    store64(r + 8, 3600);      # 1 hour default
+    store64(r + 16, 256);      # 256 fds
+    store64(r + 24, 64);       # 64 processes
+    store64(r + 32, 0);
+    store64(r + 40, 0);
+    return r;
+}
+fn rlim_max_memory(r)           { return load64(r); }
+fn rlim_max_cpu_time(r)         { return load64(r + 8); }
+fn rlim_max_fds(r)              { return load64(r + 16); }
+fn rlim_max_procs(r)            { return load64(r + 24); }
+fn rlim_max_disk(r)             { return load64(r + 32); }
+fn rlim_net_bandwidth(r)        { return load64(r + 40); }
+fn rlim_set_max_memory(r, v)    { store64(r, v); return 0; }
+fn rlim_set_max_cpu(r, v)       { store64(r + 8, v); return 0; }
+fn rlim_set_max_fds(r, v)       { store64(r + 16, v); return 0; }
+fn rlim_set_max_procs(r, v)     { store64(r + 24, v); return 0; }
+fn rlim_set_max_disk(r, v)      { store64(r + 32, v); return 0; }
+fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
+fn resource_usage_new() {
+    var u = alloc(32);
+    store64(u, 0);
+    store64(u + 8, 0);
+    store64(u + 16, 0);
+    store64(u + 24, 0);
+    return u;
+}
+fn rusage_memory(u)  { return load64(u); }
+fn rusage_cpu(u)     { return load64(u + 8); }
+fn rusage_fds(u)     { return load64(u + 16); }
+fn rusage_procs(u)   { return load64(u + 24); }
+fn health_check_new() {
+    var h = alloc(40);
+    store64(h, PROBE_LIVENESS_READINESS);
+    store64(h + 8, 30);    # 30s interval
+    store64(h + 16, 5);    # 5s timeout
+    store64(h + 24, 3);    # 3 retries
+    store64(h + 32, 0);    # no initial delay
+    return h;
+}
+fn hc_probe_type(h)      { return load64(h); }
+fn hc_interval(h)        { return load64(h + 8); }
+fn hc_timeout(h)         { return load64(h + 16); }
+fn hc_retries(h)         { return load64(h + 24); }
+fn hc_initial_delay(h)   { return load64(h + 32); }
+fn lifecycle_hook_new(cmd_vec, timeout) {
+    var h = alloc(16);
+    store64(h, cmd_vec);
+    store64(h + 8, timeout);
+    return h;
+}
+fn lhook_command(h)  { return load64(h); }
+fn lhook_timeout(h)  { return load64(h + 8); }
+fn lifecycle_hooks_new() {
+    var h = alloc(32);
+    store64(h, 0);
+    store64(h + 8, 0);
+    store64(h + 16, 0);
+    store64(h + 24, 0);
+    return h;
+}
+fn lhooks_pre_start(h)  { return load64(h); }
+fn lhooks_post_start(h) { return load64(h + 8); }
+fn lhooks_pre_stop(h)   { return load64(h + 16); }
+fn lhooks_post_stop(h)  { return load64(h + 24); }
+fn lhooks_set_pre_start(h, v)  { store64(h, v); return 0; }
+fn lhooks_set_post_start(h, v) { store64(h + 8, v); return 0; }
+fn lhooks_set_pre_stop(h, v)   { store64(h + 16, v); return 0; }
+fn lhooks_set_post_stop(h, v)  { store64(h + 24, v); return 0; }
+fn agent_config_new(name) {
+    var c = alloc(104);
+    store64(c, name);
+    store64(c + 8, AGENT_TYPE_USER);
+    store64(c + 16, resource_limits_new());
+    store64(c + 24, 0);   # sandbox set later
+    store64(c + 32, vec_new());
+    store64(c + 40, 0);
+    store64(c + 48, RESTART_NEVER);
+    store64(c + 56, 3);
+    store64(c + 64, 0);
+    store64(c + 72, 0);
+    store64(c + 80, 0);
+    store64(c + 88, 0);
+    store64(c + 96, 0);
+    return c;
+}
+fn aconf_name(c)             { return load64(c); }
+fn aconf_type(c)             { return load64(c + 8); }
+fn aconf_limits(c)           { return load64(c + 16); }
+fn aconf_sandbox(c)          { return load64(c + 24); }
+fn aconf_permissions(c)      { return load64(c + 32); }
+fn aconf_restart_policy(c)   { return load64(c + 48); }
+fn aconf_max_restarts(c)     { return load64(c + 56); }
+fn aconf_health_check(c)     { return load64(c + 64); }
+fn aconf_lifecycle_hooks(c)  { return load64(c + 88); }
+fn aconf_set_type(c, v)             { store64(c + 8, v); return 0; }
+fn aconf_set_sandbox(c, v)          { store64(c + 24, v); return 0; }
+fn aconf_set_restart_policy(c, v)   { store64(c + 48, v); return 0; }
+fn aconf_set_max_restarts(c, v)     { store64(c + 56, v); return 0; }
+fn aconf_set_health_check(c, v)     { store64(c + 64, v); return 0; }
+fn aconf_set_lifecycle_hooks(c, v)  { store64(c + 88, v); return 0; }
+fn agent_rate_limit_new() {
+    var r = alloc(24);
+    store64(r, 0);
+    store64(r + 8, 0);
+    store64(r + 16, 0);
+    return r;
+}
+fn arl_tokens_per_hour(r) { return load64(r); }
+fn arl_requests_per_min(r) { return load64(r + 8); }
+fn arl_concurrent(r)       { return load64(r + 16); }
+fn agent_event_new(id, event_type, payload) {
+    var e = alloc(24);
+    store64(e, id);
+    store64(e + 8, event_type);
+    store64(e + 16, payload);
+    return e;
+}
+fn aevent_agent_id(e)   { return load64(e); }
+fn aevent_type(e)       { return load64(e + 8); }
+fn aevent_payload(e)    { return load64(e + 16); }
+fn agent_info_new(id, name, atype, status) {
+    var info = alloc(32);
+    store64(info, id);
+    store64(info + 8, name);
+    store64(info + 16, atype);
+    store64(info + 24, status);
+    return info;
+}
+fn ainfo_id(i)     { return load64(i); }
+fn ainfo_name(i)   { return load64(i + 8); }
+fn ainfo_type(i)   { return load64(i + 16); }
+fn ainfo_status(i) { return load64(i + 24); }
+fn agent_stats_new() {
+    var s = alloc(24);
+    store64(s, 0);
+    store64(s + 8, 0);
+    store64(s + 16, 0);
+    return s;
+}
+fn astats_requests(s)  { return load64(s); }
+fn astats_tokens(s)    { return load64(s + 8); }
+fn astats_uptime(s)    { return load64(s + 16); }
+fn agent_manifest_new(name) {
+    var m = alloc(80);
+    store64(m, name);
+    store64(m + 8, str_from(""));
+    store64(m + 16, str_from(""));
+    store64(m + 24, version_default());
+    store64(m + 32, str_from(""));
+    store64(m + 40, vec_new());
+    store64(m + 48, resource_limits_new());
+    store64(m + 56, vec_new());
+    store64(m + 64, vec_new());
+    store64(m + 72, map_new());
+    return m;
+}
+fn amanifest_name(m)        { return load64(m); }
+fn amanifest_description(m) { return load64(m + 8); }
+fn amanifest_author(m)      { return load64(m + 16); }
+fn amanifest_version(m)     { return load64(m + 24); }
+fn amanifest_homepage(m)    { return load64(m + 32); }
+fn amanifest_permissions(m) { return load64(m + 40); }
+fn amanifest_limits(m)      { return load64(m + 48); }
+fn task_id_new()      { return agent_id_new(); }
+fn task_id_to_str(t)  { return agent_id_to_str(t); }
+fn execution_id_new()      { return agent_id_new(); }
+fn execution_id_to_str(e)  { return agent_id_to_str(e); }
+fn agent_status_name(s) {
+    if (s == AGENT_PENDING)     { return "Pending"; }
+    if (s == AGENT_STARTING)    { return "Starting"; }
+    if (s == AGENT_RUNNING)     { return "Running"; }
+    if (s == AGENT_PAUSED)      { return "Paused"; }
+    if (s == AGENT_STOPPING)    { return "Stopping"; }
+    if (s == AGENT_STOPPED)     { return "Stopped"; }
+    if (s == AGENT_RESTARTING)  { return "Restarting"; }
+    if (s == AGENT_TERMINATED)  { return "Terminated"; }
+    if (s == AGENT_FAILED)      { return "Failed"; }
+    return "Unknown";
+}
+fn agent_type_name(t) {
+    if (t == AGENT_TYPE_SYSTEM)  { return "System"; }
+    if (t == AGENT_TYPE_USER)    { return "User"; }
+    if (t == AGENT_TYPE_SERVICE) { return "Service"; }
+    return "Unknown";
+}

@@ -1,0 +1,247 @@
+fn agent_id_new() {
+    var id = alloc(16);
+    # Read 16 random bytes from /dev/urandom
+    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
+    if (fd < 0) {
+        # Fallback: use clock as pseudo-random
+        var buf[16];
+        syscall(228, 1, &buf);
+        store64(id, load64(&buf));
+        store64(id + 8, load64(&buf + 8));
+    } else {
+        syscall(SYS_READ, fd, id, 16);
+        syscall(SYS_CLOSE, fd);
+    }
+    # Set UUID v4 version bits (byte 6: 0100xxxx, byte 8: 10xxxxxx)
+    var b6 = load8(id + 6);
+    b6 = (b6 & 0x0F) | 0x40;
+    store8(id + 6, b6);
+    var b8 = load8(id + 8);
+    b8 = (b8 & 0x3F) | 0x80;
+    store8(id + 8, b8);
+    return id;
+}
+fn agent_id_high(id) { return load64(id); }
+fn agent_id_low(id)  { return load64(id + 8); }
+fn agent_id_eq(a, b) {
+    if (load64(a) != load64(b)) { return 0; }
+    if (load64(a + 8) != load64(b + 8)) { return 0; }
+    return 1;
+}
+fn _hex_byte(buf, offset, byte) {
+    var hi = byte >> 4;
+    var lo = byte & 0x0F;
+    if (hi < 10) { store8(buf + offset, hi + 48); }
+    else { store8(buf + offset, hi + 87); }
+    if (lo < 10) { store8(buf + offset + 1, lo + 48); }
+    else { store8(buf + offset + 1, lo + 87); }
+    return 0;
+}
+fn agent_id_to_str(id) {
+    # UUID format: 8-4-4-4-12 = 36 chars
+    var buf = alloc(37);
+    var pos = 0;
+    var i = 0;
+    while (i < 16) {
+        if (i == 4) { store8(buf + pos, 45); pos = pos + 1; }
+        if (i == 6) { store8(buf + pos, 45); pos = pos + 1; }
+        if (i == 8) { store8(buf + pos, 45); pos = pos + 1; }
+        if (i == 10) { store8(buf + pos, 45); pos = pos + 1; }
+        _hex_byte(buf, pos, load8(id + i));
+        pos = pos + 2;
+        i = i + 1;
+    }
+    store8(buf + pos, 0);
+    return str_new(buf, 36);
+}
+fn agent_id_from_str(s) {
+    var data = str_data(s);
+    var slen = str_len(s);
+    if (slen != 36) { return err_invalid_argument(str_from("invalid agent id: expected UUID")); }
+    var id = alloc(16);
+    var si = 0;
+    var bi = 0;
+    while (bi < 16) {
+        # Skip dashes
+        if (si == 8) { si = si + 1; }
+        if (si == 13) { si = si + 1; }
+        if (si == 18) { si = si + 1; }
+        if (si == 23) { si = si + 1; }
+        var hi = load8(data + si);
+        var lo = load8(data + si + 1);
+        # Convert hex char → nibble
+        if (hi >= 48 && hi <= 57) { hi = hi - 48; }
+        elif (hi >= 97 && hi <= 102) { hi = hi - 87; }
+        elif (hi >= 65 && hi <= 70) { hi = hi - 55; }
+        else { return err_invalid_argument(str_from("invalid hex in agent id")); }
+        if (lo >= 48 && lo <= 57) { lo = lo - 48; }
+        elif (lo >= 97 && lo <= 102) { lo = lo - 87; }
+        elif (lo >= 65 && lo <= 70) { lo = lo - 55; }
+        else { return err_invalid_argument(str_from("invalid hex in agent id")); }
+        store8(id + bi, hi << 4 | lo);
+        si = si + 2;
+        bi = bi + 1;
+    }
+    return Ok(id);
+}
+fn user_id_new()              { return agent_id_new(); }
+fn user_id_high(id)           { return agent_id_high(id); }
+fn user_id_low(id)            { return agent_id_low(id); }
+fn user_id_eq(a, b)           { return agent_id_eq(a, b); }
+fn user_id_to_str(id)         { return agent_id_to_str(id); }
+fn user_id_from_str(s)        { return agent_id_from_str(s); }
+fn version_new(major, minor, patch) {
+    var v = alloc(40);
+    store64(v, major);
+    store64(v + 8, minor);
+    store64(v + 16, patch);
+    store64(v + 24, 0);
+    store64(v + 32, 0);
+    return v;
+}
+fn version_default() { return version_new(0, 0, 0); }
+fn version_major(v)      { return load64(v); }
+fn version_minor(v)      { return load64(v + 8); }
+fn version_patch(v)      { return load64(v + 16); }
+fn version_prerelease(v) { return load64(v + 24); }
+fn version_build(v)      { return load64(v + 32); }
+fn version_set_prerelease(v, pre) { store64(v + 24, pre); return 0; }
+fn version_set_build(v, b)        { store64(v + 32, b); return 0; }
+fn version_to_str(v) {
+    var sb = str_builder_new();
+    str_builder_add_int(sb, version_major(v));
+    str_builder_add_cstr(sb, ".");
+    str_builder_add_int(sb, version_minor(v));
+    str_builder_add_cstr(sb, ".");
+    str_builder_add_int(sb, version_patch(v));
+    var pre = version_prerelease(v);
+    if (pre != 0) {
+        str_builder_add_cstr(sb, "-");
+        str_builder_add(sb, pre);
+    }
+    var bld = version_build(v);
+    if (bld != 0) {
+        str_builder_add_cstr(sb, "+");
+        str_builder_add(sb, bld);
+    }
+    return str_builder_build(sb);
+}
+fn version_from_str(s) {
+    var data = str_data(s);
+    var slen = str_len(s);
+    var v = alloc(40);
+    store64(v + 24, 0);
+    store64(v + 32, 0);
+    # Find first dot
+    var i = 0;
+    var dot1 = 0 - 1;
+    while (i < slen) {
+        if (load8(data + i) == 46) { dot1 = i; break; }
+        i = i + 1;
+    }
+    if (dot1 < 0) { return err_invalid_argument(str_from("invalid version: missing dot")); }
+    # Find second dot
+    i = dot1 + 1;
+    var dot2 = 0 - 1;
+    while (i < slen) {
+        if (load8(data + i) == 46) { dot2 = i; break; }
+        i = i + 1;
+    }
+    if (dot2 < 0) { return err_invalid_argument(str_from("invalid version: missing second dot")); }
+    # Find pre-release (-) or build (+) separator
+    var patch_end = slen;
+    i = dot2 + 1;
+    while (i < slen) {
+        var ch = load8(data + i);
+        if (ch == 45) { patch_end = i; break; }
+        if (ch == 43) { patch_end = i; break; }
+        i = i + 1;
+    }
+    # Parse major
+    var major_s = str_new(data, dot1);
+    var major = str_to_int(major_s);
+    store64(v, major);
+    # Parse minor
+    var minor_s = str_new(data + dot1 + 1, dot2 - dot1 - 1);
+    var minor = str_to_int(minor_s);
+    store64(v + 8, minor);
+    # Parse patch
+    var patch_s = str_new(data + dot2 + 1, patch_end - dot2 - 1);
+    var patch = str_to_int(patch_s);
+    store64(v + 16, patch);
+    # Parse prerelease and build if present
+    if (patch_end < slen) {
+        var sep = load8(data + patch_end);
+        if (sep == 45) {
+            # Pre-release: find +build if any
+            var build_start = slen;
+            i = patch_end + 1;
+            while (i < slen) {
+                if (load8(data + i) == 43) { build_start = i; break; }
+                i = i + 1;
+            }
+            var pre = str_new(data + patch_end + 1, build_start - patch_end - 1);
+            store64(v + 24, pre);
+            if (build_start < slen) {
+                var bld = str_new(data + build_start + 1, slen - build_start - 1);
+                store64(v + 32, bld);
+            }
+        }
+        elif (sep == 43) {
+            var bld = str_new(data + patch_end + 1, slen - patch_end - 1);
+            store64(v + 32, bld);
+        }
+    }
+    return Ok(v);
+}
+fn version_eq(a, b) {
+    if (version_major(a) != version_major(b)) { return 0; }
+    if (version_minor(a) != version_minor(b)) { return 0; }
+    if (version_patch(a) != version_patch(b)) { return 0; }
+    return 1;
+}
+enum MessageType {
+    MSG_COMMAND;
+    MSG_RESPONSE;
+    MSG_EVENT;
+    MSG_HEARTBEAT;
+}
+enum SystemStatus {
+    STATUS_HEALTHY;
+    STATUS_DEGRADED;
+    STATUS_CRITICAL;
+    STATUS_UNKNOWN;
+}
+fn capabilities_new() {
+    var c = alloc(32);
+    store64(c, 0);
+    store64(c + 8, 0);
+    store64(c + 16, 0);
+    store64(c + 24, 0);
+    return c;
+}
+fn capabilities_llm(c)            { return load64(c); }
+fn capabilities_virtualization(c) { return load64(c + 8); }
+fn capabilities_gpu(c)            { return load64(c + 16); }
+fn capabilities_tpm(c)            { return load64(c + 24); }
+fn capabilities_set_llm(c, v)            { store64(c, v); return 0; }
+fn capabilities_set_virtualization(c, v) { store64(c + 8, v); return 0; }
+fn capabilities_set_gpu(c, v)            { store64(c + 16, v); return 0; }
+fn capabilities_set_tpm(c, v)            { store64(c + 24, v); return 0; }
+fn capabilities_eq(a, b) {
+    if (load64(a) != load64(b)) { return 0; }
+    if (load64(a + 8) != load64(b + 8)) { return 0; }
+    if (load64(a + 16) != load64(b + 16)) { return 0; }
+    if (load64(a + 24) != load64(b + 24)) { return 0; }
+    return 1;
+}
+fn component_config_new(name, enabled) {
+    var c = alloc(24);
+    store64(c, name);
+    store64(c + 8, enabled);
+    store64(c + 16, map_new());
+    return c;
+}
+fn component_config_name(c)     { return load64(c); }
+fn component_config_enabled(c)  { return load64(c + 8); }
+fn component_config_settings(c) { return load64(c + 16); }

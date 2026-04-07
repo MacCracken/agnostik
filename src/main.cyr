@@ -1,0 +1,198 @@
+# agnostik — shared types and domain primitives for AGNOS
+# Cyrius port from 7121 lines of Rust
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/assert.cyr"
+
+# Inline now_ns from bench.cyr (avoids including full bench lib)
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+include "src/error.cyr"
+include "src/types.cyr"
+include "src/agent.cyr"
+include "src/security.cyr"
+include "src/telemetry.cyr"
+include "src/audit.cyr"
+include "src/llm.cyr"
+include "src/secrets.cyr"
+include "src/config.cyr"
+include "src/classification.cyr"
+include "src/validation.cyr"
+include "src/hardware.cyr"
+
+fn test_error() {
+    var e = agnostik_err_new(ERR_TIMEOUT, 0);
+    assert_eq(agnostik_err_kind(e), ERR_TIMEOUT, "error kind");
+    assert_eq(agnostik_err_code(e), CODE_TIMEOUT, "error code");
+    assert_eq(agnostik_err_is_retriable(e), 1, "timeout retriable");
+    var e2 = agnostik_err_new(ERR_PERMISSION_DENIED, str_from("shadow"));
+    assert_eq(agnostik_err_is_retriable(e2), 0, "perm not retriable");
+    var ok = Ok(42);
+    assert_eq(is_ok(ok), 1, "Ok is ok");
+    assert_eq(payload(ok), 42, "Ok payload");
+    var err = err_timeout();
+    assert_eq(is_ok(err), 0, "Err not ok");
+    return 0;
+}
+fn test_types() {
+    var id1 = agent_id_new();
+    var id2 = agent_id_new();
+    assert_eq(agent_id_eq(id1, id1), 1, "id self-eq");
+    assert_eq(agent_id_eq(id1, id2), 0, "id unique");
+    var s = agent_id_to_str(id1);
+    assert_eq(str_len(s), 36, "id str len");
+    var parsed = agent_id_from_str(s);
+    assert_eq(is_ok(parsed), 1, "id parse ok");
+    assert_eq(agent_id_eq(id1, payload(parsed)), 1, "id roundtrip");
+    var v = version_new(1, 2, 3);
+    assert_eq(version_major(v), 1, "ver major");
+    var vs = version_to_str(v);
+    assert_eq(str_eq(vs, str_from("1.2.3")), 1, "ver to_str");
+    var vr = version_from_str(str_from("0.90.0"));
+    assert_eq(is_ok(vr), 1, "ver parse ok");
+    assert_eq(version_minor(payload(vr)), 90, "ver minor 90");
+    var caps = capabilities_new();
+    assert_eq(capabilities_gpu(caps), 0, "caps default");
+    capabilities_set_gpu(caps, 1);
+    assert_eq(capabilities_gpu(caps), 1, "caps set");
+    return 0;
+}
+fn test_agent() {
+    var rl = resource_limits_new();
+    assert_eq(rlim_max_memory(rl), 268435456, "mem 256MB");
+    var cfg = agent_config_new(str_from("test"));
+    assert_eq(aconf_type(cfg), AGENT_TYPE_USER, "type User");
+    assert_eq(aconf_restart_policy(cfg), RESTART_NEVER, "restart Never");
+    var hc = health_check_new();
+    assert_eq(hc_interval(hc), 30, "hc interval");
+    assert_eq(streq(agent_status_name(AGENT_RUNNING), "Running"), 1, "status name");
+    return 0;
+}
+fn test_security() {
+    var sb = sandbox_config_new();
+    assert_eq(sandbox_net_access(sb), NET_NONE, "net none");
+    assert_eq(sandbox_isolate_net(sb), 1, "isolate true");
+    var id = agent_id_new();
+    var ctx = security_context_new(id);
+    assert_eq(secctx_no_new_privs(ctx), 1, "no_new_privs");
+    var ns = namespace_config_new();
+    ns_set_pid(ns, 1);
+    assert_eq(ns_pid(ns), 1, "ns pid");
+    var cg = cgroup_limits_new();
+    cglim_set_memory_max(cg, 1073741824);
+    assert_eq(cglim_memory_max(cg), 1073741824, "cgroup 1GB");
+    assert_eq(streq(role_name(ROLE_ADMIN), "Admin"), 1, "role name");
+    return 0;
+}
+fn test_telemetry() {
+    var ctx = trace_context_new();
+    assert_eq(tctx_is_sampled(ctx), 1, "sampled");
+    var child = tctx_child(ctx);
+    assert_eq(trace_id_eq(tctx_trace_id(ctx), tctx_trace_id(child)), 1, "child trace");
+    assert_eq(span_id_eq(tctx_span_id(ctx), tctx_span_id(child)), 0, "child span");
+    var tid = trace_id_new();
+    var ts = trace_id_to_str(tid);
+    assert_eq(str_len(ts), 32, "tid len");
+    var tp = tctx_to_traceparent(ctx);
+    assert_eq(str_len(tp), 55, "traceparent len");
+    assert(LOG_TRACE < LOG_DEBUG, "trace<debug");
+    assert(LOG_ERROR < LOG_FATAL, "error<fatal");
+    return 0;
+}
+fn test_audit() {
+    var ig = integrity_fields_genesis(str_from("sig"));
+    assert_eq(integrity_is_genesis(ig), 1, "genesis");
+    var id = agent_id_new();
+    var entry = audit_entry_new(str_from("e1"), id, str_from("read"), AUDIT_INFO);
+    assert_eq(aentry_result(entry), AUDIT_SUCCESS, "default success");
+    aentry_set_result(entry, AUDIT_DENIED);
+    assert_eq(aentry_result(entry), AUDIT_DENIED, "set denied");
+    return 0;
+}
+fn test_llm() {
+    var msg = message_text(ROLE_USER, str_from("Hello"));
+    assert_eq(msg_role(msg), ROLE_USER, "role user");
+    assert_eq(vec_len(msg_content(msg)), 1, "1 block");
+    var tu = token_usage_new();
+    tusage_set_total(tu, 150);
+    assert_eq(tusage_total(tu), 150, "usage 150");
+    var req = inference_request_new(str_from("llama3"));
+    ireq_set_max_tokens(req, 1024);
+    assert_eq(ireq_max_tokens(req), 1024, "max_tokens");
+    assert_eq(streq(llm_provider_name(LLM_ANTHROPIC), "Anthropic"), 1, "provider");
+    return 0;
+}
+fn test_secrets() {
+    var s = secret_new(str_from("my-key-12345"));
+    assert_eq(secret_len(s), 12, "secret len");
+    var exposed = secret_expose(s);
+    assert_eq(str_eq(exposed, str_from("my-key-12345")), 1, "expose");
+    secret_destroy(s);
+    assert_eq(secret_len(s), 0, "zeroed");
+    return 0;
+}
+fn test_config() {
+    var cfg = agnos_config_new();
+    assert_eq(acfg_profile(cfg), ENV_DEVELOPMENT, "dev default");
+    acfg_set_profile(cfg, ENV_PRODUCTION);
+    assert_eq(acfg_profile(cfg), ENV_PRODUCTION, "set prod");
+    return 0;
+}
+fn test_classification() {
+    var r = classification_result_new(CLASS_CONFIDENTIAL);
+    assert_eq(cresult_level(r), CLASS_CONFIDENTIAL, "confidential");
+    vec_push(cresult_pii(r), PII_EMAIL);
+    assert_eq(vec_len(cresult_pii(r)), 1, "1 pii");
+    assert(CLASS_PUBLIC < CLASS_RESTRICTED, "pub<restricted");
+    return 0;
+}
+fn test_validation() {
+    var r = validation_result_new(1, str_from("clean"));
+    assert_eq(vresult_valid(r), 1, "valid");
+    vresult_set_blocked(r, str_from("sql"));
+    assert_eq(vresult_blocked(r), 1, "blocked");
+    return 0;
+}
+fn test_hardware() {
+    var dev = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
+    adev_set_vram_total(dev, 24576);
+    assert_eq(adev_vram_total(dev), 24576, "vram");
+    assert_eq(adev_health(dev), HEALTH_OK, "health ok");
+    var sum = accelerator_summary_new();
+    asum_add_device(sum, dev);
+    assert_eq(asum_total_vram(sum), 24576, "sum vram");
+    var gpus = asum_by_family(sum, DEV_GPU);
+    assert_eq(vec_len(gpus), 1, "1 GPU");
+    return 0;
+}
+fn main() {
+    alloc_init();
+    println("=== agnostik test suite ===");
+    test_error();
+    test_types();
+    test_agent();
+    test_security();
+    test_telemetry();
+    test_audit();
+    test_llm();
+    test_secrets();
+    test_config();
+    test_classification();
+    test_validation();
+    test_hardware();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

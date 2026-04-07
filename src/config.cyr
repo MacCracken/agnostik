@@ -1,0 +1,65 @@
+enum EnvironmentProfile {
+    ENV_DEVELOPMENT;
+    ENV_TESTING;
+    ENV_STAGING;
+    ENV_CANARY;
+    ENV_PRODUCTION;
+    ENV_EDGE;
+}
+fn env_profile_name(p) {
+    if (p == ENV_DEVELOPMENT) { return "Development"; }
+    if (p == ENV_TESTING)     { return "Testing"; }
+    if (p == ENV_STAGING)     { return "Staging"; }
+    if (p == ENV_CANARY)      { return "Canary"; }
+    if (p == ENV_PRODUCTION)  { return "Production"; }
+    if (p == ENV_EDGE)        { return "Edge"; }
+    return "Unknown";
+}
+fn agnos_config_new() {
+    var c = alloc(40);
+    store64(c, ENV_DEVELOPMENT);
+    store64(c + 8, str_from(""));
+    store64(c + 16, map_new());
+    store64(c + 24, 0);
+    store64(c + 32, 0);
+    return c;
+}
+fn acfg_profile(c)      { return load64(c); }
+fn acfg_hostname(c)     { return load64(c + 8); }
+fn acfg_components(c)   { return load64(c + 16); }
+fn acfg_generation(c)   { return load64(c + 24); }
+fn acfg_content_hash(c) { return load64(c + 32); }
+fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
+fn acfg_set_hostname(c, v) { store64(c + 8, v); return 0; }
+fn edge_overrides_new() {
+    var e = alloc(24);
+    store64(e, 0);
+    store64(e + 8, 0);
+    store64(e + 16, 0);
+    return e;
+}
+fn eovr_max_memory(e) { return load64(e); }
+fn eovr_max_cpu(e)    { return load64(e + 8); }
+fn eovr_max_agents(e) { return load64(e + 16); }
+fn profile_definition_new(name, profile) {
+    var p = alloc(40);
+    store64(p, name);
+    store64(p + 8, profile);
+    store64(p + 16, 0 - 1);
+    store64(p + 24, 0);
+    store64(p + 32, map_new());
+    return p;
+}
+fn profdef_name(p)           { return load64(p); }
+fn profdef_profile(p)        { return load64(p + 8); }
+fn profdef_inherits_from(p)  { return load64(p + 16); }
+fn profdef_edge_overrides(p) { return load64(p + 24); }
+fn profdef_settings(p)       { return load64(p + 32); }
+fn fleet_config_new() {
+    var f = alloc(16);
+    store64(f, vec_new());
+    store64(f + 8, 0);
+    return f;
+}
+fn fleet_profiles(f)     { return load64(f); }
+fn fleet_default(f)      { return load64(f + 8); }

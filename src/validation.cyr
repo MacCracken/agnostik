@@ -1,0 +1,53 @@
+enum ValidationSeverity {
+    VSEV_LOW;
+    VSEV_MEDIUM;
+    VSEV_HIGH;
+}
+fn validation_warning_new(code, message, severity) {
+    var w = alloc(40);
+    store64(w, code);
+    store64(w + 8, message);
+    store64(w + 16, severity);
+    store64(w + 24, 0);
+    store64(w + 32, 0);
+    return w;
+}
+fn vwarn_code(w)     { return load64(w); }
+fn vwarn_message(w)  { return load64(w + 8); }
+fn vwarn_severity(w) { return load64(w + 16); }
+fn vwarn_position(w) { return load64(w + 24); }
+fn vwarn_pattern(w)  { return load64(w + 32); }
+fn injection_scores_new() {
+    var s = alloc(40);
+    var i = 0;
+    while (i < 40) { store64(s + i, 0); i = i + 8; }
+    return s;
+}
+fn iscore_sql(s)              { return load64(s); }
+fn iscore_xss(s)              { return load64(s + 8); }
+fn iscore_command(s)          { return load64(s + 16); }
+fn iscore_path_traversal(s)   { return load64(s + 24); }
+fn iscore_prompt_injection(s) { return load64(s + 32); }
+fn validation_result_new(valid, sanitized) {
+    var r = alloc(56);
+    store64(r, valid);
+    store64(r + 8, sanitized);
+    store64(r + 16, vec_new());
+    store64(r + 24, 0);
+    store64(r + 32, 0);
+    store64(r + 40, 0);
+    store64(r + 48, 0);
+    return r;
+}
+fn vresult_valid(r)            { return load64(r); }
+fn vresult_sanitized(r)        { return load64(r + 8); }
+fn vresult_warnings(r)         { return load64(r + 16); }
+fn vresult_blocked(r)          { return load64(r + 24); }
+fn vresult_block_reason(r)     { return load64(r + 32); }
+fn vresult_injection_score(r)  { return load64(r + 40); }
+fn vresult_injection_scores(r) { return load64(r + 48); }
+fn vresult_set_blocked(r, reason) {
+    store64(r + 24, 1);
+    store64(r + 32, reason);
+    return 0;
+}

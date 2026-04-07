@@ -1,0 +1,98 @@
+enum AuditSeverity {
+    AUDIT_DEBUG;
+    AUDIT_INFO;
+    AUDIT_WARNING;
+    AUDIT_ERROR;
+    AUDIT_CRITICAL;
+}
+fn audit_severity_name(s) {
+    if (s == AUDIT_DEBUG)    { return "Debug"; }
+    if (s == AUDIT_INFO)     { return "Info"; }
+    if (s == AUDIT_WARNING)  { return "Warning"; }
+    if (s == AUDIT_ERROR)    { return "Error"; }
+    if (s == AUDIT_CRITICAL) { return "Critical"; }
+    return "Unknown";
+}
+enum AuditResult {
+    AUDIT_SUCCESS;
+    AUDIT_FAILURE;
+    AUDIT_DENIED;
+}
+fn audit_result_name(r) {
+    if (r == AUDIT_SUCCESS) { return "Success"; }
+    if (r == AUDIT_FAILURE) { return "Failure"; }
+    if (r == AUDIT_DENIED)  { return "Denied"; }
+    return "Unknown";
+}
+var GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
+fn integrity_fields_genesis(signature) {
+    var f = alloc(24);
+    store64(f, version_default());
+    store64(f + 8, signature);
+    store64(f + 16, str_from(GENESIS_HASH));
+    return f;
+}
+fn integrity_fields_new(version, signature, prev_hash) {
+    var f = alloc(24);
+    store64(f, version);
+    store64(f + 8, signature);
+    store64(f + 16, prev_hash);
+    return f;
+}
+fn integrity_version(f)   { return load64(f); }
+fn integrity_signature(f) { return load64(f + 8); }
+fn integrity_prev_hash(f) { return load64(f + 16); }
+fn integrity_is_genesis(f) {
+    var hash = load64(f + 16);
+    return str_eq(hash, str_from(GENESIS_HASH));
+}
+fn audit_entry_new(id, agent_id, action, severity) {
+    var e = alloc(112);
+    store64(e, id);
+    store64(e + 8, 0);
+    store64(e + 16, now_ns());
+    store64(e + 24, agent_id);
+    store64(e + 32, action);
+    store64(e + 40, severity);
+    store64(e + 48, AUDIT_SUCCESS);
+    store64(e + 56, str_from("{}"));
+    store64(e + 64, 0);
+    store64(e + 72, 0);
+    store64(e + 80, 0);
+    store64(e + 88, 0);
+    store64(e + 96, vec_new());
+    store64(e + 104, integrity_fields_genesis(str_from("")));
+    return e;
+}
+fn aentry_id(e)              { return load64(e); }
+fn aentry_correlation_id(e)  { return load64(e + 8); }
+fn aentry_timestamp(e)       { return load64(e + 16); }
+fn aentry_agent_id(e)        { return load64(e + 24); }
+fn aentry_action(e)          { return load64(e + 32); }
+fn aentry_severity(e)        { return load64(e + 40); }
+fn aentry_result(e)          { return load64(e + 48); }
+fn aentry_details(e)         { return load64(e + 56); }
+fn aentry_user_id(e)         { return load64(e + 64); }
+fn aentry_source_ip(e)       { return load64(e + 72); }
+fn aentry_target_resource(e) { return load64(e + 80); }
+fn aentry_duration_ms(e)     { return load64(e + 88); }
+fn aentry_tags(e)            { return load64(e + 96); }
+fn aentry_integrity(e)       { return load64(e + 104); }
+fn aentry_set_correlation_id(e, v) { store64(e + 8, v); return 0; }
+fn aentry_set_result(e, v)         { store64(e + 48, v); return 0; }
+fn aentry_set_details(e, v)        { store64(e + 56, v); return 0; }
+fn aentry_set_user_id(e, v)        { store64(e + 64, v); return 0; }
+fn aentry_set_source_ip(e, v)      { store64(e + 72, v); return 0; }
+fn aentry_set_target_resource(e, v){ store64(e + 80, v); return 0; }
+fn aentry_set_duration_ms(e, v)    { store64(e + 88, v); return 0; }
+fn aentry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
+fn retention_policy_new(min_days) {
+    var p = alloc(24);
+    store64(p, min_days);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    return p;
+}
+fn retpol_min_days(p)    { return load64(p); }
+fn retpol_max_days(p)    { return load64(p + 8); }
+fn retpol_archive(p)     { return load64(p + 16); }

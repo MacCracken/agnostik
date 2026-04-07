@@ -1,0 +1,246 @@
+var TRACE_FLAG_SAMPLED = 1;
+fn trace_id_new() { return agent_id_new(); }
+fn trace_id_to_str(id) {
+    # 32 hex chars (no dashes)
+    var buf = alloc(33);
+    var i = 0;
+    while (i < 16) {
+        _hex_byte(buf, i * 2, load8(id + i));
+        i = i + 1;
+    }
+    store8(buf + 32, 0);
+    return str_new(buf, 32);
+}
+fn trace_id_from_str(s) {
+    var data = str_data(s);
+    var slen = str_len(s);
+    if (slen != 32) { return err_invalid_argument(str_from("expected 32 hex digits")); }
+    var id = alloc(16);
+    var i = 0;
+    while (i < 16) {
+        var hi = load8(data + i * 2);
+        var lo = load8(data + i * 2 + 1);
+        if (hi >= 48 && hi <= 57) { hi = hi - 48; }
+        elif (hi >= 97 && hi <= 102) { hi = hi - 87; }
+        else { return err_invalid_argument(str_from("invalid hex in trace id")); }
+        if (lo >= 48 && lo <= 57) { lo = lo - 48; }
+        elif (lo >= 97 && lo <= 102) { lo = lo - 87; }
+        else { return err_invalid_argument(str_from("invalid hex in trace id")); }
+        store8(id + i, hi << 4 | lo);
+        i = i + 1;
+    }
+    return Ok(id);
+}
+fn trace_id_eq(a, b) { return agent_id_eq(a, b); }
+fn span_id_new() {
+    var id = alloc(8);
+    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
+    if (fd >= 0) {
+        syscall(SYS_READ, fd, id, 8);
+        syscall(SYS_CLOSE, fd);
+    }
+    return id;
+}
+fn span_id_to_str(id) {
+    # 16 hex chars
+    var buf = alloc(17);
+    var val = load64(id);
+    var i = 0;
+    while (i < 8) {
+        var byte = (val >> ((7 - i) * 8)) & 0xFF;
+        _hex_byte(buf, i * 2, byte);
+        i = i + 1;
+    }
+    store8(buf + 16, 0);
+    return str_new(buf, 16);
+}
+fn span_id_eq(a, b) {
+    if (load64(a) == load64(b)) { return 1; }
+    return 0;
+}
+enum SpanStatus {
+    SPAN_UNSET;
+    SPAN_OK;
+    SPAN_ERROR;
+}
+fn span_status_error(message) {
+    return tagged_new(SPAN_ERROR, message);
+}
+enum SpanKind {
+    SPAN_INTERNAL;
+    SPAN_SERVER;
+    SPAN_CLIENT;
+    SPAN_PRODUCER;
+    SPAN_CONSUMER;
+}
+enum EventType {
+    EVT_AGENT_STARTED;
+    EVT_AGENT_STOPPED;
+    EVT_AGENT_FAILED;
+    EVT_INFERENCE_COMPLETE;
+    EVT_AUDIT_EVENT;
+    EVT_SECURITY_ALERT;
+    EVT_CUSTOM;
+}
+enum MetricKind {
+    METRIC_COUNTER;
+    METRIC_UP_DOWN_COUNTER;
+    METRIC_GAUGE;
+    METRIC_HISTOGRAM;
+}
+enum AggregationTemporality {
+    TEMPORALITY_CUMULATIVE;
+    TEMPORALITY_DELTA;
+}
+enum LogSeverity {
+    LOG_TRACE = 1;
+    LOG_DEBUG = 5;
+    LOG_INFO = 9;
+    LOG_WARN = 13;
+    LOG_ERROR = 17;
+    LOG_FATAL = 21;
+}
+fn log_severity_name(s) {
+    if (s == LOG_TRACE) { return "TRACE"; }
+    if (s == LOG_DEBUG) { return "DEBUG"; }
+    if (s == LOG_INFO)  { return "INFO"; }
+    if (s == LOG_WARN)  { return "WARN"; }
+    if (s == LOG_ERROR) { return "ERROR"; }
+    if (s == LOG_FATAL) { return "FATAL"; }
+    return "UNKNOWN";
+}
+fn resource_new(name, version, instance_id) {
+    var r = alloc(40);
+    store64(r, name);
+    store64(r + 8, version);
+    store64(r + 16, instance_id);
+    store64(r + 24, map_new());
+    store64(r + 32, 0);
+    return r;
+}
+fn resource_default() {
+    return resource_new(str_from(""), str_from(""), str_from(""));
+}
+fn res_service_name(r)    { return load64(r); }
+fn res_service_version(r) { return load64(r + 8); }
+fn res_instance_id(r)     { return load64(r + 16); }
+fn res_attributes(r)      { return load64(r + 24); }
+fn res_schema_url(r)      { return load64(r + 32); }
+fn trace_context_new() {
+    var ctx = alloc(40);
+    store64(ctx, trace_id_new());
+    store64(ctx + 8, span_id_new());
+    store64(ctx + 16, 0);
+    store64(ctx + 24, TRACE_FLAG_SAMPLED);
+    store64(ctx + 32, str_from(""));
+    return ctx;
+}
+fn tctx_trace_id(c)       { return load64(c); }
+fn tctx_span_id(c)        { return load64(c + 8); }
+fn tctx_parent_span_id(c) { return load64(c + 16); }
+fn tctx_trace_flags(c)    { return load64(c + 24); }
+fn tctx_trace_state(c)    { return load64(c + 32); }
+fn tctx_is_sampled(c) {
+    if ((load64(c + 24) & TRACE_FLAG_SAMPLED) != 0) { return 1; }
+    return 0;
+}
+fn tctx_child(parent) {
+    var child = alloc(40);
+    store64(child, load64(parent));          # same trace_id
+    store64(child + 8, span_id_new());       # new span_id
+    store64(child + 16, load64(parent + 8)); # parent's span_id
+    store64(child + 24, load64(parent + 24)); # propagate flags
+    store64(child + 32, load64(parent + 32)); # propagate state
+    return child;
+}
+fn tctx_to_traceparent(c) {
+    var sb = str_builder_new();
+    str_builder_add_cstr(sb, "00-");
+    str_builder_add(sb, trace_id_to_str(tctx_trace_id(c)));
+    str_builder_add_cstr(sb, "-");
+    str_builder_add(sb, span_id_to_str(tctx_span_id(c)));
+    str_builder_add_cstr(sb, "-");
+    var flags = tctx_trace_flags(c);
+    var fbuf = alloc(3);
+    _hex_byte(fbuf, 0, flags & 0xFF);
+    store8(fbuf + 2, 0);
+    str_builder_add(sb, str_new(fbuf, 2));
+    return str_builder_build(sb);
+}
+fn span_new(name, trace_id, span_id) {
+    var s = alloc(112);
+    store64(s, name);
+    store64(s + 8, trace_id);
+    store64(s + 16, span_id);
+    store64(s + 24, 0);
+    store64(s + 32, SPAN_UNSET);
+    store64(s + 40, SPAN_INTERNAL);
+    store64(s + 48, now_ns());
+    store64(s + 56, 0);
+    store64(s + 64, map_new());
+    store64(s + 72, vec_new());
+    store64(s + 80, vec_new());
+    store64(s + 88, 0);
+    store64(s + 96, 0);
+    store64(s + 104, 0);
+    return s;
+}
+fn span_name(s)           { return load64(s); }
+fn span_trace_id(s)       { return load64(s + 8); }
+fn span_span_id(s)        { return load64(s + 16); }
+fn span_parent_id(s)      { return load64(s + 24); }
+fn span_status(s)         { return load64(s + 32); }
+fn span_kind(s)           { return load64(s + 40); }
+fn span_started_at(s)     { return load64(s + 48); }
+fn span_duration_ms(s)    { return load64(s + 56); }
+fn span_attributes(s)     { return load64(s + 64); }
+fn span_events(s)         { return load64(s + 72); }
+fn span_links(s)          { return load64(s + 80); }
+fn span_set_status(s, v)      { store64(s + 32, v); return 0; }
+fn span_set_kind(s, v)        { store64(s + 40, v); return 0; }
+fn span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
+fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
+fn telemetry_config_new() {
+    var c = alloc(24);
+    store64(c, 1);       # enabled = true
+    store64(c + 8, 1000); # sample_rate = 1.0
+    store64(c + 16, 0);
+    return c;
+}
+fn telcfg_enabled(c)    { return load64(c); }
+fn telcfg_sample_rate(c){ return load64(c + 8); }
+fn telcfg_endpoint(c)   { return load64(c + 16); }
+fn log_record_new(severity, body) {
+    var lr = alloc(64);
+    store64(lr, now_ns());
+    store64(lr + 8, 0);
+    store64(lr + 16, severity);
+    store64(lr + 24, body);
+    store64(lr + 32, map_new());
+    store64(lr + 40, 0);
+    store64(lr + 48, 0);
+    store64(lr + 56, 0);
+    return lr;
+}
+fn logrec_timestamp(lr)  { return load64(lr); }
+fn logrec_severity(lr)   { return load64(lr + 16); }
+fn logrec_body(lr)       { return load64(lr + 24); }
+fn logrec_attributes(lr) { return load64(lr + 32); }
+fn logrec_trace_id(lr)   { return load64(lr + 40); }
+fn logrec_span_id(lr)    { return load64(lr + 48); }
+fn logrec_resource(lr)   { return load64(lr + 56); }
+fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
+fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
+fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
+fn crash_report_new(agent_id, error_msg) {
+    var cr = alloc(32);
+    store64(cr, agent_id);
+    store64(cr + 8, error_msg);
+    store64(cr + 16, 0);
+    store64(cr + 24, now_ns());
+    return cr;
+}
+fn crash_agent_id(cr)  { return load64(cr); }
+fn crash_error(cr)     { return load64(cr + 8); }
+fn crash_backtrace(cr) { return load64(cr + 16); }
+fn crash_timestamp(cr) { return load64(cr + 24); }

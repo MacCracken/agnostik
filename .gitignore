@@ -1,5 +1,17 @@
-target/
-Cargo.lock
+# Rust (archived in rust-old/)
+rust-old/target/
+rust-old/Cargo.lock
+
+# Cyrius build output
+build/
+/tmp/agnostik_*
+
+# Editor
 *.swp
 .DS_Store
+
+# Coverage
 coverage/
+
+# Benchmark logs
+bench-history.log
