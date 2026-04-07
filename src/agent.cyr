@@ -42,6 +42,8 @@ enum CircuitBreakerState {
     CB_OPEN;
     CB_HALF_OPEN;
 }
+#derive(Serialize)
+struct ResourceLimits { max_memory; max_cpu_time; max_fds; max_procs; max_disk; net_bw; }
 fn resource_limits_new() {
     var r = alloc(48);
     store64(r, 268435456);     # 256 MB default
@@ -64,6 +66,8 @@ fn rlim_set_max_fds(r, v)       { store64(r + 16, v); return 0; }
 fn rlim_set_max_procs(r, v)     { store64(r + 24, v); return 0; }
 fn rlim_set_max_disk(r, v)      { store64(r + 32, v); return 0; }
 fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
+#derive(Serialize)
+struct ResourceUsage { mem_used; cpu_used; fds_used; procs_used; }
 fn resource_usage_new() {
     var u = alloc(32);
     store64(u, 0);
@@ -170,6 +174,8 @@ fn agent_event_new(id, event_type, payload) {
 fn aevent_agent_id(e)   { return load64(e); }
 fn aevent_type(e)       { return load64(e + 8); }
 fn aevent_payload(e)    { return load64(e + 16); }
+#derive(Serialize)
+struct AgentInfo { id; name; agent_type; status; }
 fn agent_info_new(id, name, atype, status) {
     var info = alloc(32);
     store64(info, id);
@@ -182,6 +188,8 @@ fn ainfo_id(i)     { return load64(i); }
 fn ainfo_name(i)   { return load64(i + 8); }
 fn ainfo_type(i)   { return load64(i + 16); }
 fn ainfo_status(i) { return load64(i + 24); }
+#derive(Serialize)
+struct AgentStats { total_requests; total_tokens; uptime_seconds; }
 fn agent_stats_new() {
     var s = alloc(24);
     store64(s, 0);

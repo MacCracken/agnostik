@@ -102,6 +102,8 @@ fn samp_set_temperature(s, v) { store64(s, v); return 0; }
 fn samp_set_top_p(s, v)       { store64(s + 8, v); return 0; }
 fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
 fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
+#derive(Serialize)
+struct TokenUsage { prompt_tok; completion_tok; total_tok; cache_create_tok; cache_read_tok; }
 fn token_usage_new() {
     var u = alloc(40);
     var i = 0;

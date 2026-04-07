@@ -13,6 +13,8 @@ fn device_vendor_name(v) {
 }
 enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
 enum MemoryType { MEM_GDDR5; MEM_GDDR6; MEM_GDDR6X; MEM_HBM2; MEM_HBM2E; MEM_HBM3; MEM_LPDDR4; MEM_LPDDR5; MEM_LPDDR5X; MEM_DDR4; MEM_DDR5; MEM_UNKNOWN; }
+#derive(Serialize)
+struct AcceleratorFlags { cuda_available; rocm_available; metal_available; vulkan_available; oneapi_available; tpu_available; sycl_available; openvino_available; directml_available; }
 fn accelerator_flags_new() {
     var f = alloc(72);
     var i = 0;
