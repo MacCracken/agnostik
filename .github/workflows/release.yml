@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 env:
-  CYRIUS_VERSION: "1.9.4"
+  CYRIUS_VERSION: "1.11.4"
 
 jobs:
   # ── CI Gate (must pass before release) ──

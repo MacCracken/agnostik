@@ -64,7 +64,7 @@ fn sandbox_config_new() {
     var s = alloc(88);
     var i = 0;
     while (i < 88) { store64(s + i, 0); i = i + 8; }
-    store64(s + 8, NET_NONE);
+    store64(s + 8, NET_LOCALHOST_ONLY);
     store64(s + 24, 1);
     return s;
 }

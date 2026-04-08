@@ -4,14 +4,14 @@
 
 **Agnostik** (agnostic) — Shared types and domain primitives for AGNOS
 
-- **Type**: Flat library crate
+- **Type**: Flat library (Cyrius)
 - **License**: GPL-3.0-only
-- **MSRV**: 1.89
-- **Version**: `0.90.0` (pre-release, targeting v1.0.0)
+- **Version**: `0.91.0` (pre-release, targeting v1.0.0)
 - **Genesis repo**: [agnosticos](https://github.com/MacCracken/agnosticos)
 - **Philosophy**: [AGNOS Philosophy & Intention](https://github.com/MacCracken/agnosticos/blob/main/docs/philosophy.md)
 - **Standards**: [First-Party Standards](https://github.com/MacCracken/agnosticos/blob/main/docs/development/applications/first-party-standards.md)
 - **Recipes**: [zugot](https://github.com/MacCracken/zugot) — takumi build recipes
+- **Compiler**: Cyrius cc2 (`$HOME/.cyrius/bin/cc2`)
 
 ## Consumers
 
@@ -23,8 +23,8 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 
 0. Read roadmap, CHANGELOG, and open issues — know what was intended before auditing what was built
 1. Test + benchmark sweep of existing code
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `cargo vet`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
-3. Get baseline benchmarks (`./scripts/bench-history.sh`)
+2. Cleanliness check: compile clean (`cat src/main.cyr | cc2 > /dev/null`), security scan, docs check, version consistency
+3. Get baseline benchmarks (`./scripts/bench.sh`)
 4. Internal deep review — gaps, optimizations, security, logging/errors, docs
 5. External research — domain completeness, missing capabilities, best practices, world-class accuracy
 6. Cleanliness check — must be clean after review
@@ -36,17 +36,41 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 ### Work Loop / Working Loop (continuous)
 
 1. Work phase — new features, roadmap items, bug fixes
-2. Cleanliness check: `cargo fmt --check`, `cargo clippy --all-features --all-targets -- -D warnings`, `cargo audit`, `cargo deny check`, `cargo vet`, `RUSTDOCFLAGS="-D warnings" cargo doc --all-features --no-deps`
+2. Cleanliness check: compile clean, security scan, docs present, versions in sync
 3. Test + benchmark additions for new code
-4. Run benchmarks (`./scripts/bench-history.sh`)
+4. Run benchmarks (`./scripts/bench.sh`)
 5. Internal review — performance, memory, security, throughput, correctness
 6. Cleanliness check — must be clean after review
 7. Deeper tests/benchmarks from review observations
 8. Run benchmarks again — prove the wins
 9. If review heavy → return to step 5
 10. Documentation — update CHANGELOG, roadmap, docs, ADRs for design decisions, source citations for algorithms/formulas, update docs/sources.md, guides and examples for new API surface, verify recipe version in zugot
-11. Version check — VERSION, Cargo.toml, recipe (in zugot) all in sync
+11. Version check — VERSION, cyrb.toml, recipe (in zugot) all in sync
 12. Return to step 1
+
+### Build & Test Commands
+
+```sh
+# Set compiler
+CC="${CC:-$HOME/.cyrius/bin/cc2}"
+
+# Build test binary
+cat src/main.cyr | "$CC" > build/agnostik_test && chmod +x build/agnostik_test
+
+# Run tests
+./build/agnostik_test
+
+# Build and run benchmarks
+cat benches/bench.cyr | "$CC" > build/agnostik_bench && chmod +x build/agnostik_bench
+./build/agnostik_bench
+
+# Build library (for consumers)
+cat src/lib.cyr | "$CC" > build/agnostik_lib
+
+# Cleanliness checks
+cat src/main.cyr | "$CC" > /dev/null 2>&1    # compile clean (no warnings)
+grep -rn 'syscall(59' src/ | grep -v "# "     # security: no raw execve
+```
 
 ### Task Sizing
 
@@ -65,12 +89,22 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 
 - Never skip benchmarks
 - Own the stack — agnostik IS the stack's type vocabulary
-- `#[non_exhaustive]` on ALL public enums (forward compatibility)
-- `#[must_use]` on all pure functions
-- Every type must be Serialize + Deserialize (serde)
-- Feature-gate optional modules — consumers pull only what they need
-- Zero unwrap/panic in library code
-- All types must have serde roundtrip tests
+- All public enums should have `*_name()` functions for string representation
+- Every serializable struct must have a `*_to_json(ptr, sb)` function
+- Consumers include modules via `include "src/lib.cyr"` or individual files
+- Zero panic in library code — use Result (Ok/Err) for fallible operations
+- All parse functions must have roundtrip tests
+
+### Cyrius Conventions
+
+- All struct fields are 8 bytes (i64), accessed via `load64`/`store64` with offset
+- Heap allocation via `alloc()` (bump allocator) — no individual free
+- Lazy initialization pattern: `_lazy_vec(ptr)` and `_lazy_map(ptr)` for deferred collection creation
+- Tagged unions via `tagged_new(tag, value)` for enums with data
+- Trait objects via vtable dispatch: `trait_obj_new(vtable, data)`
+- Function pointers via `fncall0`/`fncall1`/`fncall2` (inline asm)
+- `#derive(Serialize)` generates stub functions — manual `*_to_json` implementations required
+- Compiler limit: 1024 functions per compilation unit
 
 ## DO NOT
 

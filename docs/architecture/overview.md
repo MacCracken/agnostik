@@ -3,67 +3,87 @@
 ## Module Map
 
 ```
-agnostik
-├── error.rs           — AgnostikError (11 variants), From<io::Error>, From<serde_json::Error>
-├── types.rs           — AgentId, UserId, Version (FromStr), Capabilities, MessageType, SystemStatus
-├── agent.rs           — AgentConfig, AgentManifest, AgentStatus, AgentType, ResourceLimits,
+agnostik (Cyrius)
+├── src/error.cyr      — AgnostikError (11 kinds), error codes (1001–1010), Result helpers
+├── src/types.cyr      — AgentId, UserId (UUID v4), Version (SemVer), Capabilities,
+│                        MessageType, SystemStatus, ComponentConfig
+├── src/agent.cyr      — AgentConfig, AgentManifest, AgentStatus, AgentType, ResourceLimits,
 │                        ResourceUsage, AgentRateLimit, AgentEvent, AgentInfo, AgentStats,
-│                        RestartPolicy, HealthCheck, LifecycleHooks, StopReason
-├── security.rs        — SandboxConfig, Permission, NetworkAccess, NetworkPolicy,
+│                        RestartPolicy, HealthCheck, LifecycleHooks, StopReason,
+│                        AgentPool, AgentCapabilities, SchedulingConstraints,
+│                        Topic, Subscription, TopicMessage, AgentMessage
+├── src/security.cyr   — SandboxConfig, Permission, NetworkAccess, NetworkPolicy,
 │                        CgroupLimits, NamespaceConfig, IdMapping,
 │                        LandlockRuleset, LandlockFsAccess, LandlockNetAccess,
 │                        LinuxCapability (39 variants), CapabilitySet, SystemFeature,
 │                        SeccompProfile, SeccompArch, SeccompArg, SeccompArgOp,
 │                        MountPropagation, SandboxCapabilities, SeccompMode,
 │                        Role, RolePermission, TokenPayload, AuthContext,
-│                        SecurityContext, SecurityPolicy, PolicyEffect
-├── telemetry.rs       — TraceContext (W3C), TraceId, SpanId, Span, SpanStatus,
+│                        SecurityContext, SecurityPolicy, PolicyEffect,
+│                        EncryptedStorage, Rlimit, DeviceRule, NamespaceEntry
+├── src/telemetry.cyr  — TraceContext (W3C), TraceId, SpanId, Span, SpanStatus,
 │                        SpanKind, SpanEvent, SpanLink, Resource, InstrumentationScope,
 │                        TelemetryConfig, CrashReport, EventType,
 │                        MetricKind, MetricValue, MetricDataPoint, InstrumentDescriptor,
-│                        AggregationTemporality, Exemplar,
-│                        LogSeverity, LogRecord, Baggage,
-│                        SpanCollector trait, MetricSink trait
-├── audit.rs           — AuditEntry, AuditSeverity, AuditResult, IntegrityFields,
-│                        RetentionPolicy, AuditSink trait, SecretStore trait
-├── llm.rs             — LlmProvider, MessageRole, Message, ContentBlock,
+│                        AggregationTemporality, Exemplar, Baggage,
+│                        LogSeverity, LogRecord,
+│                        SpanCollector trait, MetricSink trait,
+│                        TextMapCarrier trait, TextMapPropagator trait
+├── src/audit.cyr      — AuditEntry, AuditSeverity, AuditResult, IntegrityFields,
+│                        RetentionPolicy, AuditSink trait
+├── src/llm.cyr        �� LlmProvider (13), MessageRole, Message, ContentBlock (8 types),
 │                        ToolDefinition, ToolCall, ToolResult, ToolChoice, SamplingParams,
 │                        InferenceRequest, InferenceResponse, TokenUsage, FinishReason,
-│                        ResponseFormat, ModelCapabilities, RateLimitInfo, StreamEvent
-├── secrets.rs         — Secret (zeroize, redacted Debug), SecretMetadata
-├── config.rs          — EnvironmentProfile, AgnosConfig
-├── classification.rs  — ClassificationLevel, PiiKind, ClassificationResult
-├── validation.rs      — ValidationResult, ValidationWarning, ValidationSeverity
-├── hardware.rs        — AcceleratorDevice, DeviceFamily, DeviceVendor, AcceleratorSummary
-└── logging.rs         — try_init() tracing subscriber setup
+│                        ResponseFormat, ModelCapabilities, RateLimitInfo, StreamEvent,
+│                        SafetyCategory, SafetyRating, BatchRequest, BatchResult,
+│                        EmbeddingRequest, EmbeddingResponse, LogprobEntry
+├── src/secrets.cyr    — Secret (zeroize on destroy), SecretMetadata, SecretKind,
+│                        SecretStore trait
+├── src/config.cyr     — EnvironmentProfile, AgnosConfig, EdgeResourceOverrides,
+│                        ProfileDefinition, FleetConfig
+├── src/classification.cyr — ClassificationLevel, PiiKind (16), ClassificationResult
+├── src/validation.cyr — ValidationResult, ValidationWarning, ValidationSeverity,
+│                        InjectionScores
+└── src/hardware.cyr   — AcceleratorDevice, DeviceFamily, DeviceVendor (9),
+                         DeviceHealth, MemoryType (12), AcceleratorFlags,
+                         AcceleratorSummary (by_family, by_vendor)
 ```
 
-## Feature Dependencies
+## Library Dependencies
 
 ```
-default = [agent, security, telemetry]
-
-agent ──→ security
-telemetry ──→ chrono
-audit ──→ chrono
-secrets ──→ zeroize, chrono
-logging ──→ tracing-subscriber
-classification, validation, hardware ──→ (no extra deps)
-full = [all features]
+lib/syscalls.cyr   — Linux syscall wrappers
+lib/string.cyr     — C string operations (strlen, memcpy, memeq, memset)
+lib/alloc.cyr      — Bump allocator (brk-based)
+lib/fmt.cyr        — Integer formatting
+lib/str.cyr        — Fat string type (data + length), str_builder
+lib/vec.cyr        — Dynamic array
+lib/hashmap.cyr    — Hash map (FNV-1a, open addressing)
+lib/tagged.cyr     — Tagged unions: Option, Result, Either
+lib/fnptr.cyr      — Function pointer dispatch (inline asm)
+lib/trait.cyr      — Trait objects (vtable + data fat pointers)
+lib/io.cyr         — File I/O (open, read, write, close)
+lib/json.cyr       — Minimal JSON parser and builder
+lib/assert.cyr     — Test assertions
+lib/bench.cyr      — Benchmark harness (ns timing via clock_gettime)
 ```
 
-## Core Types (always available)
-
-`AgentId`, `UserId`, `Version`, `Capabilities`, `MessageType`, `SystemStatus`,
-`ComponentConfig`, `AgnostikError`, `Result` — available without any feature flags.
-
-## Traits
+## Traits (vtable dispatch)
 
 | Trait | Module | Purpose |
 |-------|--------|---------|
-| `SpanCollector` | telemetry | Export completed spans to a backend |
-| `MetricSink` | telemetry | Export metric data points to a backend |
-| `AuditSink` | audit | Append and verify audit chain entries |
+| `SpanCollector` | telemetry | Export completed spans (export, flush, shutdown) |
+| `MetricSink` | telemetry | Export metric data points (export, flush) |
+| `TextMapPropagator` | telemetry | Inject/extract trace context from carriers |
+| `TextMapCarrier` | telemetry | Get/set key-value pairs for propagation |
+| `AuditSink` | audit | Append, verify chain/entry, query, seal |
+| `SecretStore` | secrets | Get, put, delete, list, rotate, search |
+
+## Serialization
+
+9 struct types have `_to_json(ptr, sb)` functions for JSON serialization:
+TokenUsage, AgentInfo, AgentStats, ResourceLimits, ResourceUsage,
+InjectionScores, AcceleratorFlags, EdgeResourceOverrides, TelemetryConfig.
 
 ## Consumers
 
@@ -72,6 +92,6 @@ Every AGNOS component depends on agnostik for shared types:
 - **hoosh** — InferenceRequest, TokenUsage, LlmProvider, Message, ToolCall
 - **aegis** — SecurityPolicy, LinuxCapability, CapabilitySet, AuditEntry, Role, TokenPayload
 - **argonaut** — EnvironmentProfile, AgnosConfig
-- **kavach** — SandboxConfig, Permission, CgroupLimits, LandlockRuleset, NamespaceConfig, SandboxCapabilities
-- **secureyeoman** — ClassificationLevel, ValidationResult, AcceleratorDevice, Role, TokenPayload, AuditEntry
+- **kavach** — SandboxConfig, Permission, CgroupLimits, LandlockRuleset, NamespaceConfig
+- **secureyeoman** — ClassificationLevel, ValidationResult, AcceleratorDevice, Role
 - **All consumer apps** — AgentManifest, AgentEvent

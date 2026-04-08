@@ -41,6 +41,7 @@ fn content_image(source, media_type, is_url) {
 }
 fn content_block_type(cb)    { return tag(cb); }
 fn content_block_payload(cb) { return payload(cb); }
+enum CacheControl { CACHE_EPHEMERAL; }
 enum FinishReason { FINISH_STOP; FINISH_LENGTH; FINISH_CONTENT_FILTER; FINISH_TOOL_USE; FINISH_ERROR; FINISH_RECITATION; }
 enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
 enum ResponseFormat { RESP_TEXT; RESP_JSON_OBJECT; RESP_JSON_SCHEMA; }
@@ -104,6 +105,20 @@ fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
 fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
 #derive(Serialize)
 struct TokenUsage { prompt_tok; completion_tok; total_tok; cache_create_tok; cache_read_tok; }
+fn TokenUsage_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"prompt_tok\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"completion_tok\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"total_tok\": ");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ", \"cache_create_tok\": ");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, ", \"cache_read_tok\": ");
+    str_builder_add_int(sb, load64(ptr + 32));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
 fn token_usage_new() {
     var u = alloc(40);
     var i = 0;
@@ -119,7 +134,7 @@ fn tusage_set_prompt(u, v)     { store64(u, v); return 0; }
 fn tusage_set_completion(u, v) { store64(u + 8, v); return 0; }
 fn tusage_set_total(u, v)      { store64(u + 16, v); return 0; }
 fn inference_request_new(model) {
-    var r = alloc(112);
+    var r = alloc(136);
     store64(r, model);
     store64(r + 8, str_from(""));
     store64(r + 16, 0);
@@ -134,6 +149,9 @@ fn inference_request_new(model) {
     store64(r + 88, 0);
     store64(r + 96, 0);
     store64(r + 104, 0);
+    store64(r + 112, 0);
+    store64(r + 120, 0);
+    store64(r + 128, 0);
     return r;
 }
 fn ireq_model(r)         { return load64(r); }
@@ -148,7 +166,13 @@ fn ireq_tool_choice(r)   { return load64(r + 64); }
 fn ireq_set_system(r, v)     { store64(r + 16, v); return 0; }
 fn ireq_set_max_tokens(r, v) { store64(r + 32, v); return 0; }
 fn ireq_set_stream(r, v)     { store64(r + 48, v); return 0; }
-fn ireq_set_tool_choice(r, v){ store64(r + 64, v); return 0; }
+fn ireq_service_tier(r)      { return load64(r + 112); }
+fn ireq_metadata(r)          { return load64(r + 120); }
+fn ireq_reasoning_effort(r)  { return load64(r + 128); }
+fn ireq_set_tool_choice(r, v)       { store64(r + 64, v); return 0; }
+fn ireq_set_service_tier(r, v)      { store64(r + 112, v); return 0; }
+fn ireq_set_metadata(r, v)          { store64(r + 120, v); return 0; }
+fn ireq_set_reasoning_effort(r, v)  { store64(r + 128, v); return 0; }
 fn inference_response_new(model) {
     var r = alloc(64);
     store64(r, 0);

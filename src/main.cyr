@@ -11,7 +11,6 @@ include "lib/hashmap.cyr"
 include "lib/tagged.cyr"
 include "lib/fnptr.cyr"
 include "lib/trait.cyr"
-include "lib/json.cyr"
 include "lib/assert.cyr"
 
 # Inline now_ns from bench.cyr (avoids including full bench lib)
@@ -84,7 +83,7 @@ fn test_agent() {
 }
 fn test_security() {
     var sb = sandbox_config_new();
-    assert_eq(sandbox_net_access(sb), NET_NONE, "net none");
+    assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "net localhost");
     assert_eq(sandbox_isolate_net(sb), 1, "isolate true");
     var id = agent_id_new();
     var ctx = security_context_new(id);
@@ -111,6 +110,23 @@ fn test_telemetry() {
     assert_eq(str_len(tp), 55, "traceparent len");
     assert(LOG_TRACE < LOG_DEBUG, "trace<debug");
     assert(LOG_ERROR < LOG_FATAL, "error<fatal");
+    # trace_id_from_str uppercase hex
+    var tid_upper = trace_id_from_str(str_from("0123456789ABCDEF0123456789ABCDEF"));
+    assert_eq(is_ok(tid_upper), 1, "tid upper hex");
+    # span_id_from_str
+    var sid = span_id_new();
+    var sid_s = span_id_to_str(sid);
+    var sid_parsed = span_id_from_str(sid_s);
+    assert_eq(is_ok(sid_parsed), 1, "sid parse ok");
+    assert_eq(span_id_eq(sid, payload(sid_parsed)), 1, "sid roundtrip");
+    # traceparent roundtrip
+    var tp2 = tctx_to_traceparent(ctx);
+    var tp_parsed = tctx_from_traceparent(tp2);
+    assert_eq(is_ok(tp_parsed), 1, "traceparent parse ok");
+    var tp_ctx = payload(tp_parsed);
+    assert_eq(trace_id_eq(tctx_trace_id(ctx), tctx_trace_id(tp_ctx)), 1, "tp trace_id");
+    assert_eq(span_id_eq(tctx_span_id(ctx), tctx_span_id(tp_ctx)), 1, "tp span_id");
+    assert_eq(tctx_trace_flags(tp_ctx), TRACE_FLAG_SAMPLED, "tp flags");
     return 0;
 }
 fn test_audit() {
@@ -299,6 +315,182 @@ fn test_serde_telemetry_config() {
     assert(_json_has(j, "1000"), "tc: rate=1000");
     return 0;
 }
+# --- Integration tests (single function to fit 1024 limit) ---
+fn test_integration() {
+    # Version serde roundtrip
+    var v = version_new(1, 2, 3);
+    var s = version_to_str(v);
+    assert_eq(str_eq(s, str_from("1.2.3")), 1, "ver serde 1.2.3");
+    var parsed = version_from_str(s);
+    assert_eq(is_ok(parsed), 1, "ver serde parse ok");
+    var v2 = payload(parsed);
+    assert_eq(version_major(v2), 1, "ver serde major");
+    assert_eq(version_minor(v2), 2, "ver serde minor");
+    assert_eq(version_patch(v2), 3, "ver serde patch");
+    # Version prerelease (set/get)
+    var vp = version_new(1, 0, 0);
+    version_set_prerelease(vp, str_from("beta.1"));
+    assert_eq(str_eq(version_to_str(vp), str_from("1.0.0-beta.1")), 1, "ver pre str");
+    assert(version_prerelease(vp) != 0, "ver pre set");
+    assert_eq(is_ok(version_from_str(str_from("2.0.0-rc.1+build.42"))), 1, "ver pre+build parse");
+    # Version default + errors
+    assert_eq(version_major(version_default()), 0, "ver default major");
+    assert_eq(is_ok(version_from_str(str_from("invalid"))), 0, "ver parse invalid");
+    assert_eq(is_ok(version_from_str(str_from("1.2"))), 0, "ver parse incomplete");
+    # Error codes
+    assert_eq(agnostik_err_code(agnostik_err_new(ERR_AGENT_NOT_FOUND, 0)), 1001, "err code 1001");
+    assert_eq(agnostik_err_code(agnostik_err_new(ERR_IO, 0)), 1010, "err code 1010");
+    # Error kind names
+    assert_eq(streq(agnostik_err_kind_name(ERR_TIMEOUT), "timeout"), 1, "err name timeout");
+    assert_eq(streq(agnostik_err_kind_name(ERR_IO), "i/o error"), 1, "err name io");
+    # --- security ---
+    # SandboxConfig defaults
+    var sb = sandbox_config_new();
+    assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "sb net localhost");
+    assert_eq(sandbox_isolate_net(sb), 1, "sb isolate true");
+    # RBAC role names
+    assert_eq(streq(role_name(ROLE_ADMIN), "Admin"), 1, "role admin");
+    assert_eq(streq(role_name(ROLE_OPERATOR), "Operator"), 1, "role operator");
+    assert_eq(streq(role_name(ROLE_AUDITOR), "Auditor"), 1, "role auditor");
+    assert_eq(streq(role_name(ROLE_VIEWER), "Viewer"), 1, "role viewer");
+    assert_eq(streq(role_name(ROLE_SERVICE), "Service"), 1, "role service");
+    # Permission names
+    assert_eq(streq(permission_name(PERM_FILE_READ), "FileRead"), 1, "perm FileRead");
+    assert_eq(streq(permission_name(PERM_NETWORK_ACCESS), "NetworkAccess"), 1, "perm Network");
+    # Cgroup limits
+    var cg = cgroup_limits_new();
+    cglim_set_memory_max(cg, 2147483648);
+    cglim_set_pids_max(cg, 100);
+    assert_eq(cglim_memory_max(cg), 2147483648, "cg mem 2GB");
+    assert_eq(cglim_pids_max(cg), 100, "cg pids 100");
+    # --- telemetry ---
+    # W3C flags
+    var ctx = trace_context_new();
+    assert_eq(tctx_is_sampled(ctx), 1, "ctx sampled default");
+    assert_eq(tctx_trace_flags(ctx), TRACE_FLAG_SAMPLED, "ctx flag value");
+    # Child propagation
+    var child = tctx_child(ctx);
+    assert_eq(trace_id_eq(tctx_trace_id(ctx), tctx_trace_id(child)), 1, "child trace eq");
+    assert_eq(span_id_eq(tctx_span_id(ctx), tctx_span_id(child)), 0, "child span diff");
+    assert_eq(tctx_is_sampled(child), 1, "child sampled");
+    # Traceparent invalid
+    assert_eq(is_ok(tctx_from_traceparent(str_from("too-short"))), 0, "tp short invalid");
+    # Log severity ordering + names
+    assert(LOG_TRACE < LOG_DEBUG, "sev trace<debug");
+    assert(LOG_DEBUG < LOG_INFO, "sev debug<info");
+    assert(LOG_WARN < LOG_ERROR, "sev warn<error");
+    assert(LOG_ERROR < LOG_FATAL, "sev error<fatal");
+    assert_eq(streq(log_severity_name(LOG_TRACE), "TRACE"), 1, "sev name trace");
+    assert_eq(streq(log_severity_name(LOG_FATAL), "FATAL"), 1, "sev name fatal");
+    # Log record
+    var lr = log_record_new(LOG_INFO, str_from("test msg"));
+    assert_eq(logrec_severity(lr), LOG_INFO, "lr severity");
+    assert(logrec_timestamp(lr) > 0, "lr timestamp");
+    var tid = trace_id_new();
+    logrec_set_trace_id(lr, tid);
+    assert_eq(trace_id_eq(logrec_trace_id(lr), tid), 1, "lr trace_id");
+    # Crash report
+    var crid = agent_id_new();
+    var cr = crash_report_new(crid, str_from("segfault"));
+    assert_eq(agent_id_eq(crash_agent_id(cr), crid), 1, "cr agent_id");
+    assert(crash_timestamp(cr) > 0, "cr timestamp");
+    # Metric data point
+    var mv = metric_int(42);
+    assert_eq(metric_value_type(mv), MV_INT, "mv int type");
+    assert_eq(metric_value_val(mv), 42, "mv int val");
+    var dp = metric_data_point_new(str_from("requests"), mv);
+    assert_eq(mdp_temporality(dp), TEMPORALITY_CUMULATIVE, "dp temporality");
+    # --- agent + remaining ---
+    # Agent dependency
+    var dep = agent_dependency_new(str_from("helper-agent"), version_new(1, 2, 3), 1);
+    assert_eq(str_eq(adep_required_agent(dep), str_from("helper-agent")), 1, "dep agent");
+    assert_eq(version_major(adep_min_version(dep)), 1, "dep ver major");
+    assert_eq(adep_required(dep), 1, "dep required");
+    # Agent manifest
+    var m = agent_manifest_new(str_from("test-agent"));
+    assert_eq(str_eq(amanifest_name(m), str_from("test-agent")), 1, "manifest name");
+    assert_eq(version_major(amanifest_version(m)), 0, "manifest ver default");
+    vec_push(amanifest_permissions(m), PERM_FILE_READ);
+    vec_push(amanifest_permissions(m), PERM_NETWORK_ACCESS);
+    assert_eq(vec_len(amanifest_permissions(m)), 2, "manifest 2 perms");
+    # Retry policy
+    var rp = retry_policy_new();
+    assert_eq(rpol_max_retries(rp), 3, "retry max 3");
+    assert_eq(rpol_initial_delay(rp), 1000, "retry delay 1000");
+    # Agent pool
+    var cfg = agent_config_new(str_from("pool-agent"));
+    var pool = agent_pool_new(str_from("my-pool"), cfg);
+    assert_eq(str_eq(apool_name(pool), str_from("my-pool")), 1, "pool name");
+    apool_set_max_replicas(pool, 20);
+    assert_eq(apool_max_replicas(pool), 20, "pool max 20");
+    # Agent message
+    var s1 = agent_id_new();
+    var r1 = agent_id_new();
+    var msg = agent_message_new(s1, r1, str_from("hello"));
+    assert_eq(agent_id_eq(amsg_sender(msg), s1), 1, "msg sender");
+    assert_eq(str_eq(amsg_payload(msg), str_from("hello")), 1, "msg payload");
+    assert(amsg_timestamp(msg) > 0, "msg timestamp");
+    # Topic/subscription
+    var t = topic_new(str_from("events"));
+    topic_set_ttl(t, 3600);
+    assert_eq(topic_ttl(t), 3600, "topic ttl");
+    var sub = subscription_new(s1, str_from("events"));
+    assert_eq(str_eq(sub_topic(sub), str_from("events")), 1, "sub topic");
+    # --- remaining ---
+    # Classification ordering
+    assert(CLASS_PUBLIC < CLASS_INTERNAL, "pub<int");
+    assert(CLASS_INTERNAL < CLASS_CONFIDENTIAL, "int<conf");
+    assert(CLASS_CONFIDENTIAL < CLASS_RESTRICTED, "conf<rest");
+    # Secret redaction
+    var sec = secret_new(str_from("super-secret-key"));
+    assert_eq(secret_len(sec), 16, "secret len 16");
+    assert_eq(secret_is_empty(sec), 0, "secret not empty");
+    secret_destroy(sec);
+    assert_eq(secret_len(sec), 0, "secret zeroed");
+    assert_eq(secret_is_empty(sec), 1, "secret empty");
+    # Environment profile names
+    assert_eq(streq(env_profile_name(ENV_DEVELOPMENT), "Development"), 1, "env dev");
+    assert_eq(streq(env_profile_name(ENV_PRODUCTION), "Production"), 1, "env prod");
+    assert_eq(streq(env_profile_name(ENV_TESTING), "Testing"), 1, "env test");
+    assert_eq(streq(env_profile_name(ENV_CANARY), "Canary"), 1, "env canary");
+    # Hardware device fields
+    var dev = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
+    adev_set_vram_total(dev, 24576);
+    adev_set_temperature(dev, 65);
+    adev_set_driver_version(dev, str_from("550.67"));
+    adev_set_power_watts(dev, 450);
+    adev_set_memory_type(dev, MEM_GDDR6X);
+    assert_eq(adev_temperature(dev), 65, "dev temp");
+    assert_eq(adev_power_watts(dev), 450, "dev power");
+    assert_eq(adev_memory_type(dev), MEM_GDDR6X, "dev memtype");
+    # Hardware summary by_vendor
+    var sum = accelerator_summary_new();
+    asum_add_device(sum, dev);
+    var dev2 = accelerator_device_new(1, str_from("Gaudi2"), VENDOR_HABANA, DEV_AI_ASIC);
+    adev_set_vram_total(dev2, 98304);
+    asum_add_device(sum, dev2);
+    assert_eq(asum_total_vram(sum), 122880, "sum vram 122880");
+    assert_eq(vec_len(asum_by_vendor(sum, VENDOR_NVIDIA)), 1, "1 nvidia");
+    assert_eq(vec_len(asum_by_family(sum, DEV_TPU)), 0, "0 tpus");
+    # LLM inference request full
+    var req = inference_request_new(str_from("llama3-70b"));
+    ireq_set_max_tokens(req, 2048);
+    ireq_set_stream(req, 1);
+    ireq_set_tool_choice(req, TOOL_REQUIRED);
+    ireq_set_service_tier(req, str_from("auto"));
+    ireq_set_reasoning_effort(req, str_from("high"));
+    vec_push(ireq_messages(req), message_text(ROLE_USER, str_from("Hello")));
+    assert_eq(ireq_max_tokens(req), 2048, "req max_tokens");
+    assert_eq(ireq_stream(req), 1, "req stream");
+    assert_eq(str_eq(ireq_service_tier(req), str_from("auto")), 1, "req svc tier");
+    assert_eq(vec_len(ireq_messages(req)), 1, "req 1 msg");
+    # Audit integrity chain
+    var ig = integrity_fields_genesis(str_from("genesis-sig"));
+    assert_eq(integrity_is_genesis(ig), 1, "genesis check");
+    var ig2 = integrity_fields_new(version_new(1, 0, 0), str_from("sig2"), str_from("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"));
+    assert_eq(integrity_is_genesis(ig2), 0, "non-genesis check");
+    return 0;
+}
 fn main() {
     alloc_init();
     println("=== agnostik test suite ===");
@@ -323,6 +515,7 @@ fn main() {
     test_serde_accelerator_flags();
     test_serde_edge_overrides();
     test_serde_telemetry_config();
+    test_integration();
     println("");
     return assert_summary();
 }

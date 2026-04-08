@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.91.0] - 2026-04-07
+
+### Fixed
+- **`#derive(Serialize)` no-op stubs** — compiler generates empty `_to_json` functions; added manual implementations for all 9 serializable structs (TokenUsage, AgentInfo, AgentStats, ResourceLimits, ResourceUsage, InjectionScores, AcceleratorFlags, EdgeResourceOverrides, TelemetryConfig)
+- **SandboxConfig default** — `NET_NONE` → `NET_LOCALHOST_ONLY` (Rust parity)
+- **`trace_id_from_str` rejected uppercase hex** — now accepts A-F (consistent with `agent_id_from_str`)
+- **Stale version references** — CI and bench header updated from Cyrius v1.9.4 to v1.11.4
+- **`file_read_all` undefined warning** — added `io.cyr` to test include chain
+- **Unused `json.cyr` in bench** — removed (freed function slots, eliminated `file_read_all` warning)
+
+### Added
+- `span_id_from_str` — hex string parsing with roundtrip support
+- `tctx_from_traceparent` — W3C traceparent header parse (reverse of `tctx_to_traceparent`)
+- `CacheControl` enum (`CACHE_EPHEMERAL`) for Anthropic prompt caching
+- `AcceleratorDevice` accessors: `temperature`, `driver_version`, `compute_capability`, `power_watts`, `memory_bandwidth_gbps`, `memory_type` (+ setters)
+- `InferenceRequest` fields: `service_tier`, `metadata`, `reasoning_effort` (+ accessors)
+- 84 new test assertions covering: version serde/prerelease/errors, error codes/names, sandbox defaults, RBAC roles, permissions, cgroup limits, trace context propagation, traceparent validation, log severity ordering/names, log records, crash reports, metric data points, agent dependency/manifest/pool/messages/topics, classification ordering, secret zeroize, env profiles, hardware extended fields, LLM new fields, audit integrity chain
+
+### Changed
+- **Cyrius compiler target**: v1.9.4 → v1.11.4
+- **CLAUDE.md**: full rewrite for Cyrius tooling (build commands, conventions, compiler notes)
+- **docs/architecture/overview.md**: rewritten from `.rs` module map to `.cyr`
+- **docs/development/roadmap.md**: updated for current state, v1.0.0 criteria, backlog
+
+### Testing
+- 198 tests (up from 58 passing / 107 total), 0 failures
+- 15 benchmarks, no regressions
+
+### Performance
+- agent_id_new: 35ns, trace_context_child: 43ns, sandbox_config_default: 62ns
+- agent_id_to_str: 212ns, version_to_str: 123ns, token_usage_update: 36ns
+- accelerator_device_full: 148ns, inference_request_full: 488ns
+
 ## [0.95.0] - 2026-04-07
 
 ### Changed

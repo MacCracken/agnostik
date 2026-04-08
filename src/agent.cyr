@@ -44,6 +44,22 @@ enum CircuitBreakerState {
 }
 #derive(Serialize)
 struct ResourceLimits { max_memory; max_cpu_time; max_fds; max_procs; max_disk; net_bw; }
+fn ResourceLimits_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"max_memory\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"max_cpu_time\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"max_fds\": ");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ", \"max_procs\": ");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, ", \"max_disk\": ");
+    str_builder_add_int(sb, load64(ptr + 32));
+    str_builder_add_cstr(sb, ", \"net_bw\": ");
+    str_builder_add_int(sb, load64(ptr + 40));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
 fn resource_limits_new() {
     var r = alloc(48);
     store64(r, 268435456);     # 256 MB default
@@ -68,6 +84,18 @@ fn rlim_set_max_disk(r, v)      { store64(r + 32, v); return 0; }
 fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
 #derive(Serialize)
 struct ResourceUsage { mem_used; cpu_used; fds_used; procs_used; }
+fn ResourceUsage_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"mem_used\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"cpu_used\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"fds_used\": ");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ", \"procs_used\": ");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
 fn resource_usage_new() {
     var u = alloc(32);
     store64(u, 0);
@@ -176,6 +204,18 @@ fn aevent_type(e)       { return load64(e + 8); }
 fn aevent_payload(e)    { return load64(e + 16); }
 #derive(Serialize)
 struct AgentInfo { id; name; agent_type; status; }
+fn AgentInfo_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"id\": \"");
+    str_builder_add(sb, agent_id_to_str(load64(ptr)));
+    str_builder_add_cstr(sb, "\", \"name\": \"");
+    str_builder_add(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, "\", \"agent_type\": \"");
+    str_builder_add_cstr(sb, agent_type_name(load64(ptr + 16)));
+    str_builder_add_cstr(sb, "\", \"status\": \"");
+    str_builder_add_cstr(sb, agent_status_name(load64(ptr + 24)));
+    str_builder_add_cstr(sb, "\"}");
+    return 0;
+}
 fn agent_info_new(id, name, atype, status) {
     var info = alloc(32);
     store64(info, id);
@@ -190,6 +230,16 @@ fn ainfo_type(i)   { return load64(i + 16); }
 fn ainfo_status(i) { return load64(i + 24); }
 #derive(Serialize)
 struct AgentStats { total_requests; total_tokens; uptime_seconds; }
+fn AgentStats_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"total_requests\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"total_tokens\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"uptime_seconds\": ");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
 fn agent_stats_new() {
     var s = alloc(24);
     store64(s, 0);

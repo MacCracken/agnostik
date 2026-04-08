@@ -8,7 +8,6 @@ include "lib/hashmap.cyr"
 include "lib/tagged.cyr"
 include "lib/fnptr.cyr"
 include "lib/trait.cyr"
-include "lib/json.cyr"
 include "lib/bench.cyr"
 include "src/error.cyr"
 include "src/types.cyr"
@@ -18,9 +17,6 @@ include "src/telemetry.cyr"
 include "src/audit.cyr"
 include "src/llm.cyr"
 include "src/secrets.cyr"
-include "src/config.cyr"
-include "src/classification.cyr"
-include "src/validation.cyr"
 include "src/hardware.cyr"
 fn _b_agent_id_new() { agent_id_new(); return 0; }
 fn _b_trace_context_new() { trace_context_new(); return 0; }
@@ -83,7 +79,7 @@ fn main() {
     alloc_init();
     _bench_parent = trace_context_new();
     _bench_vs = str_from("0.90.0");
-    println("=== agnostik benchmarks (Cyrius v1.9.2) ===");
+    println("=== agnostik benchmarks (Cyrius v1.11.4) ===");
     tier("[tier1] core");
     run("agent_id_new", &_b_agent_id_new, 1000, 10);
     run("trace_context_new", &_b_trace_context_new, 1000, 10);

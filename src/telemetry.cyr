@@ -22,9 +22,11 @@ fn trace_id_from_str(s) {
         var lo = load8(data + i * 2 + 1);
         if (hi >= 48 && hi <= 57) { hi = hi - 48; }
         elif (hi >= 97 && hi <= 102) { hi = hi - 87; }
+        elif (hi >= 65 && hi <= 70) { hi = hi - 55; }
         else { return err_invalid_argument(str_from("invalid hex in trace id")); }
         if (lo >= 48 && lo <= 57) { lo = lo - 48; }
         elif (lo >= 97 && lo <= 102) { lo = lo - 87; }
+        elif (lo >= 65 && lo <= 70) { lo = lo - 55; }
         else { return err_invalid_argument(str_from("invalid hex in trace id")); }
         store8(id + i, hi << 4 | lo);
         i = i + 1;
@@ -49,6 +51,26 @@ fn span_id_to_str(id) {
     }
     store8(buf + 16, 0);
     return str_new(buf, 16);
+}
+fn span_id_from_str(s) {
+    var data = str_data(s);
+    var slen = str_len(s);
+    if (slen != 16) { return err_invalid_argument(str_from("expected 16 hex digits")); }
+    var id = alloc(8);
+    var val = 0;
+    var i = 0;
+    while (i < 16) {
+        var ch = load8(data + i);
+        var nibble = 0;
+        if (ch >= 48 && ch <= 57) { nibble = ch - 48; }
+        elif (ch >= 97 && ch <= 102) { nibble = ch - 87; }
+        elif (ch >= 65 && ch <= 70) { nibble = ch - 55; }
+        else { return err_invalid_argument(str_from("invalid hex in span id")); }
+        val = (val << 4) | nibble;
+        i = i + 1;
+    }
+    store64(id, val);
+    return Ok(id);
 }
 fn span_id_eq(a, b) {
     if (load64(a) == load64(b)) { return 1; }
@@ -163,6 +185,43 @@ fn tctx_to_traceparent(c) {
     str_builder_add(sb, str_new(fbuf, 2));
     return str_builder_build(sb);
 }
+fn _hex_nibble(ch) {
+    if (ch >= 48 && ch <= 57) { return ch - 48; }
+    if (ch >= 97 && ch <= 102) { return ch - 87; }
+    if (ch >= 65 && ch <= 70) { return ch - 55; }
+    return 0 - 1;
+}
+fn tctx_from_traceparent(s) {
+    # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"
+    # Total: 55 chars
+    var data = str_data(s);
+    var slen = str_len(s);
+    if (slen != 55) { return err_invalid_argument(str_from("traceparent must be 55 chars")); }
+    if (load8(data + 2) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
+    if (load8(data + 35) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
+    if (load8(data + 52) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
+    # Parse trace_id (32 hex chars at offset 3)
+    var tid_str = str_new(data + 3, 32);
+    var tid_result = trace_id_from_str(tid_str);
+    if (is_ok(tid_result) == 0) { return tid_result; }
+    # Parse span_id (16 hex chars at offset 36)
+    var sid_str = str_new(data + 36, 16);
+    var sid_result = span_id_from_str(sid_str);
+    if (is_ok(sid_result) == 0) { return sid_result; }
+    # Parse flags (2 hex chars at offset 53)
+    var fhi = _hex_nibble(load8(data + 53));
+    var flo = _hex_nibble(load8(data + 54));
+    if (fhi < 0) { return err_invalid_argument(str_from("invalid hex in traceparent flags")); }
+    if (flo < 0) { return err_invalid_argument(str_from("invalid hex in traceparent flags")); }
+    var flags = fhi << 4 | flo;
+    var ctx = alloc(40);
+    store64(ctx, payload(tid_result));
+    store64(ctx + 8, payload(sid_result));
+    store64(ctx + 16, 0);
+    store64(ctx + 24, flags);
+    store64(ctx + 32, str_from(""));
+    return Ok(ctx);
+}
 fn span_new(name, trace_id, span_id) {
     var s = alloc(112);
     store64(s, name);
@@ -201,6 +260,17 @@ fn span_dropped_events(s) { return load64(s + 96); }
 fn span_dropped_links(s)  { return load64(s + 104); }
 #derive(Serialize)
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
+fn TelemetryConfig_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"enabled\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"sample_rate\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"export_endpoint\": \"");
+    var ep = load64(ptr + 16);
+    if (ep != 0) { str_builder_add(sb, ep); }
+    str_builder_add_cstr(sb, "\"}");
+    return 0;
+}
 fn telemetry_config_new() {
     var c = alloc(24);
     store64(c, 1);       # enabled = true

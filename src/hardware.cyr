@@ -15,6 +15,28 @@ enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
 enum MemoryType { MEM_GDDR5; MEM_GDDR6; MEM_GDDR6X; MEM_HBM2; MEM_HBM2E; MEM_HBM3; MEM_LPDDR4; MEM_LPDDR5; MEM_LPDDR5X; MEM_DDR4; MEM_DDR5; MEM_UNKNOWN; }
 #derive(Serialize)
 struct AcceleratorFlags { cuda_available; rocm_available; metal_available; vulkan_available; oneapi_available; tpu_available; sycl_available; openvino_available; directml_available; }
+fn AcceleratorFlags_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"cuda_available\": ");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ", \"rocm_available\": ");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ", \"metal_available\": ");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ", \"vulkan_available\": ");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, ", \"oneapi_available\": ");
+    str_builder_add_int(sb, load64(ptr + 32));
+    str_builder_add_cstr(sb, ", \"tpu_available\": ");
+    str_builder_add_int(sb, load64(ptr + 40));
+    str_builder_add_cstr(sb, ", \"sycl_available\": ");
+    str_builder_add_int(sb, load64(ptr + 48));
+    str_builder_add_cstr(sb, ", \"openvino_available\": ");
+    str_builder_add_int(sb, load64(ptr + 56));
+    str_builder_add_cstr(sb, ", \"directml_available\": ");
+    str_builder_add_int(sb, load64(ptr + 64));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
 fn accelerator_flags_new() {
     var f = alloc(72);
     var i = 0;
@@ -55,12 +77,24 @@ fn adev_family(d)      { return load64(d + 24); }
 fn adev_vram_total(d)  { return load64(d + 32); }
 fn adev_vram_used(d)   { return load64(d + 40); }
 fn adev_utilization(d) { return load64(d + 48); }
-fn adev_flags(d)       { return load64(d + 80); }
-fn adev_health(d)      { return load64(d + 112); }
-fn adev_set_vram_total(d, v)  { store64(d + 32, v); return 0; }
-fn adev_set_vram_used(d, v)   { store64(d + 40, v); return 0; }
-fn adev_set_utilization(d, v) { store64(d + 48, v); return 0; }
-fn adev_set_health(d, v)      { store64(d + 112, v); return 0; }
+fn adev_temperature(d)           { return load64(d + 56); }
+fn adev_driver_version(d)        { return load64(d + 64); }
+fn adev_compute_capability(d)    { return load64(d + 72); }
+fn adev_flags(d)                 { return load64(d + 80); }
+fn adev_power_watts(d)           { return load64(d + 88); }
+fn adev_memory_bandwidth_gbps(d) { return load64(d + 96); }
+fn adev_memory_type(d)           { return load64(d + 104); }
+fn adev_health(d)                { return load64(d + 112); }
+fn adev_set_vram_total(d, v)           { store64(d + 32, v); return 0; }
+fn adev_set_vram_used(d, v)            { store64(d + 40, v); return 0; }
+fn adev_set_utilization(d, v)          { store64(d + 48, v); return 0; }
+fn adev_set_temperature(d, v)          { store64(d + 56, v); return 0; }
+fn adev_set_driver_version(d, v)       { store64(d + 64, v); return 0; }
+fn adev_set_compute_capability(d, v)   { store64(d + 72, v); return 0; }
+fn adev_set_power_watts(d, v)          { store64(d + 88, v); return 0; }
+fn adev_set_memory_bandwidth_gbps(d,v) { store64(d + 96, v); return 0; }
+fn adev_set_memory_type(d, v)          { store64(d + 104, v); return 0; }
+fn adev_set_health(d, v)               { store64(d + 112, v); return 0; }
 fn accelerator_summary_new() {
     var s = alloc(16);
     store64(s, vec_new());
