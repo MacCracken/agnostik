@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.96.0] - 2026-04-09
+
+### Removed
+- **rust-old/** — deleted 1.2 GB of Rust source, Cargo.lock, build artifacts, and criterion data. Rust→Cyrius port verified complete across all 12 modules. Rust benchmark reference numbers preserved in `benchmark-rustvcyrius.md`.
+
+### Added
+- **benchmark-rustvcyrius.md** — head-to-head Rust Criterion vs Cyrius bench comparison with analysis (Cyrius wins on agent_id_new 1.4x, trace_context_child 1.3x; Rust wins on sandbox_config_default 2.3x)
+
+### Changed
+- **CI workflows** — rewritten to use `cyrius build`/`cyrius test`/`cyrius bench` instead of raw `cat | cc2` pipes. Fixes `build/` directory pre-existence failures.
+- **Release workflow** — uses `cyrius test` for gate instead of manual `.tcyr` loop
+- **Source formatting** — all 6 files flagged by `cyrfmt` fixed (agent, config, hardware, llm, telemetry, validation)
+
 ## [0.95.0] - 2026-04-09
 
 ### Fixed

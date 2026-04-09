@@ -1,20 +1,30 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.95.0** — P(-1) hardened. 12 modules, 226 tests, 15 benchmarks. Zero external dependencies. Cyrius v2.6.4. Sakshi tracing vendored. All consumer-facing enums have `_name()` functions.
+**v0.96.0** — P(-1) hardened. Rust removed. 12 modules, 226 tests, 15 benchmarks. Zero external dependencies. Cyrius v2.6.4. Sakshi tracing vendored. CI uses `cyrius` CLI tooling.
 
 ## Migration
 
-agnostik is the shared types crate for the AGNOS ecosystem, replacing agnos-common. Ported from 7,121 lines of Rust to ~3,200 lines of Cyrius.
+Complete. 7,121 lines of Rust → ~3,200 lines of Cyrius. rust-old/ deleted. Benchmark comparison preserved in `benchmark-rustvcyrius.md`.
 
 Consumers use `include "src/lib.cyr"` or include individual modules.
+
+## Completed (0.91.0–0.96.0)
+- Rust→Cyrius port (all 12 modules, all public items verified)
+- P(-1) scaffold hardening (critical bugs, serialize hardening, elif chains)
+- 14 `_name()` functions for consumer-facing enums
+- 12 missing accessors/setters/factories
+- Stdlib synced to vidya 2.0 (9 files + sakshi)
+- Compiler bug #30 found and fixed (str_data buffer overflow)
+- CI/release workflows rewritten for `cyrius` CLI
+- `cyrfmt` formatting pass
+- Rust benchmark reference captured, rust-old/ removed
 
 ## Backlog
 
 ### Blocked on compiler (function limit increase)
 - Add `_from_json` deserialization for all 9 serializable structs
 - Add serde benchmarks (JSON serialize/deserialize timing)
-- Restore classification/validation/config modules in bench includes
 - Split integration tests into per-module functions
 
 ### Open

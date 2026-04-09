@@ -12,12 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CYRIUS_VERSION: "2.6.4"
+  CYRIUS_VERSION: "2.7.2"
 
 jobs:
-  # ── Build ──
-  build:
-    name: Build
+  build-and-test:
+    name: Build & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,32 +25,52 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
-          chmod +x ./build/*
-          echo "$PWD/build" >> $GITHUB_PATH
+          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
+          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
+          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
+          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
+          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
           echo "Cyrius $CYRIUS_VERSION installed"
 
-      - name: Build test binary
+      - name: Build
         run: |
           mkdir -p build
-          cyrius build src/main.cyr build/agnostik_test
+          cat src/main.cyr | cc2 > build/agnostik_test 2>build/errors.log
+          if [ $? -ne 0 ]; then cat build/errors.log; exit 1; fi
+          chmod +x build/agnostik_test
           echo "test binary: $(wc -c < build/agnostik_test) bytes"
 
-      - name: Build library
+      - name: Test suite
         run: |
-          cyrius build src/lib.cyr build/agnostik_lib || echo "lib build: warnings (expected — consumers provide stdlib)"
+          pass=0; fail=0
+          for t in tests/*.tcyr; do
+            [ -f "$t" ] || continue
+            name=$(basename "$t" .tcyr)
+            tmpbin="/tmp/ag_test_$$"
+            cat "$t" | cc2 > "$tmpbin" 2>/dev/null && chmod +x "$tmpbin"
+            if [ $? -ne 0 ]; then echo "FAIL (compile): $name"; fail=$((fail+1)); continue; fi
+            output=$("$tmpbin" 2>&1); ec=$?
+            rm -f "$tmpbin"
+            f=$(echo "$output" | grep -o '[0-9]* failed' | tail -1 | grep -o '^[0-9]*')
+            if [ "$ec" -ne 0 ] || { [ -n "$f" ] && [ "$f" -gt 0 ]; }; then
+              echo "FAIL: $name"; fail=$((fail+1))
+            else
+              summary=$(echo "$output" | grep -o '[0-9]* passed' | tail -1)
+              echo "PASS: $name ($summary)"
+              pass=$((pass+1))
+            fi
+          done
+          echo "$pass passed, $fail failed"
+          test $fail -eq 0
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-x86_64
-          path: |
-            build/agnostik_test
-          retention-days: 5
+      - name: Benchmarks
+        run: |
+          if [ -f benches/bench.cyr ]; then
+            cat benches/bench.cyr | cc2 > build/bench 2>/dev/null && chmod +x build/bench && ./build/bench
+          fi
+        continue-on-error: true
 
-  # ── Check & Format ──
   check:
     name: Check & Format
     runs-on: ubuntu-latest
@@ -62,14 +81,12 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
-          chmod +x ./build/*
-          echo "$PWD/build" >> $GITHUB_PATH
-
-      - name: Syntax check
-        run: cyrius check src/main.cyr
+          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
+          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
+          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
+          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
+          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
 
       - name: Format check
         run: |
@@ -84,7 +101,6 @@ jobs:
           rm -f /tmp/fmt_check
           test $fail -eq 0
 
-  # ── Security ──
   security:
     name: Security Scan
     runs-on: ubuntu-latest
@@ -98,50 +114,6 @@ jobs:
           fi
           echo "security scan complete (warnings: $WARN)"
 
-  # ── Tests ──
-  test:
-    name: Test
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Cyrius toolchain
-        run: |
-          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
-          chmod +x ./build/*
-          echo "$PWD/build" >> $GITHUB_PATH
-
-      - name: Run test suite
-        run: cyrius test
-
-  # ── Benchmarks ──
-  benchmarks:
-    name: Benchmarks
-    needs: [build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Cyrius toolchain
-        run: |
-          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
-          chmod +x ./build/*
-          echo "$PWD/build" >> $GITHUB_PATH
-
-      - name: Run benchmarks
-        run: cyrius bench
-        continue-on-error: true
-
-  # ── Documentation ──
   docs:
     name: Documentation
     runs-on: ubuntu-latest
