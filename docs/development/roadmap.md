@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.96.0** — P(-1) hardened. Rust removed. 12 modules, 226 tests, 15 benchmarks. Zero external dependencies. Cyrius v2.6.4. Sakshi tracing vendored. CI uses `cyrius` CLI tooling.
+**v0.97.0** — P(-1) hardened. Rust removed. 12 modules, 226 tests, 15 benchmarks. Zero external dependencies. Cyrius v3.2.1. Sakshi tracing vendored. CI uses `cyrius` CLI tooling.
 
 ## Migration
 

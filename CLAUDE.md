@@ -6,7 +6,7 @@
 
 - **Type**: Flat library (Cyrius)
 - **License**: GPL-3.0-only
-- **Version**: `0.96.0` (pre-release, targeting v1.0.0)
+- **Version**: `0.97.0` (pre-release, targeting v1.0.0)
 - **Genesis repo**: [agnosticos](https://github.com/MacCracken/agnosticos)
 - **Philosophy**: [AGNOS Philosophy & Intention](https://github.com/MacCracken/agnosticos/blob/main/docs/philosophy.md)
 - **Standards**: [First-Party Standards](https://github.com/MacCracken/agnosticos/blob/main/docs/development/applications/first-party-standards.md)
