@@ -130,6 +130,37 @@ fn test_names() {
     assert_eq(streq(pii_kind_name(PII_FULL_NAME), "FullName"), 1, "pii FN");
     return 0;
 }
+fn test_security_enum_names() {
+    # FsAccess
+    assert_eq(streq(fs_access_name(FS_NO_ACCESS), "NoAccess"), 1, "fs NoAccess");
+    assert_eq(streq(fs_access_name(FS_READ_ONLY), "ReadOnly"), 1, "fs ReadOnly");
+    assert_eq(streq(fs_access_name(FS_READ_WRITE), "ReadWrite"), 1, "fs ReadWrite");
+    # NetworkAccess
+    assert_eq(streq(net_access_name(NET_NONE), "None"), 1, "net None");
+    assert_eq(streq(net_access_name(NET_LOCALHOST_ONLY), "LocalhostOnly"), 1, "net Localhost");
+    assert_eq(streq(net_access_name(NET_FULL), "Full"), 1, "net Full");
+    # SeccompAction
+    assert_eq(streq(seccomp_action_name(SECCOMP_ALLOW), "Allow"), 1, "sc Allow");
+    assert_eq(streq(seccomp_action_name(SECCOMP_KILL), "Kill"), 1, "sc Kill");
+    assert_eq(streq(seccomp_action_name(SECCOMP_LOG), "Log"), 1, "sc Log");
+    # SeccompArgOp
+    assert_eq(streq(seccomp_arg_op_name(ARG_EQUAL), "Equal"), 1, "op Equal");
+    assert_eq(streq(seccomp_arg_op_name(ARG_LESS_THAN), "LessThan"), 1, "op LessThan");
+    assert_eq(streq(seccomp_arg_op_name(ARG_MASKED_EQUAL), "MaskedEqual"), 1, "op Masked");
+    # SeccompArch
+    assert_eq(streq(seccomp_arch_name(ARCH_X86_64), "x86_64"), 1, "arch x86_64");
+    assert_eq(streq(seccomp_arch_name(ARCH_AARCH64), "aarch64"), 1, "arch aarch64");
+    assert_eq(streq(seccomp_arch_name(ARCH_RISCV64), "riscv64"), 1, "arch riscv64");
+    # MountPropagation
+    assert_eq(streq(mount_propagation_name(MOUNT_PRIVATE), "Private"), 1, "mp Private");
+    assert_eq(streq(mount_propagation_name(MOUNT_SHARED), "Shared"), 1, "mp Shared");
+    assert_eq(streq(mount_propagation_name(MOUNT_UNBINDABLE), "Unbindable"), 1, "mp Unbindable");
+    # PolicyEffect
+    assert_eq(streq(policy_effect_name(POLICY_ALLOW), "Allow"), 1, "pe Allow");
+    assert_eq(streq(policy_effect_name(POLICY_DENY), "Deny"), 1, "pe Deny");
+    assert_eq(streq(policy_effect_name(POLICY_AUDIT), "Audit"), 1, "pe Audit");
+    return 0;
+}
 
 fn main() {
     alloc_init();
@@ -142,6 +173,7 @@ fn main() {
     test_validation();
     test_classification();
     test_names();
+    test_security_enum_names();
     println("");
     return assert_summary();
 }

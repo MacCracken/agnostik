@@ -344,3 +344,68 @@ fn role_name(r) {
     elif (r == ROLE_SERVICE)  { return "Service"; }
     return "Unknown";
 }
+fn fs_access_name(a) {
+    if (a == FS_NO_ACCESS)    { return "NoAccess"; }
+    elif (a == FS_READ_ONLY)  { return "ReadOnly"; }
+    elif (a == FS_READ_WRITE) { return "ReadWrite"; }
+    return "Unknown";
+}
+fn net_access_name(a) {
+    if (a == NET_NONE)           { return "None"; }
+    elif (a == NET_LOCALHOST_ONLY){ return "LocalhostOnly"; }
+    elif (a == NET_RESTRICTED)   { return "Restricted"; }
+    elif (a == NET_FULL)         { return "Full"; }
+    return "Unknown";
+}
+fn seccomp_action_name(a) {
+    if (a == SECCOMP_ALLOW)        { return "Allow"; }
+    elif (a == SECCOMP_KILL)       { return "Kill"; }
+    elif (a == SECCOMP_KILL_PROCESS){ return "KillProcess"; }
+    elif (a == SECCOMP_TRAP)       { return "Trap"; }
+    elif (a == SECCOMP_LOG)        { return "Log"; }
+    elif (a == SECCOMP_NOTIFY)     { return "Notify"; }
+    return "Unknown";
+}
+fn seccomp_arg_op_name(o) {
+    if (o == ARG_NOT_EQUAL)      { return "NotEqual"; }
+    elif (o == ARG_LESS_THAN)    { return "LessThan"; }
+    elif (o == ARG_LESS_EQUAL)   { return "LessEqual"; }
+    elif (o == ARG_EQUAL)        { return "Equal"; }
+    elif (o == ARG_GREATER_EQUAL){ return "GreaterEqual"; }
+    elif (o == ARG_GREATER_THAN) { return "GreaterThan"; }
+    elif (o == ARG_MASKED_EQUAL) { return "MaskedEqual"; }
+    return "Unknown";
+}
+fn seccomp_arch_name(a) {
+    if (a == ARCH_X86)          { return "x86"; }
+    elif (a == ARCH_X86_64)     { return "x86_64"; }
+    elif (a == ARCH_X32)        { return "x32"; }
+    elif (a == ARCH_ARM)        { return "arm"; }
+    elif (a == ARCH_AARCH64)    { return "aarch64"; }
+    elif (a == ARCH_MIPS)       { return "mips"; }
+    elif (a == ARCH_MIPS64)     { return "mips64"; }
+    elif (a == ARCH_MIPS64N32)  { return "mips64n32"; }
+    elif (a == ARCH_MIPSEL)     { return "mipsel"; }
+    elif (a == ARCH_MIPSEL64)   { return "mipsel64"; }
+    elif (a == ARCH_MIPSEL64N32){ return "mipsel64n32"; }
+    elif (a == ARCH_PPC)        { return "ppc"; }
+    elif (a == ARCH_PPC64)      { return "ppc64"; }
+    elif (a == ARCH_PPC64LE)    { return "ppc64le"; }
+    elif (a == ARCH_S390)       { return "s390"; }
+    elif (a == ARCH_S390X)      { return "s390x"; }
+    elif (a == ARCH_RISCV64)    { return "riscv64"; }
+    return "Unknown";
+}
+fn mount_propagation_name(p) {
+    if (p == MOUNT_PRIVATE)      { return "Private"; }
+    elif (p == MOUNT_SHARED)     { return "Shared"; }
+    elif (p == MOUNT_SLAVE)      { return "Slave"; }
+    elif (p == MOUNT_UNBINDABLE) { return "Unbindable"; }
+    return "Unknown";
+}
+fn policy_effect_name(e) {
+    if (e == POLICY_ALLOW) { return "Allow"; }
+    elif (e == POLICY_DENY)  { return "Deny"; }
+    elif (e == POLICY_AUDIT) { return "Audit"; }
+    return "Unknown";
+}

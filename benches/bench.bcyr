@@ -79,7 +79,7 @@ fn main() {
     alloc_init();
     _bench_parent = trace_context_new();
     _bench_vs = str_from("0.90.0");
-    println("=== agnostik benchmarks (Cyrius v3.2.1) ===");
+    println("=== agnostik benchmarks (Cyrius v3.2.3) ===");
     tier("[tier1] core");
     run("agent_id_new", &_b_agent_id_new, 1000, 10);
     run("trace_context_new", &_b_trace_context_new, 1000, 10);

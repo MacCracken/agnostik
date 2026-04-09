@@ -39,6 +39,15 @@ fn InjectionScores_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn InjectionScores_from_json(src) {
+    var s = alloc(40);
+    store64(s, _json_int(src, str_from("sql")));
+    store64(s + 8, _json_int(src, str_from("xss")));
+    store64(s + 16, _json_int(src, str_from("command")));
+    store64(s + 24, _json_int(src, str_from("path_traversal")));
+    store64(s + 32, _json_int(src, str_from("prompt_injection")));
+    return s;
+}
 fn injection_scores_new() {
     var s = alloc(40);
     var i = 0;

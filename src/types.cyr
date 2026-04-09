@@ -96,6 +96,67 @@ fn agent_id_from_str(s) {
     }
     return Ok(id);
 }
+# --- JSON field extractors (break-free for compiler compat) ---
+fn _jneedle(key) {
+    var sb = str_builder_new();
+    str_builder_add_cstr(sb, "\"");
+    str_builder_add(sb, key);
+    str_builder_add_cstr(sb, "\":");
+    return str_builder_build(sb);
+}
+fn _str_find(src, needle) {
+    var sd = str_data(src);
+    var sl = str_len(src);
+    var nd = str_data(needle);
+    var nl = str_len(needle);
+    if (nl > sl) { return 0 - 1; }
+    var i = 0;
+    while (i <= sl - nl) {
+        var ok = 1;
+        var k = 0;
+        while (k < nl) {
+            if (ok == 1) { if (load8(sd + i + k) != load8(nd + k)) { ok = 0; } }
+            k = k + 1;
+        }
+        if (ok == 1) { return i; }
+        i = i + 1;
+    }
+    return 0 - 1;
+}
+fn _json_int(src, key) {
+    var needle = _jneedle(key);
+    var pos = _str_find(src, needle);
+    if (pos < 0) { return 0; }
+    var data = str_data(src);
+    var slen = str_len(src);
+    var vi = pos + str_len(needle);
+    while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
+    var val = 0;
+    var parsing = 1;
+    while (vi < slen && parsing == 1) {
+        var ch = load8(data + vi);
+        if (ch >= 48 && ch <= 57) { val = val * 10 + (ch - 48); vi = vi + 1; }
+        else { parsing = 0; }
+    }
+    return val;
+}
+fn _json_str(src, key) {
+    var needle = _jneedle(key);
+    var pos = _str_find(src, needle);
+    if (pos < 0) { return 0; }
+    var data = str_data(src);
+    var slen = str_len(src);
+    var vi = pos + str_len(needle);
+    while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
+    if (vi + 3 < slen && load8(data+vi)==110 && load8(data+vi+1)==117 && load8(data+vi+2)==108 && load8(data+vi+3)==108) { return 0; }
+    if (vi >= slen) { return 0; }
+    if (load8(data + vi) != 34) { return 0; }
+    vi = vi + 1;
+    var vs = vi;
+    while (vi < slen && load8(data + vi) != 34) { vi = vi + 1; }
+    return str_new(data + vs, vi - vs);
+}
+
 fn user_id_new()              { return agent_id_new(); }
 fn user_id_high(id)           { return agent_id_high(id); }
 fn user_id_low(id)            { return agent_id_low(id); }
@@ -175,14 +236,12 @@ fn version_from_str(s) {
     }
     if (dot2 < 0) { return err_invalid_argument(str_from("invalid version: missing second dot")); }
     # Find pre-release (-) or build (+) separator
+    # Use strchr to find hyphen or plus after patch
     var patch_end = slen;
-    i = dot2 + 1;
-    while (i < slen) {
-        var ch = load8(data + i);
-        if (ch == 45) { patch_end = i; break; }
-        if (ch == 43) { patch_end = i; break; }
-        i = i + 1;
-    }
+    var hyph = strchr(data + dot2 + 1, 45);
+    var plus = strchr(data + dot2 + 1, 43);
+    if (hyph >= 0) { patch_end = dot2 + 1 + hyph; }
+    elif (plus >= 0) { patch_end = dot2 + 1 + plus; }
     # Parse major
     var major_s = str_new(data, dot1);
     var major = str_to_int(major_s);

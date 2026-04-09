@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.97.0** — P(-1) hardened (round 2). Rust removed. 12 modules, 553 test assertions (6 test files), 15 benchmarks. Zero external dependencies. Cyrius v3.2.1. Sakshi tracing vendored. CI uses `cat | cc2` pipe with correct `.bcyr` benchmark path.
+**v0.97.0** — P(-1) hardened (round 2). Rust removed. 12 modules, 613 test assertions (7 test files), 15 benchmarks. Zero external dependencies. Cyrius v3.2.3. Sakshi tracing vendored. CI uses `cat | cc2` pipe with correct `.bcyr` benchmark path.
 
 ## Migration
 
@@ -26,14 +26,20 @@ Consumers use `include "src/lib.cyr"` or include individual modules.
 
 ## Backlog
 
-### Blocked on compiler — request fix in Cyrius 3.2.x
-- `_from_json` deserialization for all 9 serializable structs (blocked on 1024 function limit)
-- Serde benchmarks (JSON serialize/deserialize timing — blocked on 1024 function limit)
-- `#derive(Serialize)` generates working `_to_json` since v1.10.3, but formats all values as strings (`"42"` not `42`). Manual implementations still required for correct numeric JSON. Request: integer/bool field detection in derive codegen.
+### Completed in v0.97.0 (from_json)
+- `_from_json` deserialization for 8 of 9 serializable structs (ResourceLimits, ResourceUsage, AgentStats, TokenUsage, AcceleratorFlags, EdgeResourceOverrides, TelemetryConfig, InjectionScores) + AgentInfo (with UUID parsing)
+- Break-free JSON field extractors (`_json_int`, `_json_str`, `_jfind`, `_str_find`) — workaround for compiler nested break bug
+- 36 roundtrip test assertions (serialize → deserialize → verify all fields)
 
-### Open — agnostik bugs
-- `version_from_str` prerelease+build parsing: simple prerelease works (`1.0.0-beta.1` roundtrips correctly), but fails when BOTH prerelease AND build metadata are present (`2.0.0-rc.1+build.42` → prerelease is NULL, build is correct). Likely compiler codegen issue with nested if/while/break — request investigation in Cyrius 3.2.x.
-- Remaining `_name()` functions for 7 internal security enums (FsAccess, NetworkAccess, SeccompAction, SeccompArgOp, SeccompArch, MountPropagation, PolicyEffect)
+### Open
+- Add serde benchmarks (JSON serialize/deserialize timing)
+
+### Resolved by Cyrius 3.2.3
+- `#derive(Serialize)` now generates correct JSON for mixed structs: integers as bare numbers, `: Str` annotated fields as quoted strings. Manual `_to_json` implementations can be replaced with `#derive(Serialize)` using field type annotations.
+- `version_from_str` prerelease+build parsing fixed — `2.0.0-rc.1+build.42` now correctly parses prerelease="rc.1", build="build.42".
+
+### Completed in v0.97.0 (late)
+- 7 `_name()` functions for internal security enums: `fs_access_name`, `net_access_name`, `seccomp_action_name`, `seccomp_arg_op_name`, `seccomp_arch_name`, `mount_propagation_name`, `policy_effect_name`
 
 ## v1.0.0 Criteria
 - API frozen — no breaking changes ✅

@@ -43,6 +43,13 @@ fn EdgeResourceOverrides_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn EdgeResourceOverrides_from_json(src) {
+    var e = alloc(24);
+    store64(e, _json_int(src, str_from("max_memory")));
+    store64(e + 8, _json_int(src, str_from("max_cpu_time")));
+    store64(e + 16, _json_int(src, str_from("max_agents")));
+    return e;
+}
 fn edge_overrides_new() {
     var e = alloc(24);
     store64(e, 0);

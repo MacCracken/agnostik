@@ -103,8 +103,8 @@ grep -rn 'syscall(59' src/ | grep -v "# "     # security: no raw execve
 - Tagged unions via `tagged_new(tag, value)` for enums with data
 - Trait objects via vtable dispatch: `trait_obj_new(vtable, data)`
 - Function pointers via `fncall0`/`fncall1`/`fncall2` (inline asm)
-- `#derive(Serialize)` generates working `_to_json` since Cyrius v1.10.3, but formats all values as strings — manual `*_to_json` implementations still required for correct numeric JSON
-- Compiler limit: 1024 functions per compilation unit
+- `#derive(Serialize)` generates correct `_to_json` since Cyrius v3.2.3 — integers as bare numbers, `: Str` fields as quoted strings. Manual `*_to_json` implementations can be replaced but are kept for backwards compatibility
+- Compiler limit: 2048 functions per compilation unit (expanded from 1024 in Cyrius 3.2.2)
 
 ## DO NOT
 

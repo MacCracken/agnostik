@@ -4,7 +4,7 @@
 
 ### Changed
 - **Version bump** to 0.97.0
-- **Cyrius compiler target**: v2.7.2 → v3.2.1
+- **Cyrius compiler target**: v2.7.2 → v3.2.3
 - **CI workflows** — updated Cyrius toolchain from 2.7.2 to 3.2.1
 - **CI benchmark step** — fixed file reference from `bench.cyr` to `bench.bcyr` (benchmarks were silently skipped)
 - **CI docs check** — added CLAUDE.md and CODE_OF_CONDUCT.md to required docs list

@@ -1,0 +1,165 @@
+# test_serde_roundtrip.tcyr — JSON serialize/deserialize roundtrip tests
+# Tests all 9 _from_json implementations against _to_json output
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+fn _ser(ptr, fn_ptr) {
+    var sb = str_builder_new();
+    fncall2(fn_ptr, ptr, sb);
+    return str_builder_build(sb);
+}
+
+fn test_resource_limits_roundtrip() {
+    var rl = resource_limits_new();
+    rlim_set_max_memory(rl, 536870912);
+    rlim_set_max_cpu(rl, 7200);
+    rlim_set_max_fds(rl, 512);
+    rlim_set_max_procs(rl, 128);
+    rlim_set_max_disk(rl, 1073741824);
+    rlim_set_net_bw(rl, 100000000);
+    var j = _ser(rl, &ResourceLimits_to_json);
+    var rl2 = ResourceLimits_from_json(j);
+    assert_eq(rlim_max_memory(rl2), 536870912, "rl mem rt");
+    assert_eq(rlim_max_cpu_time(rl2), 7200, "rl cpu rt");
+    assert_eq(rlim_max_fds(rl2), 512, "rl fds rt");
+    assert_eq(rlim_max_procs(rl2), 128, "rl procs rt");
+    assert_eq(rlim_max_disk(rl2), 1073741824, "rl disk rt");
+    assert_eq(rlim_net_bandwidth(rl2), 100000000, "rl bw rt");
+    return 0;
+}
+
+fn test_resource_usage_roundtrip() {
+    var ru = resource_usage_new();
+    store64(ru, 1024);
+    store64(ru + 8, 500);
+    store64(ru + 16, 42);
+    store64(ru + 24, 8);
+    var j = _ser(ru, &ResourceUsage_to_json);
+    var ru2 = ResourceUsage_from_json(j);
+    assert_eq(rusage_memory(ru2), 1024, "ru mem rt");
+    assert_eq(rusage_cpu(ru2), 500, "ru cpu rt");
+    assert_eq(rusage_fds(ru2), 42, "ru fds rt");
+    assert_eq(rusage_procs(ru2), 8, "ru procs rt");
+    return 0;
+}
+
+fn test_agent_stats_roundtrip() {
+    var s = agent_stats_new();
+    store64(s, 999);
+    store64(s + 8, 50000);
+    store64(s + 16, 86400);
+    var j = _ser(s, &AgentStats_to_json);
+    var s2 = AgentStats_from_json(j);
+    assert_eq(astats_requests(s2), 999, "as req rt");
+    assert_eq(astats_tokens(s2), 50000, "as tok rt");
+    assert_eq(astats_uptime(s2), 86400, "as up rt");
+    return 0;
+}
+
+fn test_token_usage_roundtrip() {
+    var tu = token_usage_new();
+    tusage_set_prompt(tu, 100);
+    tusage_set_completion(tu, 50);
+    tusage_set_total(tu, 150);
+    tusage_set_cache_create(tu, 20);
+    tusage_set_cache_read(tu, 10);
+    var j = _ser(tu, &TokenUsage_to_json);
+    var tu2 = TokenUsage_from_json(j);
+    assert_eq(tusage_prompt(tu2), 100, "tu prompt rt");
+    assert_eq(tusage_completion(tu2), 50, "tu compl rt");
+    assert_eq(tusage_total(tu2), 150, "tu total rt");
+    assert_eq(tusage_cache_create(tu2), 20, "tu cc rt");
+    assert_eq(tusage_cache_read(tu2), 10, "tu cr rt");
+    return 0;
+}
+
+fn test_accelerator_flags_roundtrip() {
+    var f = accelerator_flags_new();
+    aflags_set_cuda(f, 1);
+    aflags_set_vulkan(f, 1);
+    aflags_set_metal(f, 1);
+    var j = _ser(f, &AcceleratorFlags_to_json);
+    var f2 = AcceleratorFlags_from_json(j);
+    assert_eq(aflags_cuda(f2), 1, "af cuda rt");
+    assert_eq(aflags_rocm(f2), 0, "af rocm rt");
+    assert_eq(aflags_metal(f2), 1, "af metal rt");
+    assert_eq(aflags_vulkan(f2), 1, "af vulkan rt");
+    assert_eq(aflags_oneapi(f2), 0, "af oneapi rt");
+    assert_eq(aflags_tpu(f2), 0, "af tpu rt");
+    assert_eq(aflags_directml(f2), 0, "af dml rt");
+    return 0;
+}
+
+fn test_edge_overrides_roundtrip() {
+    var eo = edge_overrides_new();
+    store64(eo, 134217728);
+    store64(eo + 8, 1800);
+    store64(eo + 16, 5);
+    var j = _ser(eo, &EdgeResourceOverrides_to_json);
+    var eo2 = EdgeResourceOverrides_from_json(j);
+    assert_eq(eovr_max_memory(eo2), 134217728, "eo mem rt");
+    assert_eq(eovr_max_cpu(eo2), 1800, "eo cpu rt");
+    assert_eq(eovr_max_agents(eo2), 5, "eo agents rt");
+    return 0;
+}
+
+fn test_telemetry_config_roundtrip() {
+    var tc = telemetry_config_new();
+    var j = _ser(tc, &TelemetryConfig_to_json);
+    var tc2 = TelemetryConfig_from_json(j);
+    assert_eq(telcfg_enabled(tc2), 1, "tc enabled rt");
+    assert_eq(telcfg_sample_rate(tc2), 1000, "tc rate rt");
+    assert_eq(telcfg_endpoint(tc2), 0, "tc null ep rt");
+    return 0;
+}
+
+fn test_injection_scores_roundtrip() {
+    var sc = injection_scores_new();
+    store64(sc, 85);
+    store64(sc + 8, 10);
+    store64(sc + 16, 5);
+    store64(sc + 24, 0);
+    store64(sc + 32, 95);
+    var j = _ser(sc, &InjectionScores_to_json);
+    var sc2 = InjectionScores_from_json(j);
+    assert_eq(iscore_sql(sc2), 85, "is sql rt");
+    assert_eq(iscore_xss(sc2), 10, "is xss rt");
+    assert_eq(iscore_command(sc2), 5, "is cmd rt");
+    assert_eq(iscore_path_traversal(sc2), 0, "is path rt");
+    assert_eq(iscore_prompt_injection(sc2), 95, "is pi rt");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik serde roundtrip tests ===");
+    test_resource_limits_roundtrip();
+    test_resource_usage_roundtrip();
+    test_agent_stats_roundtrip();
+    test_token_usage_roundtrip();
+    test_accelerator_flags_roundtrip();
+    test_edge_overrides_roundtrip();
+    test_telemetry_config_roundtrip();
+    test_injection_scores_roundtrip();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

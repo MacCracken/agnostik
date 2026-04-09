@@ -65,6 +65,19 @@ fn AcceleratorFlags_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn AcceleratorFlags_from_json(src) {
+    var f = alloc(72);
+    store64(f, _json_int(src, str_from("cuda_available")));
+    store64(f + 8, _json_int(src, str_from("rocm_available")));
+    store64(f + 16, _json_int(src, str_from("metal_available")));
+    store64(f + 24, _json_int(src, str_from("vulkan_available")));
+    store64(f + 32, _json_int(src, str_from("oneapi_available")));
+    store64(f + 40, _json_int(src, str_from("tpu_available")));
+    store64(f + 48, _json_int(src, str_from("sycl_available")));
+    store64(f + 56, _json_int(src, str_from("openvino_available")));
+    store64(f + 64, _json_int(src, str_from("directml_available")));
+    return f;
+}
 fn accelerator_flags_new() {
     var f = alloc(72);
     var i = 0;

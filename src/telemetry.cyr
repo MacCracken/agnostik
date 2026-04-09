@@ -291,6 +291,13 @@ fn TelemetryConfig_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn TelemetryConfig_from_json(src) {
+    var c = alloc(24);
+    store64(c, _json_int(src, str_from("enabled")));
+    store64(c + 8, _json_int(src, str_from("sample_rate")));
+    store64(c + 16, _json_str(src, str_from("export_endpoint")));
+    return c;
+}
 fn telemetry_config_new() {
     var c = alloc(24);
     store64(c, 1);       # enabled = true

@@ -153,6 +153,15 @@ fn TokenUsage_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn TokenUsage_from_json(src) {
+    var u = alloc(40);
+    store64(u, _json_int(src, str_from("prompt_tok")));
+    store64(u + 8, _json_int(src, str_from("completion_tok")));
+    store64(u + 16, _json_int(src, str_from("total_tok")));
+    store64(u + 24, _json_int(src, str_from("cache_create_tok")));
+    store64(u + 32, _json_int(src, str_from("cache_read_tok")));
+    return u;
+}
 fn token_usage_new() {
     var u = alloc(40);
     var i = 0;

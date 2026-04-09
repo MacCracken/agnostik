@@ -60,6 +60,16 @@ fn ResourceLimits_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "}");
     return 0;
 }
+fn ResourceLimits_from_json(src) {
+    var r = alloc(48);
+    store64(r, _json_int(src, str_from("max_memory")));
+    store64(r + 8, _json_int(src, str_from("max_cpu_time")));
+    store64(r + 16, _json_int(src, str_from("max_fds")));
+    store64(r + 24, _json_int(src, str_from("max_procs")));
+    store64(r + 32, _json_int(src, str_from("max_disk")));
+    store64(r + 40, _json_int(src, str_from("net_bw")));
+    return r;
+}
 fn resource_limits_new() {
     var r = alloc(48);
     store64(r, 268435456);     # 256 MB default
@@ -95,6 +105,14 @@ fn ResourceUsage_to_json(ptr, sb) {
         str_builder_add_int(sb, load64(ptr + 24));
         str_builder_add_cstr(sb, "}");
     return 0;
+}
+fn ResourceUsage_from_json(src) {
+    var u = alloc(32);
+    store64(u, _json_int(src, str_from("mem_used")));
+    store64(u + 8, _json_int(src, str_from("cpu_used")));
+    store64(u + 16, _json_int(src, str_from("fds_used")));
+    store64(u + 24, _json_int(src, str_from("procs_used")));
+    return u;
 }
 fn resource_usage_new() {
     var u = alloc(32);
@@ -223,6 +241,18 @@ fn AgentInfo_to_json(ptr, sb) {
         str_builder_add_cstr(sb, "\"}");
     return 0;
 }
+fn AgentInfo_from_json(src) {
+    var info = alloc(32);
+    var id_str = _json_str(src, str_from("id"));
+    if (id_str != 0) {
+        var parsed = agent_id_from_str(id_str);
+        if (is_ok(parsed) == 1) { store64(info, payload(parsed)); }
+    }
+    store64(info + 8, _json_str(src, str_from("name")));
+    store64(info + 16, _json_int(src, str_from("agent_type_id")));
+    store64(info + 24, _json_int(src, str_from("status_id")));
+    return info;
+}
 fn agent_info_new(id, name, atype, status) {
     var info = alloc(32);
     store64(info, id);
@@ -246,6 +276,13 @@ fn AgentStats_to_json(ptr, sb) {
         str_builder_add_int(sb, load64(ptr + 16));
         str_builder_add_cstr(sb, "}");
     return 0;
+}
+fn AgentStats_from_json(src) {
+    var s = alloc(24);
+    store64(s, _json_int(src, str_from("total_requests")));
+    store64(s + 8, _json_int(src, str_from("total_tokens")));
+    store64(s + 16, _json_int(src, str_from("uptime_seconds")));
+    return s;
 }
 fn agent_stats_new() {
     var s = alloc(24);
