@@ -58,6 +58,48 @@ enum SysNr {
     SYS_TIMERFD_SETTIME = 286;
     SYS_SIGNALFD4 = 289;
     SYS_EPOLL_CREATE1 = 291;
+    SYS_CLONE = 56;
+    SYS_MUNMAP = 11;
+    SYS_FUTEX = 202;
+    SYS_GETTID = 186;
+    SYS_SET_TID_ADDRESS = 218;
+    SYS_EXIT_GROUP = 231;
+}
+
+# ================================================================
+# Clone flags (for thread creation)
+# ================================================================
+enum CloneFlag {
+    CLONE_VM = 256;
+    CLONE_FS = 512;
+    CLONE_FILES = 1024;
+    CLONE_SIGHAND = 2048;
+    CLONE_THREAD = 65536;
+    CLONE_SYSVSEM = 262144;
+    CLONE_SETTLS = 524288;
+    CLONE_PARENT_SETTID = 1048576;
+    CLONE_CHILD_CLEARTID = 2097152;
+}
+
+# ================================================================
+# mmap constants
+# ================================================================
+enum MmapConst {
+    PROT_READ = 1;
+    PROT_WRITE = 2;
+    PROT_EXEC = 4;
+    MAP_PRIVATE = 2;
+    MAP_ANONYMOUS = 32;
+    MAP_STACK = 131072;
+}
+
+# ================================================================
+# Futex operations
+# ================================================================
+enum FutexOp {
+    FUTEX_WAIT = 0;
+    FUTEX_WAKE = 1;
+    FUTEX_PRIVATE_FLAG = 128;
 }
 
 # ================================================================
@@ -261,26 +303,6 @@ fn sys_getpid() {
     return syscall(SYS_GETPID);
 }
 
-# Get parent process ID.
-fn sys_getppid() {
-    return syscall(SYS_GETPPID);
-}
-
-# Send signal to process.
-fn sys_kill(pid, sig) {
-    return syscall(SYS_KILL, pid, sig);
-}
-
-# Wait for a signal.
-fn sys_pause() {
-    return syscall(SYS_PAUSE);
-}
-
-# Create a new session.
-fn sys_setsid() {
-    return syscall(SYS_SETSID);
-}
-
 # waitpid via wait4 with rusage=NULL
 fn sys_waitpid(pid, status_ptr, options) {
     return syscall(SYS_WAIT4, pid, status_ptr, options, 0);
@@ -292,142 +314,8 @@ fn WIFEXITED(status) {
     return 0;
 }
 
-# Get exit status from wait status.
 fn WEXITSTATUS(status) {
     return (status >> 8) & 0xFF;
-}
-
-# Check if child was killed by signal.
-fn WIFSIGNALED(status) {
-    var sig = status & 0x7F;
-    if (sig > 0) {
-        if (sig != 0x7F) { return 1; }
-    }
-    return 0;
-}
-
-# Get signal number from wait status.
-fn WTERMSIG(status) {
-    return status & 0x7F;
-}
-
-# Identity
-fn sys_getuid() { return syscall(SYS_GETUID); }
-# Get group ID.
-fn sys_getgid() { return syscall(SYS_GETGID); }
-# Get effective user ID.
-fn sys_geteuid() { return syscall(SYS_GETEUID); }
-# Get effective group ID.
-fn sys_getegid() { return syscall(SYS_GETEGID); }
-# Set user ID.
-fn sys_setuid(uid) { return syscall(SYS_SETUID, uid); }
-# Set group ID.
-fn sys_setgid(gid) { return syscall(SYS_SETGID, gid); }
-# sys_setgroups syscall wrapper.
-fn sys_setgroups(size, list) { return syscall(SYS_SETGROUPS, size, list); }
-
-# Mount
-fn sys_mount(source, target, fstype, flags, data) {
-    return syscall(SYS_MOUNT, source, target, fstype, flags, data);
-}
-
-# Unmount a filesystem.
-fn sys_umount2(target, flags) {
-    return syscall(SYS_UMOUNT2, target, flags);
-}
-
-# Sync + reboot
-fn sys_sync() {
-    syscall(SYS_SYNC);
-    return 0;
-}
-
-# sys_reboot syscall wrapper.
-fn sys_reboot(cmd) {
-    return syscall(SYS_REBOOT, LINUX_REBOOT_MAGIC1, LINUX_REBOOT_MAGIC2, cmd, 0);
-}
-
-# Signal operations
-fn sigset_new() {
-    var set = alloc(8);
-    store64(set, 0);
-    return set;
-}
-
-# sigset_add syscall wrapper.
-fn sigset_add(set, signum) {
-    var mask = load64(set);
-    mask = mask | (1 << (signum - 1));
-    store64(set, mask);
-    return 0;
-}
-
-# sigset_has syscall wrapper.
-fn sigset_has(set, signum) {
-    var mask = load64(set);
-    if ((mask & (1 << (signum - 1))) != 0) { return 1; }
-    return 0;
-}
-
-# sys_sigprocmask syscall wrapper.
-fn sys_sigprocmask(how, set, oldset) {
-    return syscall(SYS_RT_SIGPROCMASK, how, set, oldset, 8);
-}
-
-# sys_signalfd syscall wrapper.
-fn sys_signalfd(fd, mask, flags) {
-    return syscall(SYS_SIGNALFD4, fd, mask, 8, flags);
-}
-
-# Epoll
-fn sys_epoll_create() {
-    return syscall(SYS_EPOLL_CREATE1, EPOLL_CLOEXEC);
-}
-
-# epoll_event: { u32 events, u64 data } = 12 bytes
-fn epoll_event_new(events, data) {
-    var ev = alloc(16);
-    store32(ev, events);
-    store64(ev + 4, data);
-    return ev;
-}
-
-# Control epoll: add/mod/del fd.
-fn sys_epoll_ctl(epfd, op, fd, event) {
-    return syscall(SYS_EPOLL_CTL, epfd, op, fd, event);
-}
-
-# Wait for epoll events.
-fn sys_epoll_wait(epfd, events, maxevents, timeout) {
-    return syscall(SYS_EPOLL_WAIT, epfd, events, maxevents, timeout);
-}
-
-# Timers
-fn sys_timerfd_create(clockid, flags) {
-    return syscall(SYS_TIMERFD_CREATE, clockid, flags);
-}
-
-# itimerspec: { interval: {sec, nsec}, value: {sec, nsec} } = 32 bytes
-fn timerspec_new(interval_sec, initial_sec) {
-    var ts = alloc(32);
-    store64(ts, interval_sec);
-    store64(ts + 8, 0);
-    store64(ts + 16, initial_sec);
-    store64(ts + 24, 0);
-    return ts;
-}
-
-# Set timer expiration.
-fn sys_timerfd_settime(fd, flags, new_value, old_value) {
-    return syscall(SYS_TIMERFD_SETTIME, fd, flags, new_value, old_value);
-}
-
-# timerfd_drain syscall wrapper.
-fn timerfd_drain(fd) {
-    var buf[1];
-    var n = sys_read(fd, &buf, 8);
-    if (n == 8) { return load64(&buf); }
-    return 0;
 }
 
 # Utility

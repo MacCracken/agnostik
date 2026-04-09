@@ -1,6 +1,6 @@
 # json.cyr — minimal JSON parser and builder
 # Usage: include "lib/json.cyr"
-# Requires: string.cyr, alloc.cyr, str.cyr, vec.cyr, fmt.cyr
+# Requires: string.cyr, alloc.cyr, str.cyr, vec.cyr, fmt.cyr, io.cyr
 #
 # Parses flat JSON objects into key-value pairs.
 # Values are stored as strings (callers convert with str_to_int etc).

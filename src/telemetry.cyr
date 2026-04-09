@@ -81,6 +81,12 @@ enum SpanStatus {
     SPAN_OK;
     SPAN_ERROR;
 }
+fn span_status_name(s) {
+    if (s == SPAN_UNSET)       { return "Unset"; }
+    elif (s == SPAN_OK)        { return "Ok"; }
+    elif (s == SPAN_ERROR)     { return "Error"; }
+    return "Unknown";
+}
 fn span_status_error(message) {
     return tagged_new(SPAN_ERROR, message);
 }
@@ -90,6 +96,14 @@ enum SpanKind {
     SPAN_CLIENT;
     SPAN_PRODUCER;
     SPAN_CONSUMER;
+}
+fn span_kind_name(k) {
+    if (k == SPAN_INTERNAL)      { return "Internal"; }
+    elif (k == SPAN_SERVER)      { return "Server"; }
+    elif (k == SPAN_CLIENT)      { return "Client"; }
+    elif (k == SPAN_PRODUCER)    { return "Producer"; }
+    elif (k == SPAN_CONSUMER)    { return "Consumer"; }
+    return "Unknown";
 }
 enum EventType {
     EVT_AGENT_STARTED;
@@ -120,11 +134,11 @@ enum LogSeverity {
 }
 fn log_severity_name(s) {
     if (s == LOG_TRACE) { return "TRACE"; }
-    if (s == LOG_DEBUG) { return "DEBUG"; }
-    if (s == LOG_INFO)  { return "INFO"; }
-    if (s == LOG_WARN)  { return "WARN"; }
-    if (s == LOG_ERROR) { return "ERROR"; }
-    if (s == LOG_FATAL) { return "FATAL"; }
+    elif (s == LOG_DEBUG) { return "DEBUG"; }
+    elif (s == LOG_INFO)  { return "INFO"; }
+    elif (s == LOG_WARN)  { return "WARN"; }
+    elif (s == LOG_ERROR) { return "ERROR"; }
+    elif (s == LOG_FATAL) { return "FATAL"; }
     return "UNKNOWN";
 }
 fn resource_new(name, version, instance_id) {
@@ -265,10 +279,16 @@ fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr));
     str_builder_add_cstr(sb, ", \"sample_rate\": ");
     str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"export_endpoint\": \"");
+    str_builder_add_cstr(sb, ", \"export_endpoint\": ");
     var ep = load64(ptr + 16);
-    if (ep != 0) { str_builder_add(sb, ep); }
-    str_builder_add_cstr(sb, "\"}");
+    if (ep != 0) {
+        str_builder_add_cstr(sb, "\"");
+        str_builder_add(sb, ep);
+        str_builder_add_cstr(sb, "\"");
+    } else {
+        str_builder_add_cstr(sb, "null");
+    }
+    str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn telemetry_config_new() {

@@ -45,7 +45,7 @@ Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kava
 8. Run benchmarks again — prove the wins
 9. If review heavy → return to step 5
 10. Documentation — update CHANGELOG, roadmap, docs, ADRs for design decisions, source citations for algorithms/formulas, update docs/sources.md, guides and examples for new API surface, verify recipe version in zugot
-11. Version check — VERSION, cyrb.toml, recipe (in zugot) all in sync
+11. Version check — VERSION, cyrius.toml, recipe (in zugot) all in sync
 12. Return to step 1
 
 ### Build & Test Commands

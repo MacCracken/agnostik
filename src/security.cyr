@@ -328,18 +328,18 @@ fn authctx_role(a)        { return load64(a + 8); }
 fn authctx_permissions(a) { return load64(a + 16); }
 fn permission_name(p) {
     if (p == PERM_FILE_READ)       { return "FileRead"; }
-    if (p == PERM_FILE_WRITE)      { return "FileWrite"; }
-    if (p == PERM_NETWORK_ACCESS)  { return "NetworkAccess"; }
-    if (p == PERM_PROCESS_SPAWN)   { return "ProcessSpawn"; }
-    if (p == PERM_LLM_INFERENCE)   { return "LlmInference"; }
-    if (p == PERM_AUDIT_READ)      { return "AuditRead"; }
+    elif (p == PERM_FILE_WRITE)      { return "FileWrite"; }
+    elif (p == PERM_NETWORK_ACCESS)  { return "NetworkAccess"; }
+    elif (p == PERM_PROCESS_SPAWN)   { return "ProcessSpawn"; }
+    elif (p == PERM_LLM_INFERENCE)   { return "LlmInference"; }
+    elif (p == PERM_AUDIT_READ)      { return "AuditRead"; }
     return "Unknown";
 }
 fn role_name(r) {
     if (r == ROLE_ADMIN)    { return "Admin"; }
-    if (r == ROLE_OPERATOR) { return "Operator"; }
-    if (r == ROLE_AUDITOR)  { return "Auditor"; }
-    if (r == ROLE_VIEWER)   { return "Viewer"; }
-    if (r == ROLE_SERVICE)  { return "Service"; }
+    elif (r == ROLE_OPERATOR) { return "Operator"; }
+    elif (r == ROLE_AUDITOR)  { return "Auditor"; }
+    elif (r == ROLE_VIEWER)   { return "Viewer"; }
+    elif (r == ROLE_SERVICE)  { return "Service"; }
     return "Unknown";
 }

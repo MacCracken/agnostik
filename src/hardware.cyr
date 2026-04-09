@@ -1,18 +1,46 @@
 enum DeviceFamily { DEV_GPU; DEV_TPU; DEV_NPU; DEV_AI_ASIC; DEV_CPU; }
+fn device_family_name(f) {
+    if (f == DEV_GPU)          { return "GPU"; }
+    elif (f == DEV_TPU)        { return "TPU"; }
+    elif (f == DEV_NPU)        { return "NPU"; }
+    elif (f == DEV_AI_ASIC)    { return "AI_ASIC"; }
+    elif (f == DEV_CPU)        { return "CPU"; }
+    return "Unknown";
+}
 enum DeviceVendor { VENDOR_NVIDIA; VENDOR_AMD; VENDOR_INTEL; VENDOR_APPLE; VENDOR_GOOGLE; VENDOR_QUALCOMM; VENDOR_HABANA; VENDOR_AWS; VENDOR_CUSTOM; }
 fn device_vendor_name(v) {
     if (v == VENDOR_NVIDIA)   { return "Nvidia"; }
-    if (v == VENDOR_AMD)      { return "AMD"; }
-    if (v == VENDOR_INTEL)    { return "Intel"; }
-    if (v == VENDOR_APPLE)    { return "Apple"; }
-    if (v == VENDOR_GOOGLE)   { return "Google"; }
-    if (v == VENDOR_QUALCOMM) { return "Qualcomm"; }
-    if (v == VENDOR_HABANA)   { return "Habana"; }
-    if (v == VENDOR_AWS)      { return "AWS"; }
+    elif (v == VENDOR_AMD)      { return "AMD"; }
+    elif (v == VENDOR_INTEL)    { return "Intel"; }
+    elif (v == VENDOR_APPLE)    { return "Apple"; }
+    elif (v == VENDOR_GOOGLE)   { return "Google"; }
+    elif (v == VENDOR_QUALCOMM) { return "Qualcomm"; }
+    elif (v == VENDOR_HABANA)   { return "Habana"; }
+    elif (v == VENDOR_AWS)      { return "AWS"; }
     return "Custom";
 }
 enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
+fn device_health_name(h) {
+    if (h == HEALTH_OK)            { return "Ok"; }
+    elif (h == HEALTH_DEGRADED)    { return "Degraded"; }
+    elif (h == HEALTH_FAILED)      { return "Failed"; }
+    return "Unknown";
+}
 enum MemoryType { MEM_GDDR5; MEM_GDDR6; MEM_GDDR6X; MEM_HBM2; MEM_HBM2E; MEM_HBM3; MEM_LPDDR4; MEM_LPDDR5; MEM_LPDDR5X; MEM_DDR4; MEM_DDR5; MEM_UNKNOWN; }
+fn memory_type_name(t) {
+    if (t == MEM_GDDR5)        { return "GDDR5"; }
+    elif (t == MEM_GDDR6)      { return "GDDR6"; }
+    elif (t == MEM_GDDR6X)     { return "GDDR6X"; }
+    elif (t == MEM_HBM2)       { return "HBM2"; }
+    elif (t == MEM_HBM2E)      { return "HBM2e"; }
+    elif (t == MEM_HBM3)       { return "HBM3"; }
+    elif (t == MEM_LPDDR4)     { return "LPDDR4"; }
+    elif (t == MEM_LPDDR5)     { return "LPDDR5"; }
+    elif (t == MEM_LPDDR5X)    { return "LPDDR5X"; }
+    elif (t == MEM_DDR4)       { return "DDR4"; }
+    elif (t == MEM_DDR5)       { return "DDR5"; }
+    return "Unknown";
+}
 #derive(Serialize)
 struct AcceleratorFlags { cuda_available; rocm_available; metal_available; vulkan_available; oneapi_available; tpu_available; sycl_available; openvino_available; directml_available; }
 fn AcceleratorFlags_to_json(ptr, sb) {
@@ -66,7 +94,7 @@ fn accelerator_device_new(index, dname, vendor, family) {
     store64(d + 80, accelerator_flags_new());
     store64(d + 88, 0);
     store64(d + 96, 0);
-    store64(d + 104, 0 - 1);
+    store64(d + 104, MEM_UNKNOWN);
     store64(d + 112, HEALTH_OK);
     return d;
 }

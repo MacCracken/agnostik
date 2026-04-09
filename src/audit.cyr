@@ -7,10 +7,10 @@ enum AuditSeverity {
 }
 fn audit_severity_name(s) {
     if (s == AUDIT_DEBUG)    { return "Debug"; }
-    if (s == AUDIT_INFO)     { return "Info"; }
-    if (s == AUDIT_WARNING)  { return "Warning"; }
-    if (s == AUDIT_ERROR)    { return "Error"; }
-    if (s == AUDIT_CRITICAL) { return "Critical"; }
+    elif (s == AUDIT_INFO)     { return "Info"; }
+    elif (s == AUDIT_WARNING)  { return "Warning"; }
+    elif (s == AUDIT_ERROR)    { return "Error"; }
+    elif (s == AUDIT_CRITICAL) { return "Critical"; }
     return "Unknown";
 }
 enum AuditResult {
@@ -20,8 +20,8 @@ enum AuditResult {
 }
 fn audit_result_name(r) {
     if (r == AUDIT_SUCCESS) { return "Success"; }
-    if (r == AUDIT_FAILURE) { return "Failure"; }
-    if (r == AUDIT_DENIED)  { return "Denied"; }
+    elif (r == AUDIT_FAILURE) { return "Failure"; }
+    elif (r == AUDIT_DENIED)  { return "Denied"; }
     return "Unknown";
 }
 var GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";

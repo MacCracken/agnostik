@@ -263,3 +263,17 @@ fn component_config_new(name, enabled) {
 fn component_config_name(c)     { return load64(c); }
 fn component_config_enabled(c)  { return load64(c + 8); }
 fn component_config_settings(c) { return load64(c + 16); }
+
+fn message_type_name(t) {
+    if (t == MSG_COMMAND)        { return "Command"; }
+    elif (t == MSG_RESPONSE)     { return "Response"; }
+    elif (t == MSG_EVENT)        { return "Event"; }
+    elif (t == MSG_HEARTBEAT)    { return "Heartbeat"; }
+    return "Unknown";
+}
+fn system_status_name(s) {
+    if (s == STATUS_HEALTHY)     { return "Healthy"; }
+    elif (s == STATUS_DEGRADED)  { return "Degraded"; }
+    elif (s == STATUS_CRITICAL)  { return "Critical"; }
+    return "Unknown";
+}

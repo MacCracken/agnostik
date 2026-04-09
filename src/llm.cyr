@@ -1,20 +1,27 @@
 enum LlmProvider { LLM_OLLAMA; LLM_LLAMA_CPP; LLM_OPENAI; LLM_ANTHROPIC; LLM_GOOGLE; LLM_DEEPSEEK; LLM_MISTRAL; LLM_GROK; LLM_GROQ; LLM_OPENROUTER; LLM_LMSTUDIO; LLM_LOCALAI; LLM_CUSTOM; }
 fn llm_provider_name(p) {
     if (p == LLM_OLLAMA)     { return "Ollama"; }
-    if (p == LLM_LLAMA_CPP)  { return "LlamaCpp"; }
-    if (p == LLM_OPENAI)     { return "OpenAI"; }
-    if (p == LLM_ANTHROPIC)  { return "Anthropic"; }
-    if (p == LLM_GOOGLE)     { return "Google"; }
-    if (p == LLM_DEEPSEEK)   { return "DeepSeek"; }
-    if (p == LLM_MISTRAL)    { return "Mistral"; }
-    if (p == LLM_GROK)       { return "Grok"; }
-    if (p == LLM_GROQ)       { return "Groq"; }
-    if (p == LLM_OPENROUTER) { return "OpenRouter"; }
-    if (p == LLM_LMSTUDIO)   { return "LMStudio"; }
-    if (p == LLM_LOCALAI)    { return "LocalAI"; }
+    elif (p == LLM_LLAMA_CPP)  { return "LlamaCpp"; }
+    elif (p == LLM_OPENAI)     { return "OpenAI"; }
+    elif (p == LLM_ANTHROPIC)  { return "Anthropic"; }
+    elif (p == LLM_GOOGLE)     { return "Google"; }
+    elif (p == LLM_DEEPSEEK)   { return "DeepSeek"; }
+    elif (p == LLM_MISTRAL)    { return "Mistral"; }
+    elif (p == LLM_GROK)       { return "Grok"; }
+    elif (p == LLM_GROQ)       { return "Groq"; }
+    elif (p == LLM_OPENROUTER) { return "OpenRouter"; }
+    elif (p == LLM_LMSTUDIO)   { return "LMStudio"; }
+    elif (p == LLM_LOCALAI)    { return "LocalAI"; }
     return "Custom";
 }
 enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; }
+fn message_role_name(r) {
+    if (r == ROLE_SYSTEM)        { return "system"; }
+    elif (r == ROLE_USER)        { return "user"; }
+    elif (r == ROLE_ASSISTANT)   { return "assistant"; }
+    elif (r == ROLE_TOOL)        { return "tool"; }
+    return "unknown";
+}
 enum ContentBlockType { CB_TEXT; CB_IMAGE; CB_DOCUMENT; CB_TOOL_USE; CB_TOOL_RESULT; CB_THINKING; CB_AUDIO; CB_CITATION; }
 fn content_text(text) { return tagged_new(CB_TEXT, text); }
 fn content_tool_use(tid, tname, targs) {
@@ -43,6 +50,15 @@ fn content_block_type(cb)    { return tag(cb); }
 fn content_block_payload(cb) { return payload(cb); }
 enum CacheControl { CACHE_EPHEMERAL; }
 enum FinishReason { FINISH_STOP; FINISH_LENGTH; FINISH_CONTENT_FILTER; FINISH_TOOL_USE; FINISH_ERROR; FINISH_RECITATION; }
+fn finish_reason_name(r) {
+    if (r == FINISH_STOP)               { return "stop"; }
+    elif (r == FINISH_LENGTH)           { return "length"; }
+    elif (r == FINISH_CONTENT_FILTER)   { return "content_filter"; }
+    elif (r == FINISH_TOOL_USE)         { return "tool_use"; }
+    elif (r == FINISH_ERROR)            { return "error"; }
+    elif (r == FINISH_RECITATION)       { return "recitation"; }
+    return "unknown";
+}
 enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
 enum ResponseFormat { RESP_TEXT; RESP_JSON_OBJECT; RESP_JSON_SCHEMA; }
 enum SafetyCategory { SAFETY_HATE; SAFETY_HARASSMENT; SAFETY_SEXUAL; SAFETY_DANGEROUS; SAFETY_CIVIC; }

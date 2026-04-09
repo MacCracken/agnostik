@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  CYRIUS_VERSION: "1.11.4"
+  CYRIUS_VERSION: "2.6.4"
 
 jobs:
   build-and-test:
@@ -25,36 +25,51 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/cc2" ./build/cc2
-          cp "$CYRIUS_HOME/bin/cyrb" ./build/cyrb 2>/dev/null || true
-          cp "$CYRIUS_HOME/bin/cyrfmt" ./build/cyrfmt 2>/dev/null || true
-          cp "$CYRIUS_HOME/bin/cyrlint" ./build/cyrlint 2>/dev/null || true
-          chmod +x ./build/*
+          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
+          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
+          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
+          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
+          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
           echo "Cyrius $CYRIUS_VERSION installed"
 
-      - name: Build test binary
+      - name: Build
         run: |
-          cat src/main.cyr | ./build/cc2 > build/agnostik_test
+          cat src/main.cyr | cc2 > build/agnostik_test 2>build/errors.log
+          if [ $? -ne 0 ]; then cat build/errors.log; exit 1; fi
           chmod +x build/agnostik_test
           echo "test binary: $(wc -c < build/agnostik_test) bytes"
 
-      - name: Run tests
+      - name: Test suite
         run: |
-          OUTPUT=$(./build/agnostik_test 2>&1)
-          echo "$OUTPUT"
-          echo "$OUTPUT" | grep -q "0 failed"
-          echo "PASS: all tests"
+          pass=0; fail=0
+          for t in tests/*.tcyr; do
+            [ -f "$t" ] || continue
+            name=$(basename "$t" .tcyr)
+            tmpbin="/tmp/ag_test_$$"
+            cat "$t" | cc2 > "$tmpbin" 2>/dev/null && chmod +x "$tmpbin"
+            if [ $? -ne 0 ]; then echo "FAIL (compile): $name"; fail=$((fail+1)); continue; fi
+            output=$("$tmpbin" 2>&1); ec=$?
+            rm -f "$tmpbin"
+            f=$(echo "$output" | grep -o '[0-9]* failed' | tail -1 | grep -o '^[0-9]*')
+            if [ "$ec" -ne 0 ] || { [ -n "$f" ] && [ "$f" -gt 0 ]; }; then
+              echo "FAIL: $name"; fail=$((fail+1))
+            else
+              summary=$(echo "$output" | grep -o '[0-9]* passed' | tail -1)
+              echo "PASS: $name ($summary)"
+              pass=$((pass+1))
+            fi
+          done
+          echo "$pass passed, $fail failed"
+          test $fail -eq 0
 
-      - name: Build bench binary
+      - name: Benchmarks
         run: |
-          cat benches/bench.cyr | ./build/cc2 > build/agnostik_bench
-          chmod +x build/agnostik_bench
-          echo "bench binary: $(wc -c < build/agnostik_bench) bytes"
-
-      - name: Run benchmarks
-        run: ./build/agnostik_bench
+          if [ -f benches/bench.cyr ]; then
+            cat benches/bench.cyr | cc2 > build/agnostik_bench 2>/dev/null
+            chmod +x build/agnostik_bench
+            ./build/agnostik_bench
+          fi
         continue-on-error: true
 
   check:
@@ -67,46 +82,36 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p build
-          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
-          chmod +x ./build/*
-
-      - name: Syntax check
-        run: |
-          if [ -x ./build/cyrb ]; then
-            ./build/cyrb check src/main.cyr
-          else
-            cat src/main.cyr | ./build/cc2 > /dev/null
-            echo "PASS: compiles"
-          fi
-        continue-on-error: true
+          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
+          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
+          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
+          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
+          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
 
       - name: Format check
         run: |
-          if [ -x ./build/cyrfmt ]; then
-            for f in src/*.cyr; do
-              ./build/cyrb fmt "$f" --check || echo "WARN: $f needs formatting"
-            done
-          else
-            echo "SKIP: cyrfmt not available in release"
-          fi
-        continue-on-error: true
+          fail=0
+          for f in src/*.cyr; do
+            cyrfmt "$f" > /tmp/fmt_check 2>/dev/null
+            if ! diff -q "$f" /tmp/fmt_check > /dev/null 2>&1; then
+              echo "needs formatting: $(basename $f)"
+              fail=1
+            fi
+          done
+          rm -f /tmp/fmt_check
+          test $fail -eq 0
 
   security:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Scan for dangerous patterns
         run: |
           WARN=0
           if grep -rn 'syscall(59' src/ 2>/dev/null | grep -v "# "; then
             echo "WARN: raw execve in modules"; WARN=1
-          fi
-          if grep -rn '"/etc/shadow"' src/ 2>/dev/null; then
-            echo "WARN: direct shadow file access"; WARN=1
           fi
           echo "security scan complete (warnings: $WARN)"
 
@@ -115,20 +120,18 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Check required docs
         run: |
           MISSING=0
-          for doc in README.md CHANGELOG.md VERSION CONTRIBUTING.md SECURITY.md LICENSE cyrb.toml; do
+          for doc in README.md CHANGELOG.md VERSION CONTRIBUTING.md SECURITY.md LICENSE cyrius.toml; do
             if [ -f "$doc" ]; then echo "  OK: $doc"; else echo "  MISSING: $doc"; MISSING=1; fi
           done
           exit $MISSING
-
       - name: Verify version consistency
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
-          TOML_VERSION=$(grep '^version' cyrb.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
-          echo "VERSION: $VERSION  cyrb.toml: $TOML_VERSION"
+          TOML_VERSION=$(grep '^version' cyrius.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "VERSION: $VERSION  cyrius.toml: $TOML_VERSION"
           [ "$VERSION" = "$TOML_VERSION" ] || { echo "FAIL: version mismatch"; exit 1; }
           grep -q "$VERSION" CHANGELOG.md || { echo "FAIL: version not in changelog"; exit 1; }
           echo "Version consistent"

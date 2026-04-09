@@ -207,9 +207,16 @@ struct AgentInfo { id; name; agent_type; status; }
 fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"id\": \"");
     str_builder_add(sb, agent_id_to_str(load64(ptr)));
-    str_builder_add_cstr(sb, "\", \"name\": \"");
-    str_builder_add(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, "\", \"agent_type\": \"");
+    str_builder_add_cstr(sb, "\", \"name\": ");
+    var name = load64(ptr + 8);
+    if (name != 0) {
+        str_builder_add_cstr(sb, "\"");
+        str_builder_add(sb, name);
+        str_builder_add_cstr(sb, "\"");
+    } else {
+        str_builder_add_cstr(sb, "null");
+    }
+    str_builder_add_cstr(sb, ", \"agent_type\": \"");
     str_builder_add_cstr(sb, agent_type_name(load64(ptr + 16)));
     str_builder_add_cstr(sb, "\", \"status\": \"");
     str_builder_add_cstr(sb, agent_status_name(load64(ptr + 24)));
@@ -276,21 +283,21 @@ fn task_id_to_str(t)  { return agent_id_to_str(t); }
 fn execution_id_new()      { return agent_id_new(); }
 fn execution_id_to_str(e)  { return agent_id_to_str(e); }
 fn agent_status_name(s) {
-    if (s == AGENT_PENDING)     { return "Pending"; }
-    if (s == AGENT_STARTING)    { return "Starting"; }
-    if (s == AGENT_RUNNING)     { return "Running"; }
-    if (s == AGENT_PAUSED)      { return "Paused"; }
-    if (s == AGENT_STOPPING)    { return "Stopping"; }
-    if (s == AGENT_STOPPED)     { return "Stopped"; }
-    if (s == AGENT_RESTARTING)  { return "Restarting"; }
-    if (s == AGENT_TERMINATED)  { return "Terminated"; }
-    if (s == AGENT_FAILED)      { return "Failed"; }
+    if (s == AGENT_PENDING)          { return "Pending"; }
+    elif (s == AGENT_STARTING)       { return "Starting"; }
+    elif (s == AGENT_RUNNING)        { return "Running"; }
+    elif (s == AGENT_PAUSED)         { return "Paused"; }
+    elif (s == AGENT_STOPPING)       { return "Stopping"; }
+    elif (s == AGENT_STOPPED)        { return "Stopped"; }
+    elif (s == AGENT_RESTARTING)     { return "Restarting"; }
+    elif (s == AGENT_TERMINATED)     { return "Terminated"; }
+    elif (s == AGENT_FAILED)         { return "Failed"; }
     return "Unknown";
 }
 fn agent_type_name(t) {
-    if (t == AGENT_TYPE_SYSTEM)  { return "System"; }
-    if (t == AGENT_TYPE_USER)    { return "User"; }
-    if (t == AGENT_TYPE_SERVICE) { return "Service"; }
+    if (t == AGENT_TYPE_SYSTEM)      { return "System"; }
+    elif (t == AGENT_TYPE_USER)      { return "User"; }
+    elif (t == AGENT_TYPE_SERVICE)   { return "Service"; }
     return "Unknown";
 }
 enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST; }

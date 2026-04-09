@@ -3,6 +3,12 @@ enum ValidationSeverity {
     VSEV_MEDIUM;
     VSEV_HIGH;
 }
+fn validation_severity_name(s) {
+    if (s == VSEV_LOW)         { return "Low"; }
+    elif (s == VSEV_MEDIUM)    { return "Medium"; }
+    elif (s == VSEV_HIGH)      { return "High"; }
+    return "Unknown";
+}
 fn validation_warning_new(code, message, severity) {
     var w = alloc(40);
     store64(w, code);

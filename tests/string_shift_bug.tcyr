@@ -1,0 +1,59 @@
+# string_shift_bug.tcyr — regression test for compiler bug #30
+#
+# FIXED in Cyrius v2.6.4: str_data buffer expanded from 8KB to 16KB.
+# Root cause: programs with many string literals silently overflowed the
+# 8KB str_data buffer (at 0x68000), corrupting str_pos and data_size.
+#
+# Original symptoms:
+#   - str_from("1.0.0-beta.1") returned garbage after 197+ test assertions
+#   - version_to_str(vp) truncated prerelease (got "1.0.0-" instead of "1.0.0-beta.1")
+#   - Passed in isolation, failed in full test suite (scale-dependent)
+#
+# Keep as regression test to catch future buffer overflows.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+fn main() {
+    alloc_init();
+
+    # This test passes in isolation but FAILS in agnostik.tcyr when
+    # message_type_name() and system_status_name() are added to types.cyr
+    var vp = version_new(1, 0, 0);
+    version_set_prerelease(vp, str_from("beta.1"));
+    var sp = version_to_str(vp);
+    var expected = str_from("1.0.0-beta.1");
+
+    syscall(1, 1, "got: [", 6);
+    str_print(sp);
+    syscall(1, 1, "] exp: [", 8);
+    str_print(expected);
+    syscall(1, 1, "]\n", 2);
+
+    assert_eq(str_eq(sp, expected), 1, "ver pre str");
+
+    # Also verify the new _name() functions work correctly
+    assert_eq(streq(message_type_name(MSG_COMMAND), "Command"), 1, "msg_type Command");
+    assert_eq(streq(system_status_name(STATUS_HEALTHY), "Healthy"), 1, "sys_status Healthy");
+
+    return assert_summary();
+}
+
+var r = main();
+syscall(SYS_EXIT, r);
