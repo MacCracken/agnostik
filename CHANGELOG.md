@@ -10,7 +10,8 @@
 - **CI docs check** — added CLAUDE.md and CODE_OF_CONDUCT.md to required docs list
 - **CONTRIBUTING.md** — rewritten for Cyrius (was still referencing Rust conventions)
 - **SECURITY.md** — updated supported versions (was 0.1.x), added vulnerability reporting process
-- **CLAUDE.md** — fixed benchmark build command (`bench.cyr` → `bench.bcyr`)
+- **CLAUDE.md** — fixed benchmark build command (`bench.cyr` → `bench.bcyr`), updated `#derive(Serialize)` note (no longer stubs since Cyrius v1.10.3, but still formats values as strings)
+- **docs/development/roadmap.md** — updated status to v0.97.0 (553 assertions), clarified blocked items with specific Cyrius 3.2.x fix requests, resolved "split integration tests" item
 
 ## [0.96.0] - 2026-04-09
 
