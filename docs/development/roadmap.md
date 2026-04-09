@@ -1,7 +1,7 @@
 # Agnostik Roadmap
 
 ## Status
-**v0.97.0** — P(-1) hardened (round 2). Rust removed. 12 modules, 613 test assertions (7 test files), 15 benchmarks. Zero external dependencies. Cyrius v3.2.3. Sakshi tracing vendored. CI uses `cat | cc2` pipe with correct `.bcyr` benchmark path.
+**v0.97.0** — P(-1) hardened (round 2). Rust removed. 12 modules, 613 test assertions (7 test files), 15 benchmarks. Zero external dependencies. Cyrius v3.2.4. Sakshi tracing vendored. CI uses `cat | cc2` pipe with correct `.bcyr` benchmark path.
 
 ## Migration
 
@@ -31,8 +31,10 @@ Consumers use `include "src/lib.cyr"` or include individual modules.
 - Break-free JSON field extractors (`_json_int`, `_json_str`, `_jfind`, `_str_find`) — workaround for compiler nested break bug
 - 36 roundtrip test assertions (serialize → deserialize → verify all fields)
 
-### Open
-- Add serde benchmarks (JSON serialize/deserialize timing)
+### Completed in v0.97.0 (serde benchmarks)
+- 10 serde benchmarks (5 to_json + 5 from_json): AgentStats, InjectionScores, TokenUsage, ResourceLimits, AcceleratorFlags
+- Serialization: ~1us (3-field) to ~2us (9-field)
+- Deserialization: ~2us (3-field) to ~25us (9-field) — linear scan per field
 
 ### Resolved by Cyrius 3.2.3
 - `#derive(Serialize)` now generates correct JSON for mixed structs: integers as bare numbers, `: Str` annotated fields as quoted strings. Manual `_to_json` implementations can be replaced with `#derive(Serialize)` using field type annotations.

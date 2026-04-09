@@ -17,6 +17,9 @@ include "src/telemetry.cyr"
 include "src/audit.cyr"
 include "src/llm.cyr"
 include "src/secrets.cyr"
+include "src/config.cyr"
+include "src/classification.cyr"
+include "src/validation.cyr"
 include "src/hardware.cyr"
 fn _b_agent_id_new() { agent_id_new(); return 0; }
 fn _b_trace_context_new() { trace_context_new(); return 0; }
@@ -63,6 +66,55 @@ fn _b_message_build() {
     message_text(ROLE_ASSISTANT, str_from("A systems language."));
     return 0;
 }
+# --- serde benchmark helpers ---
+fn _ser(ptr, fn_ptr) {
+    var sb = str_builder_new();
+    fncall2(fn_ptr, ptr, sb);
+    return str_builder_build(sb);
+}
+var _bench_rl_json = 0;
+var _bench_tu_json = 0;
+var _bench_af_json = 0;
+var _bench_is_json = 0;
+var _bench_as_json = 0;
+fn _b_rl_to_json() { _ser(resource_limits_new(), &ResourceLimits_to_json); return 0; }
+fn _b_rl_from_json() { ResourceLimits_from_json(_bench_rl_json); return 0; }
+fn _b_tu_to_json() {
+    var u = token_usage_new();
+    tusage_set_prompt(u, 100);
+    tusage_set_completion(u, 50);
+    tusage_set_total(u, 150);
+    _ser(u, &TokenUsage_to_json);
+    return 0;
+}
+fn _b_tu_from_json() { TokenUsage_from_json(_bench_tu_json); return 0; }
+fn _b_af_to_json() {
+    var f = accelerator_flags_new();
+    aflags_set_cuda(f, 1);
+    aflags_set_vulkan(f, 1);
+    _ser(f, &AcceleratorFlags_to_json);
+    return 0;
+}
+fn _b_af_from_json() { AcceleratorFlags_from_json(_bench_af_json); return 0; }
+fn _b_is_to_json() {
+    var s = injection_scores_new();
+    store64(s, 85);
+    store64(s + 8, 10);
+    store64(s + 32, 95);
+    _ser(s, &InjectionScores_to_json);
+    return 0;
+}
+fn _b_is_from_json() { InjectionScores_from_json(_bench_is_json); return 0; }
+fn _b_as_to_json() {
+    var s = agent_stats_new();
+    store64(s, 999);
+    store64(s + 8, 50000);
+    store64(s + 16, 86400);
+    _ser(s, &AgentStats_to_json);
+    return 0;
+}
+fn _b_as_from_json() { AgentStats_from_json(_bench_as_json); return 0; }
+
 fn tier(label) {
     syscall(SYS_WRITE, 1, "\n", 1);
     syscall(SYS_WRITE, 1, label, strlen(label));
@@ -79,7 +131,7 @@ fn main() {
     alloc_init();
     _bench_parent = trace_context_new();
     _bench_vs = str_from("0.90.0");
-    println("=== agnostik benchmarks (Cyrius v3.2.3) ===");
+    println("=== agnostik benchmarks (Cyrius v3.2.4) ===");
     tier("[tier1] core");
     run("agent_id_new", &_b_agent_id_new, 1000, 10);
     run("trace_context_new", &_b_trace_context_new, 1000, 10);
@@ -98,6 +150,31 @@ fn main() {
     run("security_context_full", &_b_security_context, 500, 10);
     run("message_build_3turn", &_b_message_build, 500, 10);
     run("token_usage_update", &_b_token_usage, 1000, 10);
+    # Pre-generate JSON for from_json benchmarks
+    _bench_rl_json = _ser(resource_limits_new(), &ResourceLimits_to_json);
+    var _tu = token_usage_new();
+    tusage_set_prompt(_tu, 100); tusage_set_completion(_tu, 50); tusage_set_total(_tu, 150);
+    _bench_tu_json = _ser(_tu, &TokenUsage_to_json);
+    var _af = accelerator_flags_new();
+    aflags_set_cuda(_af, 1); aflags_set_vulkan(_af, 1);
+    _bench_af_json = _ser(_af, &AcceleratorFlags_to_json);
+    var _is = injection_scores_new();
+    store64(_is, 85); store64(_is + 8, 10); store64(_is + 32, 95);
+    _bench_is_json = _ser(_is, &InjectionScores_to_json);
+    var _as = agent_stats_new();
+    store64(_as, 999); store64(_as + 8, 50000); store64(_as + 16, 86400);
+    _bench_as_json = _ser(_as, &AgentStats_to_json);
+    tier("[tier4] serde");
+    run("resource_limits_to_json", &_b_rl_to_json, 500, 10);
+    run("resource_limits_from_json", &_b_rl_from_json, 500, 10);
+    run("token_usage_to_json", &_b_tu_to_json, 500, 10);
+    run("token_usage_from_json", &_b_tu_from_json, 500, 10);
+    run("accel_flags_to_json", &_b_af_to_json, 500, 10);
+    run("accel_flags_from_json", &_b_af_from_json, 500, 10);
+    run("injection_scores_to_json", &_b_is_to_json, 500, 10);
+    run("injection_scores_from_json", &_b_is_from_json, 500, 10);
+    run("agent_stats_to_json", &_b_as_to_json, 500, 10);
+    run("agent_stats_from_json", &_b_as_from_json, 500, 10);
     println("\n=== done ===");
     return 0;
 }

@@ -96,41 +96,27 @@ fn agent_id_from_str(s) {
     }
     return Ok(id);
 }
-# --- JSON field extractors (break-free for compiler compat) ---
-fn _jneedle(key) {
+# --- JSON field extractors (uses strstr/memeq to avoid nested loop codegen bug) ---
+fn _json_find_value(src, key) {
+    # Build "key": needle and find it via strstr
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "\"");
     str_builder_add(sb, key);
     str_builder_add_cstr(sb, "\":");
-    return str_builder_build(sb);
-}
-fn _str_find(src, needle) {
-    var sd = str_data(src);
-    var sl = str_len(src);
-    var nd = str_data(needle);
-    var nl = str_len(needle);
-    if (nl > sl) { return 0 - 1; }
-    var i = 0;
-    while (i <= sl - nl) {
-        var ok = 1;
-        var k = 0;
-        while (k < nl) {
-            if (ok == 1) { if (load8(sd + i + k) != load8(nd + k)) { ok = 0; } }
-            k = k + 1;
-        }
-        if (ok == 1) { return i; }
-        i = i + 1;
-    }
-    return 0 - 1;
-}
-fn _json_int(src, key) {
-    var needle = _jneedle(key);
-    var pos = _str_find(src, needle);
-    if (pos < 0) { return 0; }
+    var needle = str_builder_build(sb);
+    var pos = strstr(str_data(src), str_data(needle));
+    if (pos < 0) { return 0 - 1; }
+    var vi = pos + str_len(needle);
     var data = str_data(src);
     var slen = str_len(src);
-    var vi = pos + str_len(needle);
     while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
+    return vi;
+}
+fn _json_int(src, key) {
+    var vi = _json_find_value(src, key);
+    if (vi < 0) { return 0; }
+    var data = str_data(src);
+    var slen = str_len(src);
     var val = 0;
     var parsing = 1;
     while (vi < slen && parsing == 1) {
@@ -141,14 +127,11 @@ fn _json_int(src, key) {
     return val;
 }
 fn _json_str(src, key) {
-    var needle = _jneedle(key);
-    var pos = _str_find(src, needle);
-    if (pos < 0) { return 0; }
+    var vi = _json_find_value(src, key);
+    if (vi < 0) { return 0; }
     var data = str_data(src);
     var slen = str_len(src);
-    var vi = pos + str_len(needle);
-    while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
-    if (vi + 3 < slen && load8(data+vi)==110 && load8(data+vi+1)==117 && load8(data+vi+2)==108 && load8(data+vi+3)==108) { return 0; }
+    if (memeq(data + vi, "null", 4) == 1) { return 0; }
     if (vi >= slen) { return 0; }
     if (load8(data + vi) != 34) { return 0; }
     vi = vi + 1;
