@@ -2,57 +2,42 @@
 
 **Agnostik** (agnostic) — shared types, error handling, and domain primitives for the [AGNOS](https://github.com/MacCracken/agnosticos) ecosystem.
 
-Extracted from `agnos-common` as a standalone crate. Provides the core type vocabulary that all AGNOS components share.
+Written in [Cyrius](https://github.com/MacCracken/cyrius). Zero external dependencies. Ported from Rust (7,121 lines) to Cyrius (~3,200 lines) — conversion complete, Rust source removed.
 
-## Features
+## Modules
 
-- **Agent** — AgentId, AgentConfig, AgentStatus, AgentManifest, ResourceLimits, AgentEvent
-- **Security** — SandboxConfig, RBAC (Role, TokenPayload, AuthContext), CgroupLimits, NamespaceConfig, LandlockRuleset, LinuxCapability, CapabilitySet, SandboxCapabilities
-- **Telemetry** — TraceContext (W3C-compatible), Span, MetricKind, MetricDataPoint, SpanCollector/MetricSink traits
+- **Error** — AgnostikError with 11 variants, retriable classification, numeric error codes
+- **Types** — AgentId, UserId, Version (SemVer), Capabilities, MessageType, SystemStatus
+- **Agent** — AgentConfig, AgentStatus, AgentManifest, ResourceLimits, HealthCheck, LifecycleHooks, AgentPool
+- **Security** — SandboxConfig, RBAC (Role, TokenPayload, AuthContext), CgroupLimits, NamespaceConfig, LandlockRuleset, LinuxCapability, CapabilitySet, SeccompProfile
+- **Telemetry** — TraceContext (W3C), Span, MetricDataPoint, LogRecord, SpanCollector/MetricSink traits
 - **Audit** — AuditEntry with HMAC-SHA256 integrity chain, AuditSeverity, AuditSink trait
-- **LLM** — Message, ContentBlock, ToolDefinition, ToolCall, SamplingParams, InferenceRequest/Response, StreamEvent
-- **Secrets** — Zeroize-backed Secret (redacted Debug), SecretMetadata
-- **Config** — EnvironmentProfile, AgnosConfig, ComponentConfig
-- **Classification** — ClassificationLevel, PiiKind, ClassificationResult (DLP types)
-- **Validation** — ValidationResult, ValidationWarning, injection scoring
-- **Hardware** — AcceleratorDevice, DeviceFamily, DeviceVendor, AcceleratorSummary
-- **Error** — AgnostikError with 11 variants, retriable classification, From<io::Error>/From<serde_json::Error>
+- **LLM** — Message, ContentBlock, ToolDefinition, ToolCall, SamplingParams, InferenceRequest/Response, StreamEvent, ModelCapabilities
+- **Secrets** — Zeroize-backed Secret, SecretMetadata, SecretStore trait
+- **Config** — EnvironmentProfile, AgnosConfig, EdgeResourceOverrides, FleetConfig
+- **Classification** — ClassificationLevel, PiiKind (16 variants), ClassificationResult
+- **Validation** — ValidationResult, ValidationWarning, InjectionScores (SQL/XSS/command/path/prompt)
+- **Hardware** — AcceleratorDevice, DeviceFamily, DeviceVendor, AcceleratorFlags, AcceleratorSummary
 
 ## Quick Start
 
-```rust
-use agnostik::{AgentId, SandboxConfig, TraceContext, AgnostikError};
+```cyrius
+include "src/lib.cyr"
 
-let id = AgentId::new();
-let sandbox = SandboxConfig::default();
-let trace = TraceContext::new();
-let child = trace.child(); // inherits trace_id, flags, state
-assert!(trace.is_sampled());
+var id = agent_id_new();
+var sb = sandbox_config_new();
+var ctx = trace_context_new();
+var child = tctx_child(ctx);    # inherits trace_id, flags, state
+assert_eq(tctx_is_sampled(ctx), 1, "sampled");
 
-// Parse from strings
-let parsed: AgentId = "550e8400-e29b-41d4-a716-446655440000".parse().unwrap();
+# Parse from strings
+var parsed = agent_id_from_str(str_from("550e8400-e29b-41d4-a716-446655440000"));
+assert_eq(is_ok(parsed), 1, "valid UUID");
 ```
-
-## Feature Flags
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `agent` | yes | Agent identity, configuration, lifecycle (implies `security`) |
-| `security` | yes | Sandbox, RBAC, cgroup, namespace, landlock, capability types |
-| `telemetry` | yes | W3C tracing, metrics, SpanCollector/MetricSink traits |
-| `audit` | no | Tamper-evident audit chain with HMAC integrity |
-| `llm` | no | Conversation, tool calling, streaming, inference types |
-| `secrets` | no | Zeroize-backed secret storage |
-| `config` | no | Environment profile and component config |
-| `classification` | no | Data classification and PII detection types |
-| `validation` | no | Input validation and sanitization types |
-| `hardware` | no | Hardware accelerator detection types |
-| `logging` | no | Tracing subscriber initialization |
-| `full` | no | All features enabled |
 
 ## Consumers
 
-Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach, stiva, nein, and all consumer apps. Also consumed by [SecureYeoman](https://github.com/MacCracken/secureyeoman) during its AGNOS migration.
+Every AGNOS component: daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach, stiva, nein, and all consumer apps.
 
 ## License
 

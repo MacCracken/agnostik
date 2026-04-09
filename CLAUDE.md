@@ -7,6 +7,7 @@
 - **Type**: Flat library (Cyrius)
 - **License**: GPL-3.0-only
 - **Version**: `0.97.0` (pre-release, targeting v1.0.0)
+- **Rust conversion**: Complete. 7,121 lines Rust → ~3,200 lines Cyrius. Rust source removed.
 - **Genesis repo**: [agnosticos](https://github.com/MacCracken/agnosticos)
 - **Philosophy**: [AGNOS Philosophy & Intention](https://github.com/MacCracken/agnosticos/blob/main/docs/philosophy.md)
 - **Standards**: [First-Party Standards](https://github.com/MacCracken/agnosticos/blob/main/docs/development/applications/first-party-standards.md)

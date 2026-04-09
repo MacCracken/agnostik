@@ -2,16 +2,32 @@
 
 ## [0.97.0] - 2026-04-09
 
+### Added
+- **`_from_json` deserialization** for all 9 serializable structs: ResourceLimits, ResourceUsage, AgentStats, TokenUsage, AcceleratorFlags, EdgeResourceOverrides, TelemetryConfig, InjectionScores, AgentInfo (with UUID parsing)
+- **JSON field extractors** (`_json_find_value`, `_json_int`, `_json_str`) — uses `strstr`/`memeq` to avoid compiler nested loop codegen bug
+- **7 `_name()` functions** for internal security enums: `fs_access_name`, `net_access_name`, `seccomp_action_name`, `seccomp_arg_op_name`, `seccomp_arch_name`, `mount_propagation_name`, `policy_effect_name`
+- **10 serde benchmarks** (tier4): 5 `_to_json` + 5 `_from_json` covering AgentStats, InjectionScores, TokenUsage, ResourceLimits, AcceleratorFlags
+- **330 new test assertions** across 4 new test files (test_coverage_1–4) covering: agent lifecycle/capabilities/scheduling/rate-limits/resource-grants, security contexts/policies/capabilities/sandbox/auth, LLM tools/sampling/streaming/content-blocks/model-capabilities, telemetry spans/metrics/logs/exemplars/baggage, audit entries/integrity/retention, secrets metadata, config profiles/fleet, validation warnings/injection-scores, classification results, hardware devices/flags/summary, extended name functions
+- **36 serde roundtrip assertions** (test_serde_roundtrip) — serialize → JSON → deserialize → verify all fields for 8 struct types
+
 ### Changed
-- **Version bump** to 0.97.0
-- **Cyrius compiler target**: v2.7.2 → v3.2.4
-- **CI workflows** — updated Cyrius toolchain from 2.7.2 to 3.2.1
-- **CI benchmark step** — fixed file reference from `bench.cyr` to `bench.bcyr` (benchmarks were silently skipped)
-- **CI docs check** — added CLAUDE.md and CODE_OF_CONDUCT.md to required docs list
-- **CONTRIBUTING.md** — rewritten for Cyrius (was still referencing Rust conventions)
+- **Cyrius compiler target**: v2.7.2 → v3.2.4 (function limit 1024→2048, `#derive(Serialize)` Str field support, `strstr`/`memeq` stdlib additions)
+- **Stdlib vendored**: `string.cyr` updated from Cyrius 3.2.4 (adds `strstr`, `atoi`)
+- **CI workflows** — Cyrius toolchain updated to 3.2.4, benchmark path fixed (`bench.cyr` → `bench.bcyr`, was silently skipped), added CLAUDE.md and CODE_OF_CONDUCT.md to required docs check
+- **README.md** — rewritten for Cyrius (removed Rust examples, feature flags, `use` statements)
+- **CONTRIBUTING.md** — rewritten for Cyrius (was referencing `#[non_exhaustive]`, `make check`, `unwrap()`)
 - **SECURITY.md** — updated supported versions (was 0.1.x), added vulnerability reporting process
-- **CLAUDE.md** — fixed benchmark build command (`bench.cyr` → `bench.bcyr`), updated `#derive(Serialize)` note (no longer stubs since Cyrius v1.10.3, but still formats values as strings)
-- **docs/development/roadmap.md** — updated status to v0.97.0 (553 assertions), clarified blocked items with specific Cyrius 3.2.x fix requests, resolved "split integration tests" item
+- **CLAUDE.md** — marked Rust conversion complete, fixed benchmark command, updated `#derive(Serialize)` and function limit notes
+- **CHANGELOG** — renamed duplicate 0.95.0 entry to 0.95.1
+
+### Testing
+- 613 assertions (up from 223), 0 failures, 7 test files
+- 25 benchmarks (up from 15), no regressions
+
+### Performance
+- Serialization: ~1us (3-field) to ~2us (9-field)
+- Deserialization: ~1us (3-field) to ~9us (9-field) via `strstr`-based field extraction
+- Core benchmarks unchanged: agent_id_new 36ns, trace_context_child 42ns, sandbox_config 64ns
 
 ## [0.96.0] - 2026-04-09
 
