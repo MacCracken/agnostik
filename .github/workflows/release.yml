@@ -34,23 +34,14 @@ jobs:
         run: |
           curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
           tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          mkdir -p "$HOME/.cyrius/bin" "$HOME/.cyrius/lib"
-          cp "$CYRIUS_DIR/bin/"* "$HOME/.cyrius/bin/" 2>/dev/null || true
-          cp -r "$CYRIUS_DIR/lib/"* "$HOME/.cyrius/lib/" 2>/dev/null || true
-          chmod +x "$HOME/.cyrius/bin/"* 2>/dev/null || true
-          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
+          export CYRIUS_HOME="cyrius-$CYRIUS_VERSION-x86_64-linux"
+          mkdir -p build
+          cp "$CYRIUS_HOME/bin/"* ./build/ 2>/dev/null || true
+          chmod +x ./build/*
+          echo "$PWD/build" >> $GITHUB_PATH
 
       - name: Test
-        run: |
-          for t in tests/*.tcyr; do
-            [ -f "$t" ] || continue
-            name=$(basename "$t" .tcyr)
-            tmpbin="/tmp/ag_test_$$"
-            cat "$t" | cc2 > "$tmpbin" 2>/dev/null && chmod +x "$tmpbin"
-            "$tmpbin" 2>&1
-            rm -f "$tmpbin"
-          done
+        run: cyrius test
 
       - name: Clean toolchain artifacts
         run: rm -f cyrius-*.tar.gz
