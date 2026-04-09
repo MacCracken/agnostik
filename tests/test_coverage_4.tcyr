@@ -1,0 +1,149 @@
+# test_coverage_4.tcyr — extended coverage for audit, secrets, config,
+# validation, classification, name functions
+# P(-1) hardening: constructors, getters, setters, defaults
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+fn test_audit_entry() {
+    var id = agent_id_new();
+    var ae = audit_entry_new(str_from("e1"), id, str_from("read"), AUDIT_INFO);
+    assert_eq(agent_id_eq(aentry_agent_id(ae), id), 1, "ae aid");
+    assert_eq(aentry_severity(ae), AUDIT_INFO, "ae info");
+    assert_eq(aentry_result(ae), AUDIT_SUCCESS, "ae success");
+    assert(aentry_timestamp(ae) > 0, "ae ts");
+    assert_eq(aentry_correlation_id(ae), 0, "ae no corr");
+    assert_eq(aentry_user_id(ae), 0, "ae no uid");
+    assert_eq(aentry_source_ip(ae), 0, "ae no ip");
+    assert_eq(aentry_duration_ms(ae), 0, "ae dur 0");
+    assert_eq(vec_len(aentry_tags(ae)), 0, "ae no tags");
+    assert(aentry_integrity(ae) != 0, "ae has integrity");
+    aentry_set_source_ip(ae, str_from("10.0.0.1"));
+    aentry_set_duration_ms(ae, 42);
+    aentry_set_user_id(ae, str_from("u1"));
+    assert_eq(aentry_duration_ms(ae), 42, "ae dur 42");
+    vec_push(aentry_tags(ae), str_from("sec"));
+    assert_eq(vec_len(aentry_tags(ae)), 1, "ae 1 tag");
+    return 0;
+}
+
+fn test_audit_integrity() {
+    var ig = integrity_fields_genesis(str_from("sig"));
+    assert_eq(integrity_is_genesis(ig), 1, "ig genesis");
+    var h = str_from("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890");
+    var ig2 = integrity_fields_new(version_new(1, 0, 0), str_from("s2"), h);
+    assert_eq(integrity_is_genesis(ig2), 0, "ig2 not genesis");
+    assert_eq(version_major(integrity_version(ig2)), 1, "ig2 ver");
+    return 0;
+}
+
+fn test_audit_retention() {
+    var rp = retention_policy_new(7);
+    assert_eq(retpol_min_days(rp), 7, "rp min 7");
+    assert_eq(retpol_max_days(rp), 0, "rp max 0");
+    assert_eq(retpol_archive(rp), 0, "rp no archive");
+    return 0;
+}
+
+fn test_secrets() {
+    var sm = secret_metadata_new(str_from("pw"), SECRET_PASSWORD);
+    assert_eq(smeta_kind(sm), SECRET_PASSWORD, "sm pw");
+    assert(smeta_created_at(sm) > 0, "sm created");
+    assert_eq(smeta_expires_at(sm), 0, "sm no expiry");
+    assert_eq(smeta_owner(sm), 0, "sm no owner");
+    assert_eq(vec_len(smeta_tags(sm)), 0, "sm no tags");
+    return 0;
+}
+
+fn test_config() {
+    var cfg = agnos_config_new();
+    assert_eq(acfg_profile(cfg), ENV_DEVELOPMENT, "cfg dev");
+    assert_eq(acfg_generation(cfg), 0, "cfg gen 0");
+    acfg_set_hostname(cfg, str_from("n1"));
+    var eo = edge_overrides_new();
+    assert_eq(eovr_max_memory(eo), 0, "eo mem 0");
+    assert_eq(eovr_max_agents(eo), 0, "eo agents 0");
+    var pd = profile_definition_new(str_from("stg"), ENV_STAGING);
+    assert_eq(profdef_profile(pd), ENV_STAGING, "pd staging");
+    var fc = fleet_config_new();
+    assert_eq(vec_len(fleet_profiles(fc)), 0, "fc no profiles");
+    return 0;
+}
+
+fn test_validation() {
+    var vw = validation_warning_new(str_from("W1"), str_from("sus"), VSEV_MEDIUM);
+    assert_eq(vwarn_severity(vw), VSEV_MEDIUM, "vw med");
+    assert_eq(vwarn_position(vw), 0, "vw pos 0");
+    assert_eq(vwarn_pattern(vw), 0, "vw no pat");
+    var sc = injection_scores_new();
+    assert_eq(iscore_sql(sc), 0, "is sql 0");
+    assert_eq(iscore_xss(sc), 0, "is xss 0");
+    assert_eq(iscore_command(sc), 0, "is cmd 0");
+    assert_eq(iscore_path_traversal(sc), 0, "is path 0");
+    assert_eq(iscore_prompt_injection(sc), 0, "is pi 0");
+    var vr = validation_result_new(1, str_from("ok"));
+    assert_eq(vresult_valid(vr), 1, "vr valid");
+    assert_eq(vresult_blocked(vr), 0, "vr not blocked");
+    assert_eq(vec_len(vresult_warnings(vr)), 0, "vr no warns");
+    vresult_set_blocked(vr, str_from("sql"));
+    assert_eq(vresult_blocked(vr), 1, "vr blocked");
+    return 0;
+}
+
+fn test_classification() {
+    var cr = classification_result_new(CLASS_INTERNAL);
+    assert_eq(cresult_level(cr), CLASS_INTERNAL, "cr int");
+    assert_eq(cresult_auto_level(cr), CLASS_INTERNAL, "cr auto");
+    assert_eq(cresult_confidence(cr), 0, "cr conf 0");
+    assert_eq(vec_len(cresult_pii(cr)), 0, "cr no pii");
+    assert_eq(vec_len(cresult_rules(cr)), 0, "cr no rules");
+    vec_push(cresult_pii(cr), PII_EMAIL);
+    assert_eq(vec_len(cresult_pii(cr)), 1, "cr 1 pii");
+    return 0;
+}
+
+fn test_names() {
+    assert_eq(streq(device_vendor_name(VENDOR_NVIDIA), "Nvidia"), 1, "v Nvidia");
+    assert_eq(streq(device_vendor_name(VENDOR_AMD), "AMD"), 1, "v AMD");
+    assert_eq(streq(agent_type_name(AGENT_TYPE_USER), "User"), 1, "at User");
+    assert_eq(streq(agent_type_name(AGENT_TYPE_SYSTEM), "System"), 1, "at System");
+    assert_eq(streq(agnostik_err_kind_name(ERR_TIMEOUT), "timeout"), 1, "ek timeout");
+    assert_eq(streq(agnostik_err_kind_name(ERR_IO), "i/o error"), 1, "ek io");
+    assert_eq(streq(classification_level_name(CLASS_PUBLIC), "Public"), 1, "cl Public");
+    assert_eq(streq(pii_kind_name(PII_PHONE), "Phone"), 1, "pii Phone");
+    assert_eq(streq(pii_kind_name(PII_FULL_NAME), "FullName"), 1, "pii FN");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik coverage 4 (audit/secrets/config/validation/classification) ===");
+    test_audit_entry();
+    test_audit_integrity();
+    test_audit_retention();
+    test_secrets();
+    test_config();
+    test_validation();
+    test_classification();
+    test_names();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

@@ -66,10 +66,9 @@ jobs:
 
       - name: Benchmarks
         run: |
-          if [ -f benches/bench.cyr ]; then
-            cat benches/bench.cyr | cc2 > build/bench 2>/dev/null && chmod +x build/bench && ./build/bench
+          if [ -f benches/bench.bcyr ]; then
+            cat benches/bench.bcyr | cc2 > build/bench 2>/dev/null && chmod +x build/bench && ./build/bench
           fi
-        continue-on-error: true
 
   check:
     name: Check & Format
@@ -122,7 +121,7 @@ jobs:
       - name: Check required docs
         run: |
           MISSING=0
-          for doc in README.md CHANGELOG.md VERSION CONTRIBUTING.md SECURITY.md LICENSE cyrius.toml; do
+          for doc in README.md CHANGELOG.md VERSION CONTRIBUTING.md SECURITY.md LICENSE cyrius.toml CLAUDE.md CODE_OF_CONDUCT.md; do
             if [ -f "$doc" ]; then echo "  OK: $doc"; else echo "  MISSING: $doc"; MISSING=1; fi
           done
           exit $MISSING

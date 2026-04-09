@@ -1,0 +1,131 @@
+# test_coverage_3.tcyr — extended coverage for hardware module
+# P(-1) hardening: all device accessors/setters, flags, summary
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+fn test_hardware_device() {
+    var dev = accelerator_device_new(0, str_from("A100"), VENDOR_NVIDIA, DEV_GPU);
+    assert_eq(adev_index(dev), 0, "dev index 0");
+    assert_eq(str_eq(adev_name(dev), str_from("A100")), 1, "dev name A100");
+    assert_eq(adev_vendor(dev), VENDOR_NVIDIA, "dev vendor nvidia");
+    assert_eq(adev_family(dev), DEV_GPU, "dev family gpu");
+    assert_eq(adev_vram_total(dev), 0, "dev default vram_total 0");
+    assert_eq(adev_vram_used(dev), 0, "dev default vram_used 0");
+    assert_eq(adev_utilization(dev), 0, "dev default util 0");
+    assert_eq(adev_temperature(dev), 0, "dev default temp 0");
+    assert_eq(adev_driver_version(dev), 0, "dev default no driver");
+    assert_eq(adev_compute_capability(dev), 0, "dev default no compute");
+    assert_eq(adev_power_watts(dev), 0, "dev default power 0");
+    assert_eq(adev_memory_bandwidth_gbps(dev), 0, "dev default bw 0");
+    assert_eq(adev_memory_type(dev), MEM_UNKNOWN, "dev default memtype unknown");
+    assert_eq(adev_health(dev), HEALTH_OK, "dev default health ok");
+    assert(adev_flags(dev) != 0, "dev has flags");
+    # set + get roundtrip for all settable fields
+    adev_set_vram_total(dev, 81920);
+    adev_set_vram_used(dev, 40960);
+    adev_set_utilization(dev, 75);
+    adev_set_temperature(dev, 72);
+    adev_set_driver_version(dev, str_from("535.104.05"));
+    adev_set_compute_capability(dev, str_from("8.0"));
+    adev_set_power_watts(dev, 300);
+    adev_set_memory_bandwidth_gbps(dev, 2039);
+    adev_set_memory_type(dev, MEM_HBM2E);
+    adev_set_health(dev, HEALTH_DEGRADED);
+    assert_eq(adev_vram_total(dev), 81920, "dev set vram_total");
+    assert_eq(adev_vram_used(dev), 40960, "dev set vram_used");
+    assert_eq(adev_utilization(dev), 75, "dev set util");
+    assert_eq(adev_temperature(dev), 72, "dev set temp");
+    assert_eq(str_eq(adev_driver_version(dev), str_from("535.104.05")), 1, "dev set driver");
+    assert_eq(str_eq(adev_compute_capability(dev), str_from("8.0")), 1, "dev set compute");
+    assert_eq(adev_power_watts(dev), 300, "dev set power");
+    assert_eq(adev_memory_bandwidth_gbps(dev), 2039, "dev set bw");
+    assert_eq(adev_memory_type(dev), MEM_HBM2E, "dev set memtype");
+    assert_eq(adev_health(dev), HEALTH_DEGRADED, "dev set health");
+    return 0;
+}
+
+fn test_hardware_flags() {
+    var af = accelerator_flags_new();
+    assert_eq(aflags_cuda(af), 0, "af default no cuda");
+    assert_eq(aflags_rocm(af), 0, "af default no rocm");
+    assert_eq(aflags_metal(af), 0, "af default no metal");
+    assert_eq(aflags_vulkan(af), 0, "af default no vulkan");
+    assert_eq(aflags_oneapi(af), 0, "af default no oneapi");
+    assert_eq(aflags_tpu(af), 0, "af default no tpu");
+    assert_eq(aflags_sycl(af), 0, "af default no sycl");
+    assert_eq(aflags_openvino(af), 0, "af default no openvino");
+    assert_eq(aflags_directml(af), 0, "af default no directml");
+    aflags_set_cuda(af, 1);
+    aflags_set_rocm(af, 1);
+    aflags_set_metal(af, 1);
+    aflags_set_vulkan(af, 1);
+    aflags_set_oneapi(af, 1);
+    aflags_set_tpu(af, 1);
+    aflags_set_sycl(af, 1);
+    aflags_set_openvino(af, 1);
+    aflags_set_directml(af, 1);
+    assert_eq(aflags_cuda(af), 1, "af set cuda");
+    assert_eq(aflags_rocm(af), 1, "af set rocm");
+    assert_eq(aflags_metal(af), 1, "af set metal");
+    assert_eq(aflags_vulkan(af), 1, "af set vulkan");
+    assert_eq(aflags_oneapi(af), 1, "af set oneapi");
+    assert_eq(aflags_tpu(af), 1, "af set tpu");
+    assert_eq(aflags_sycl(af), 1, "af set sycl");
+    assert_eq(aflags_openvino(af), 1, "af set openvino");
+    assert_eq(aflags_directml(af), 1, "af set directml");
+    return 0;
+}
+
+fn test_hardware_summary() {
+    var sum = accelerator_summary_new();
+    assert_eq(vec_len(asum_devices(sum)), 0, "sum default no devices");
+    assert_eq(asum_total_vram(sum), 0, "sum default 0 vram");
+    var d1 = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
+    adev_set_vram_total(d1, 24576);
+    var d2 = accelerator_device_new(1, str_from("MI300X"), VENDOR_AMD, DEV_GPU);
+    adev_set_vram_total(d2, 192000);
+    var d3 = accelerator_device_new(2, str_from("Gaudi2"), VENDOR_HABANA, DEV_AI_ASIC);
+    adev_set_vram_total(d3, 98304);
+    asum_add_device(sum, d1);
+    asum_add_device(sum, d2);
+    asum_add_device(sum, d3);
+    assert_eq(vec_len(asum_devices(sum)), 3, "sum 3 devices");
+    assert_eq(asum_total_vram(sum), 314880, "sum total vram");
+    assert_eq(vec_len(asum_by_vendor(sum, VENDOR_NVIDIA)), 1, "sum 1 nvidia");
+    assert_eq(vec_len(asum_by_vendor(sum, VENDOR_AMD)), 1, "sum 1 amd");
+    assert_eq(vec_len(asum_by_vendor(sum, VENDOR_INTEL)), 0, "sum 0 intel");
+    assert_eq(vec_len(asum_by_vendor(sum, VENDOR_HABANA)), 1, "sum 1 habana");
+    assert_eq(vec_len(asum_by_family(sum, DEV_GPU)), 2, "sum 2 gpus");
+    assert_eq(vec_len(asum_by_family(sum, DEV_AI_ASIC)), 1, "sum 1 asic");
+    assert_eq(vec_len(asum_by_family(sum, DEV_TPU)), 0, "sum 0 tpus");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik extended coverage 3 (hardware) ===");
+    test_hardware_device();
+    test_hardware_flags();
+    test_hardware_summary();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

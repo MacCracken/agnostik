@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.97.0] - 2026-04-09
+
+### Changed
+- **Version bump** to 0.97.0
+- **Cyrius compiler target**: v2.7.2 → v3.2.1
+- **CI workflows** — updated Cyrius toolchain from 2.7.2 to 3.2.1
+- **CI benchmark step** — fixed file reference from `bench.cyr` to `bench.bcyr` (benchmarks were silently skipped)
+- **CI docs check** — added CLAUDE.md and CODE_OF_CONDUCT.md to required docs list
+- **CONTRIBUTING.md** — rewritten for Cyrius (was still referencing Rust conventions)
+- **SECURITY.md** — updated supported versions (was 0.1.x), added vulnerability reporting process
+- **CLAUDE.md** — fixed benchmark build command (`bench.cyr` → `bench.bcyr`)
+
 ## [0.96.0] - 2026-04-09
 
 ### Removed
@@ -13,7 +25,7 @@
 - **Release workflow** — uses `cyrius test` for gate instead of manual `.tcyr` loop
 - **Source formatting** — all 6 files flagged by `cyrfmt` fixed (agent, config, hardware, llm, telemetry, validation)
 
-## [0.95.0] - 2026-04-09
+## [0.95.1] - 2026-04-09
 
 ### Fixed
 - **`version_to_str` buffer overflow** — increased buffer from 64 to 128 bytes with bounds checking on prerelease/build `memcpy` (was heap corruption on long prerelease strings)

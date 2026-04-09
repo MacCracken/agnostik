@@ -61,7 +61,7 @@ cat src/main.cyr | "$CC" > build/agnostik_test && chmod +x build/agnostik_test
 ./build/agnostik_test
 
 # Build and run benchmarks
-cat benches/bench.cyr | "$CC" > build/agnostik_bench && chmod +x build/agnostik_bench
+cat benches/bench.bcyr | "$CC" > build/agnostik_bench && chmod +x build/agnostik_bench
 ./build/agnostik_bench
 
 # Build library (for consumers)

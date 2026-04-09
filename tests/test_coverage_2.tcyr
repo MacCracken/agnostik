@@ -1,0 +1,135 @@
+# test_coverage_2.tcyr — extended coverage for telemetry module
+# P(-1) hardening: spans, metrics, log records, parse errors
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+fn test_telemetry_resource() {
+    var r = resource_new(str_from("svc"), str_from("1.0"), str_from("i1"));
+    assert_eq(str_eq(res_service_name(r), str_from("svc")), 1, "res name");
+    assert_eq(str_eq(res_service_version(r), str_from("1.0")), 1, "res version");
+    assert_eq(str_eq(res_instance_id(r), str_from("i1")), 1, "res instance");
+    assert(res_attributes(r) != 0, "res has attrs");
+    assert_eq(res_schema_url(r), 0, "res no schema");
+    assert(resource_default() != 0, "res default ok");
+    return 0;
+}
+
+fn test_telemetry_span() {
+    var ctx = trace_context_new();
+    var s = span_new(str_from("op"), tctx_trace_id(ctx), tctx_span_id(ctx));
+    assert_eq(span_status(s), SPAN_UNSET, "span unset");
+    assert_eq(span_kind(s), SPAN_INTERNAL, "span internal");
+    assert(span_started_at(s) > 0, "span started");
+    assert_eq(span_duration_ms(s), 0, "span dur 0");
+    assert_eq(vec_len(span_events(s)), 0, "span no events");
+    assert_eq(vec_len(span_links(s)), 0, "span no links");
+    assert_eq(span_parent_id(s), 0, "span no parent");
+    assert_eq(span_dropped_attrs(s), 0, "span 0 da");
+    assert_eq(span_dropped_events(s), 0, "span 0 de");
+    assert_eq(span_dropped_links(s), 0, "span 0 dl");
+    span_set_kind(s, SPAN_SERVER);
+    assert_eq(span_kind(s), SPAN_SERVER, "span server");
+    span_set_status(s, SPAN_OK);
+    assert_eq(span_status(s), SPAN_OK, "span ok");
+    span_set_duration_ms(s, 42);
+    assert_eq(span_duration_ms(s), 42, "span dur 42");
+    return 0;
+}
+
+fn test_telemetry_events_links() {
+    var se = span_event_new(str_from("exc"));
+    assert_eq(str_eq(sevt_name(se), str_from("exc")), 1, "se name");
+    assert(sevt_timestamp(se) > 0, "se ts");
+    var ctx = trace_context_new();
+    var sl = span_link_new(tctx_trace_id(ctx), tctx_span_id(ctx));
+    assert_eq(trace_id_eq(slink_trace_id(sl), tctx_trace_id(ctx)), 1, "sl tid");
+    return 0;
+}
+
+fn test_telemetry_context() {
+    var ctx = trace_context_new();
+    assert(tctx_span_id(ctx) != 0, "has sid");
+    assert_eq(tctx_parent_span_id(ctx), 0, "no parent");
+    var child = tctx_child(ctx);
+    assert_eq(span_id_eq(tctx_parent_span_id(child), tctx_span_id(ctx)), 1, "child parent");
+    return 0;
+}
+
+fn test_telemetry_metrics() {
+    var mv = metric_int(42);
+    assert_eq(metric_value_type(mv), MV_INT, "mv int");
+    assert_eq(metric_value_val(mv), 42, "mv 42");
+    var mvf = metric_float(314);
+    assert_eq(metric_value_type(mvf), MV_FLOAT, "mv float");
+    var dp = metric_data_point_new(str_from("req"), mv);
+    assert_eq(mdp_temporality(dp), TEMPORALITY_CUMULATIVE, "dp cum");
+    assert_eq(mdp_is_monotonic(dp), 0, "dp not mono");
+    assert(mdp_timestamp(dp) > 0, "dp ts");
+    return 0;
+}
+
+fn test_telemetry_log() {
+    var lr = log_record_new(LOG_WARN, str_from("full"));
+    assert_eq(logrec_severity(lr), LOG_WARN, "lr warn");
+    assert(logrec_timestamp(lr) > 0, "lr ts");
+    assert_eq(logrec_trace_id(lr), 0, "lr no tid");
+    assert_eq(logrec_span_id(lr), 0, "lr no sid");
+    var tid = trace_id_new();
+    var sid = span_id_new();
+    logrec_set_trace_id(lr, tid);
+    logrec_set_span_id(lr, sid);
+    assert_eq(trace_id_eq(logrec_trace_id(lr), tid), 1, "lr tid set");
+    assert_eq(span_id_eq(logrec_span_id(lr), sid), 1, "lr sid set");
+    return 0;
+}
+
+fn test_telemetry_exemplar() {
+    var tid = trace_id_new();
+    var sid = span_id_new();
+    var ex = exemplar_new(tid, sid, 42);
+    assert_eq(trace_id_eq(exem_trace_id(ex), tid), 1, "ex tid");
+    assert_eq(exem_value(ex), 42, "ex val");
+    assert(exem_timestamp(ex) > 0, "ex ts");
+    return 0;
+}
+
+fn test_telemetry_parse_errors() {
+    assert_eq(is_ok(trace_id_from_str(str_from("short"))), 0, "tid short");
+    assert_eq(is_ok(span_id_from_str(str_from("short"))), 0, "sid short");
+    assert_eq(is_ok(tctx_from_traceparent(str_from(""))), 0, "tp empty");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik coverage 2 (telemetry) ===");
+    test_telemetry_resource();
+    test_telemetry_span();
+    test_telemetry_events_links();
+    test_telemetry_context();
+    test_telemetry_metrics();
+    test_telemetry_log();
+    test_telemetry_exemplar();
+    test_telemetry_parse_errors();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);
