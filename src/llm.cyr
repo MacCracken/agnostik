@@ -46,6 +46,24 @@ fn content_image(source, media_type, is_url) {
     store64(img + 16, is_url);
     return tagged_new(CB_IMAGE, img);
 }
+fn content_document(source, media_type) {
+    var doc = alloc(16);
+    store64(doc, source);
+    store64(doc + 8, media_type);
+    return tagged_new(CB_DOCUMENT, doc);
+}
+fn content_audio(source, media_type) {
+    var aud = alloc(16);
+    store64(aud, source);
+    store64(aud + 8, media_type);
+    return tagged_new(CB_AUDIO, aud);
+}
+fn content_citation(source, text) {
+    var cit = alloc(16);
+    store64(cit, source);
+    store64(cit + 8, text);
+    return tagged_new(CB_CITATION, cit);
+}
 fn content_block_type(cb)    { return tag(cb); }
 fn content_block_payload(cb) { return payload(cb); }
 enum CacheControl { CACHE_EPHEMERAL; }
@@ -148,7 +166,9 @@ fn tusage_cache_create(u){ return load64(u + 24); }
 fn tusage_cache_read(u)  { return load64(u + 32); }
 fn tusage_set_prompt(u, v)     { store64(u, v); return 0; }
 fn tusage_set_completion(u, v) { store64(u + 8, v); return 0; }
-fn tusage_set_total(u, v)      { store64(u + 16, v); return 0; }
+fn tusage_set_total(u, v)        { store64(u + 16, v); return 0; }
+fn tusage_set_cache_create(u, v) { store64(u + 24, v); return 0; }
+fn tusage_set_cache_read(u, v)   { store64(u + 32, v); return 0; }
 fn inference_request_new(model) {
     var r = alloc(136);
     store64(r, model);

@@ -80,9 +80,15 @@ fn aflags_tpu(f)      { return load64(f + 40); }
 fn aflags_sycl(f)     { return load64(f + 48); }
 fn aflags_openvino(f) { return load64(f + 56); }
 fn aflags_directml(f) { return load64(f + 64); }
-fn aflags_set_cuda(f, v)   { store64(f, v); return 0; }
-fn aflags_set_rocm(f, v)   { store64(f + 8, v); return 0; }
-fn aflags_set_vulkan(f, v) { store64(f + 24, v); return 0; }
+fn aflags_set_cuda(f, v)     { store64(f, v); return 0; }
+fn aflags_set_rocm(f, v)     { store64(f + 8, v); return 0; }
+fn aflags_set_metal(f, v)    { store64(f + 16, v); return 0; }
+fn aflags_set_vulkan(f, v)   { store64(f + 24, v); return 0; }
+fn aflags_set_oneapi(f, v)   { store64(f + 32, v); return 0; }
+fn aflags_set_tpu(f, v)      { store64(f + 40, v); return 0; }
+fn aflags_set_sycl(f, v)     { store64(f + 48, v); return 0; }
+fn aflags_set_openvino(f, v) { store64(f + 56, v); return 0; }
+fn aflags_set_directml(f, v) { store64(f + 64, v); return 0; }
 fn accelerator_device_new(index, dname, vendor, family) {
     var d = alloc(120);
     store64(d, index);

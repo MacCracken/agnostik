@@ -52,20 +52,21 @@ agnostik (Cyrius)
 ## Library Dependencies
 
 ```
-lib/syscalls.cyr   — Linux syscall wrappers
+lib/syscalls.cyr   — Linux syscall wrappers (trimmed for types library)
 lib/string.cyr     — C string operations (strlen, memcpy, memeq, memset)
-lib/alloc.cyr      — Bump allocator (brk-based)
-lib/fmt.cyr        — Integer formatting
-lib/str.cyr        — Fat string type (data + length), str_builder
+lib/alloc.cyr      — Bump allocator (brk-based) + arena allocator
+lib/fmt.cyr        — Integer/float formatting
+lib/str.cyr        — Fat string type (data + length), str_builder (direct buffer)
 lib/vec.cyr        — Dynamic array
 lib/hashmap.cyr    — Hash map (FNV-1a, open addressing)
 lib/tagged.cyr     — Tagged unions: Option, Result, Either
 lib/fnptr.cyr      — Function pointer dispatch (inline asm)
 lib/trait.cyr      — Trait objects (vtable + data fat pointers)
-lib/io.cyr         — File I/O (open, read, write, close)
+lib/io.cyr         — File I/O (open, read, write, close, getenv)
 lib/json.cyr       — Minimal JSON parser and builder
-lib/assert.cyr     — Test assertions
+lib/assert.cyr     — Test assertions (eq, neq, gt, lt, gte, lte, nonnull, streq)
 lib/bench.cyr      — Benchmark harness (ns timing via clock_gettime)
+lib/sakshi.cyr     — Tracing/error handling (stderr profile, packed i64 errors)
 ```
 
 ## Traits (vtable dispatch)

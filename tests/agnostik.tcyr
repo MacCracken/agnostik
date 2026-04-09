@@ -491,6 +491,42 @@ fn test_integration() {
     assert_eq(integrity_is_genesis(ig2), 0, "non-genesis check");
     return 0;
 }
+fn test_name_functions() {
+    # types
+    assert_eq(streq(message_type_name(MSG_COMMAND), "Command"), 1, "msg Command");
+    assert_eq(streq(message_type_name(MSG_EVENT), "Event"), 1, "msg Event");
+    assert_eq(streq(system_status_name(STATUS_HEALTHY), "Healthy"), 1, "status Healthy");
+    assert_eq(streq(system_status_name(STATUS_CRITICAL), "Critical"), 1, "status Critical");
+    # llm
+    assert_eq(streq(message_role_name(ROLE_SYSTEM), "system"), 1, "role system");
+    assert_eq(streq(message_role_name(ROLE_ASSISTANT), "assistant"), 1, "role assistant");
+    assert_eq(streq(finish_reason_name(FINISH_STOP), "stop"), 1, "finish stop");
+    assert_eq(streq(finish_reason_name(FINISH_TOOL_USE), "tool_use"), 1, "finish tool_use");
+    # telemetry
+    assert_eq(streq(span_status_name(SPAN_OK), "Ok"), 1, "span_status Ok");
+    assert_eq(streq(span_kind_name(SPAN_SERVER), "Server"), 1, "span_kind Server");
+    assert_eq(streq(span_kind_name(SPAN_CONSUMER), "Consumer"), 1, "span_kind Consumer");
+    # hardware
+    assert_eq(streq(device_family_name(DEV_GPU), "GPU"), 1, "family GPU");
+    assert_eq(streq(device_family_name(DEV_TPU), "TPU"), 1, "family TPU");
+    assert_eq(streq(device_health_name(HEALTH_OK), "Ok"), 1, "health Ok");
+    assert_eq(streq(device_health_name(HEALTH_FAILED), "Failed"), 1, "health Failed");
+    assert_eq(streq(memory_type_name(MEM_HBM3), "HBM3"), 1, "mem HBM3");
+    assert_eq(streq(memory_type_name(MEM_GDDR6X), "GDDR6X"), 1, "mem GDDR6X");
+    # classification
+    assert_eq(streq(pii_kind_name(PII_EMAIL), "Email"), 1, "pii Email");
+    assert_eq(streq(pii_kind_name(PII_SSN), "SSN"), 1, "pii SSN");
+    assert_eq(streq(pii_kind_name(PII_CREDIT_CARD), "CreditCard"), 1, "pii CreditCard");
+    # validation
+    assert_eq(streq(validation_severity_name(VSEV_HIGH), "High"), 1, "vsev High");
+    # secrets
+    assert_eq(streq(secret_kind_name(SECRET_API_KEY), "ApiKey"), 1, "sk ApiKey");
+    assert_eq(streq(secret_kind_name(SECRET_TOKEN), "Token"), 1, "sk Token");
+    # audit (existing but untested)
+    assert_eq(streq(audit_severity_name(AUDIT_CRITICAL), "Critical"), 1, "asev Critical");
+    assert_eq(streq(audit_result_name(AUDIT_FAILURE), "Failure"), 1, "ares Failure");
+    return 0;
+}
 fn main() {
     alloc_init();
     println("=== agnostik test suite ===");
@@ -515,6 +551,7 @@ fn main() {
     test_serde_accelerator_flags();
     test_serde_edge_overrides();
     test_serde_telemetry_config();
+    test_name_functions();
     test_integration();
     println("");
     return assert_summary();

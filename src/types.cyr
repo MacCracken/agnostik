@@ -120,7 +120,8 @@ fn version_build(v)      { return load64(v + 32); }
 fn version_set_prerelease(v, pre) { store64(v + 24, pre); return 0; }
 fn version_set_build(v, b)        { store64(v + 32, b); return 0; }
 fn version_to_str(v) {
-    var buf = alloc(64);
+    var buf = alloc(128);
+    var cap = 127;
     var pos = 0;
     pos = pos + fmt_int_buf(version_major(v), buf + pos);
     store8(buf + pos, 46); pos = pos + 1;
@@ -129,17 +130,21 @@ fn version_to_str(v) {
     pos = pos + fmt_int_buf(version_patch(v), buf + pos);
     var pre = version_prerelease(v);
     if (pre != 0) {
-        store8(buf + pos, 45); pos = pos + 1;
         var plen = str_len(pre);
-        memcpy(buf + pos, str_data(pre), plen);
-        pos = pos + plen;
+        if (pos + 1 + plen < cap) {
+            store8(buf + pos, 45); pos = pos + 1;
+            memcpy(buf + pos, str_data(pre), plen);
+            pos = pos + plen;
+        }
     }
     var bld = version_build(v);
     if (bld != 0) {
-        store8(buf + pos, 43); pos = pos + 1;
         var blen = str_len(bld);
-        memcpy(buf + pos, str_data(bld), blen);
-        pos = pos + blen;
+        if (pos + 1 + blen < cap) {
+            store8(buf + pos, 43); pos = pos + 1;
+            memcpy(buf + pos, str_data(bld), blen);
+            pos = pos + blen;
+        }
     }
     store8(buf + pos, 0);
     return str_new(buf, pos);
@@ -148,6 +153,9 @@ fn version_from_str(s) {
     var data = str_data(s);
     var slen = str_len(s);
     var v = alloc(40);
+    store64(v, 0);
+    store64(v + 8, 0);
+    store64(v + 16, 0);
     store64(v + 24, 0);
     store64(v + 32, 0);
     # Find first dot

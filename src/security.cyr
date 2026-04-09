@@ -151,9 +151,10 @@ fn seccomp_arg_new(index, value, value_two, op) {
     store64(a + 24, op);
     return a;
 }
-fn scarg_index(a) { return load64(a); }
-fn scarg_value(a) { return load64(a + 8); }
-fn scarg_op(a)    { return load64(a + 24); }
+fn scarg_index(a)     { return load64(a); }
+fn scarg_value(a)     { return load64(a + 8); }
+fn scarg_value_two(a) { return load64(a + 16); }
+fn scarg_op(a)        { return load64(a + 24); }
 fn filesystem_rule_new(path, access) {
     var r = alloc(48);
     store64(r, path);

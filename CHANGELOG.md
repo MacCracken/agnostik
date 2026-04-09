@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.95.0] - 2026-04-09
+
+### Fixed
+- **`version_to_str` buffer overflow** — increased buffer from 64 to 128 bytes with bounds checking on prerelease/build `memcpy` (was heap corruption on long prerelease strings)
+- **`version_from_str` uninitialized fields** — major/minor/patch zeroed on alloc (was garbage on parse failure)
+- **`secret_destroy` incomplete zeroize** — now zeros both the secret buffer AND the struct pointer/length fields
+- **`_json_has` passed C string to `str_contains`** — fixed to pass Str (was always failing after str.cyr API update)
+- **`accelerator_device_new` memory_type sentinel** — uses `MEM_UNKNOWN` enum instead of raw `-1`
+- **`TelemetryConfig_to_json` null endpoint** — renders as `null` instead of `""` (ambiguous with empty string)
+- **`AgentInfo_to_json` null name** — guarded with null check, renders as `null`
+
+### Added
+- **14 `_name()` functions** for consumer-facing enums (all use clean `elif` chains):
+  - types: `message_type_name`, `system_status_name`
+  - llm: `message_role_name`, `finish_reason_name`
+  - telemetry: `span_status_name`, `span_kind_name`
+  - hardware: `device_family_name`, `device_health_name`, `memory_type_name`
+  - classification: `pii_kind_name` (16 PII variants)
+  - validation: `validation_severity_name`
+  - secrets: `secret_kind_name`
+- **12 missing accessors/setters**: `scarg_value_two`, 6 AcceleratorFlags setters (metal, oneapi, tpu, sycl, openvino, directml), 2 TokenUsage cache setters, 3 content block factories (`content_document`, `content_audio`, `content_citation`)
+- **sakshi.cyr** — vendored slim tracing/error profile (zero-alloc, stderr output, packed i64 errors)
+- **Regression test** — `tests/string_shift_bug.tcyr` for compiler bug #30
+
+### Changed
+- **Stdlib synced to vidya 2.0** — alloc (arena allocator), assert (6 new helpers), fmt (f64 formatting), io (getenv), str (Str-based contains/ends_with, direct-buffer string builder), hashmap (refactored internals), process (pipefd fix), json (io.cyr dep), syscalls (threading/mmap/futex enums)
+- **Str_ method wrappers removed** — reclaimed 16 function slots (unused by agnostik, consumers use `str_*` directly)
+- **Syscalls trimmed** — removed admin/epoll/timer/signal/identity wrappers (not needed by a types library)
+- **All existing `_name()` functions** converted from separate `if` blocks to `elif` chains
+- **Cyrius compiler target**: v1.11.4 → v2.6.4
+- **Test/bench file format**: `.tcyr`/`.bcyr` for `cyrius test`/`cyrius bench` auto-discovery
+- **Build config**: `cyrb.toml` → `cyrius.toml`
+
+### Testing
+- 226 assertions (up from 198), 0 failures
+- 15 benchmarks, no regressions
+- Regression test for compiler bug #30 (str_data buffer overflow)
+
+### Performance
+- agent_id_new: 35ns, trace_context_child: 41ns, sandbox_config_default: 62ns
+- version_to_str: 151ns (up from 124ns — bounds checking cost, acceptable)
+- accelerator_device_full: 153ns, token_usage_update: 36ns
+
+### Breaking
+- `str_contains` and `str_ends_with` now take Str arguments instead of C strings. Callers must wrap C strings with `str_from()`.
+
 ## [0.91.0] - 2026-04-07
 
 ### Fixed
