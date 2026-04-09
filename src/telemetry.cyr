@@ -276,19 +276,19 @@ fn span_dropped_links(s)  { return load64(s + 104); }
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
 fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"enabled\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"sample_rate\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"export_endpoint\": ");
-    var ep = load64(ptr + 16);
-    if (ep != 0) {
-        str_builder_add_cstr(sb, "\"");
-        str_builder_add(sb, ep);
-        str_builder_add_cstr(sb, "\"");
-    } else {
-        str_builder_add_cstr(sb, "null");
-    }
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"sample_rate\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"export_endpoint\": ");
+        var ep = load64(ptr + 16);
+        if (ep != 0) {
+            str_builder_add_cstr(sb, "\"");
+            str_builder_add(sb, ep);
+            str_builder_add_cstr(sb, "\"");
+        } else {
+            str_builder_add_cstr(sb, "null");
+        }
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn telemetry_config_new() {

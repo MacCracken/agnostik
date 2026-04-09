@@ -27,16 +27,16 @@ fn vwarn_pattern(w)  { return load64(w + 32); }
 struct InjectionScores { sql; xss; command; path_traversal; prompt_injection; }
 fn InjectionScores_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"sql\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"xss\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"command\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"path_traversal\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"prompt_injection\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"xss\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"command\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, ", \"path_traversal\": ");
+        str_builder_add_int(sb, load64(ptr + 24));
+        str_builder_add_cstr(sb, ", \"prompt_injection\": ");
+        str_builder_add_int(sb, load64(ptr + 32));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn injection_scores_new() {

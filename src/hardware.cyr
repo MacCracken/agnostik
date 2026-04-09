@@ -45,24 +45,24 @@ fn memory_type_name(t) {
 struct AcceleratorFlags { cuda_available; rocm_available; metal_available; vulkan_available; oneapi_available; tpu_available; sycl_available; openvino_available; directml_available; }
 fn AcceleratorFlags_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"cuda_available\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"rocm_available\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"metal_available\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"vulkan_available\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"oneapi_available\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, ", \"tpu_available\": ");
-    str_builder_add_int(sb, load64(ptr + 40));
-    str_builder_add_cstr(sb, ", \"sycl_available\": ");
-    str_builder_add_int(sb, load64(ptr + 48));
-    str_builder_add_cstr(sb, ", \"openvino_available\": ");
-    str_builder_add_int(sb, load64(ptr + 56));
-    str_builder_add_cstr(sb, ", \"directml_available\": ");
-    str_builder_add_int(sb, load64(ptr + 64));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"rocm_available\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"metal_available\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, ", \"vulkan_available\": ");
+        str_builder_add_int(sb, load64(ptr + 24));
+        str_builder_add_cstr(sb, ", \"oneapi_available\": ");
+        str_builder_add_int(sb, load64(ptr + 32));
+        str_builder_add_cstr(sb, ", \"tpu_available\": ");
+        str_builder_add_int(sb, load64(ptr + 40));
+        str_builder_add_cstr(sb, ", \"sycl_available\": ");
+        str_builder_add_int(sb, load64(ptr + 48));
+        str_builder_add_cstr(sb, ", \"openvino_available\": ");
+        str_builder_add_int(sb, load64(ptr + 56));
+        str_builder_add_cstr(sb, ", \"directml_available\": ");
+        str_builder_add_int(sb, load64(ptr + 64));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn accelerator_flags_new() {

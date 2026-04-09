@@ -141,16 +141,16 @@ fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
 struct TokenUsage { prompt_tok; completion_tok; total_tok; cache_create_tok; cache_read_tok; }
 fn TokenUsage_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"prompt_tok\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"completion_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"total_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"cache_create_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"cache_read_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"completion_tok\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"total_tok\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, ", \"cache_create_tok\": ");
+        str_builder_add_int(sb, load64(ptr + 24));
+        str_builder_add_cstr(sb, ", \"cache_read_tok\": ");
+        str_builder_add_int(sb, load64(ptr + 32));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn token_usage_new() {

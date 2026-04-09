@@ -46,18 +46,18 @@ enum CircuitBreakerState {
 struct ResourceLimits { max_memory; max_cpu_time; max_fds; max_procs; max_disk; net_bw; }
 fn ResourceLimits_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"max_memory\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"max_cpu_time\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"max_fds\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"max_procs\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"max_disk\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, ", \"net_bw\": ");
-    str_builder_add_int(sb, load64(ptr + 40));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"max_cpu_time\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"max_fds\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, ", \"max_procs\": ");
+        str_builder_add_int(sb, load64(ptr + 24));
+        str_builder_add_cstr(sb, ", \"max_disk\": ");
+        str_builder_add_int(sb, load64(ptr + 32));
+        str_builder_add_cstr(sb, ", \"net_bw\": ");
+        str_builder_add_int(sb, load64(ptr + 40));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn resource_limits_new() {
@@ -86,14 +86,14 @@ fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
 struct ResourceUsage { mem_used; cpu_used; fds_used; procs_used; }
 fn ResourceUsage_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"mem_used\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"cpu_used\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"fds_used\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"procs_used\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"cpu_used\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"fds_used\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, ", \"procs_used\": ");
+        str_builder_add_int(sb, load64(ptr + 24));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn resource_usage_new() {
@@ -206,21 +206,21 @@ fn aevent_payload(e)    { return load64(e + 16); }
 struct AgentInfo { id; name; agent_type; status; }
 fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"id\": \"");
-    str_builder_add(sb, agent_id_to_str(load64(ptr)));
-    str_builder_add_cstr(sb, "\", \"name\": ");
-    var name = load64(ptr + 8);
-    if (name != 0) {
-        str_builder_add_cstr(sb, "\"");
-        str_builder_add(sb, name);
-        str_builder_add_cstr(sb, "\"");
-    } else {
-        str_builder_add_cstr(sb, "null");
-    }
-    str_builder_add_cstr(sb, ", \"agent_type\": \"");
-    str_builder_add_cstr(sb, agent_type_name(load64(ptr + 16)));
-    str_builder_add_cstr(sb, "\", \"status\": \"");
-    str_builder_add_cstr(sb, agent_status_name(load64(ptr + 24)));
-    str_builder_add_cstr(sb, "\"}");
+        str_builder_add(sb, agent_id_to_str(load64(ptr)));
+        str_builder_add_cstr(sb, "\", \"name\": ");
+        var name = load64(ptr + 8);
+        if (name != 0) {
+            str_builder_add_cstr(sb, "\"");
+            str_builder_add(sb, name);
+            str_builder_add_cstr(sb, "\"");
+        } else {
+            str_builder_add_cstr(sb, "null");
+        }
+        str_builder_add_cstr(sb, ", \"agent_type\": \"");
+        str_builder_add_cstr(sb, agent_type_name(load64(ptr + 16)));
+        str_builder_add_cstr(sb, "\", \"status\": \"");
+        str_builder_add_cstr(sb, agent_status_name(load64(ptr + 24)));
+        str_builder_add_cstr(sb, "\"}");
     return 0;
 }
 fn agent_info_new(id, name, atype, status) {
@@ -239,12 +239,12 @@ fn ainfo_status(i) { return load64(i + 24); }
 struct AgentStats { total_requests; total_tokens; uptime_seconds; }
 fn AgentStats_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"total_requests\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"total_tokens\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"uptime_seconds\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, "}");
+        str_builder_add_int(sb, load64(ptr));
+        str_builder_add_cstr(sb, ", \"total_tokens\": ");
+        str_builder_add_int(sb, load64(ptr + 8));
+        str_builder_add_cstr(sb, ", \"uptime_seconds\": ");
+        str_builder_add_int(sb, load64(ptr + 16));
+        str_builder_add_cstr(sb, "}");
     return 0;
 }
 fn agent_stats_new() {
