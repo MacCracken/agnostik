@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.97.1] - 2026-04-09
+
+### Changed
+- Cyrius toolchain pinned to v3.2.5 (cc3 compiler, minimum version)
+
 ## [0.97.0] - 2026-04-09
 
 ### Added
