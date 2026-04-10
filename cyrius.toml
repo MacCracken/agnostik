@@ -25,4 +25,4 @@ modules = [
 
 [[bench]]
 name = "benchmarks"
-entry = "benches/bench.cyr"
+entry = "benches/bench.bcyr"

@@ -3,7 +3,12 @@
 ## [0.97.1] - 2026-04-09
 
 ### Changed
-- Cyrius toolchain pinned to v3.2.5 (cc3 compiler, minimum version)
+- **Cyrius compiler target**: v3.2.4 → v3.2.5 (cc3 compiler, minimum version)
+- **Zero-dependency lib build** — replaced stdlib syscall constants (`SYS_WRITE`, `SYS_OPEN`, `SYS_READ`, `SYS_CLOSE`) with raw syscall numbers in `error.cyr` and `types.cyr`; lib no longer requires consumers to provide `syscalls.cyr`
+
+### Fixed
+- **`cyrius.toml` bench entry** — `bench.cyr` → `bench.bcyr` (was silently producing a 136-byte stub binary)
+- **Bench header version** — `v3.2.4` → `v3.2.5`
 
 ## [0.97.0] - 2026-04-09
 

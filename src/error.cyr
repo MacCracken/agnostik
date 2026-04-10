@@ -98,15 +98,15 @@ fn agnostik_err_print(e) {
     var kind = agnostik_err_kind(e);
     var name = agnostik_err_kind_name(kind);
     var namelen = strlen(name);
-    syscall(SYS_WRITE, 2, name, namelen);
+    syscall(1, 2, name, namelen);
     var msg = agnostik_err_message(e);
     if (msg != 0) {
-        syscall(SYS_WRITE, 2, ": ", 2);
+        syscall(1, 2, ": ", 2);
         var s = str_data(msg);
         var slen = str_len(msg);
-        syscall(SYS_WRITE, 2, s, slen);
+        syscall(1, 2, s, slen);
     }
-    syscall(SYS_WRITE, 2, "\n", 1);
+    syscall(1, 2, "\n", 1);
     return 0;
 }
 fn result_print_agnostik_err(res) {

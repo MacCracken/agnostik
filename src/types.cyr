@@ -2,10 +2,10 @@ var _prng_state = 0;
 fn _prng_init() {
     if (_prng_state != 0) { return 0; }
     var buf[16];
-    var fd = syscall(SYS_OPEN, "/dev/urandom", 0, 0);
+    var fd = syscall(2, "/dev/urandom", 0, 0);
     if (fd >= 0) {
-        syscall(SYS_READ, fd, &buf, 8);
-        syscall(SYS_CLOSE, fd);
+        syscall(0, fd, &buf, 8);
+        syscall(3, fd);
         _prng_state = load64(&buf);
     }
     if (_prng_state == 0) {
