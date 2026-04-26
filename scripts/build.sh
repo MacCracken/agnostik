@@ -1,7 +1,9 @@
 #!/bin/sh
+# Build the agnostik test harness binary using the Cyrius CLI.
+# The manifest (cyrius.cyml) resolves stdlib + dep includes; this
+# script is just a convenience wrapper.
 set -e
-CC="${CC:-$HOME/.cyrius/bin/cc2}"
+cyrius deps
 mkdir -p build
-cat src/main.cyr | "$CC" > build/agnostik_test
-chmod +x build/agnostik_test
-echo "=== Built build/agnostik_test ($(wc -c < build/agnostik_test) bytes) ==="
+CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik
+echo "agnostik: $(wc -c < build/agnostik) bytes"

@@ -1,0 +1,49 @@
+[package]
+name = "agnostik"
+version = "${file:VERSION}"
+description = "Shared types and domain primitives for AGNOS"
+license = "GPL-3.0-only"
+repository = "https://github.com/MacCracken/2mp/agnostik"
+language = "cyrius"
+cyrius = "5.7.6"
+
+[build]
+entry = "src/main.cyr"
+output = "build/agnostik"
+
+# `[lib]` declares the modules that get concatenated by `cyrius distlib`
+# into dist/agnostik.cyr — the single-file bundle consumed by every AGNOS
+# component (daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach,
+# stiva, nein). Order matters: error first (Result), types second
+# (UUID/version/timestamp), then domain modules in dependency order.
+[lib]
+modules = [
+    "src/error.cyr",
+    "src/types.cyr",
+    "src/agent.cyr",
+    "src/security.cyr",
+    "src/telemetry.cyr",
+    "src/audit.cyr",
+    "src/llm.cyr",
+    "src/secrets.cyr",
+    "src/config.cyr",
+    "src/classification.cyr",
+    "src/validation.cyr",
+    "src/hardware.cyr",
+]
+
+[deps]
+stdlib = [
+    "syscalls",
+    "string",
+    "alloc",
+    "str",
+    "fmt",
+    "vec",
+    "hashmap",
+    "tagged",
+    "fnptr",
+    "trait",
+    "assert",
+    "json",
+]

@@ -1,0 +1,17 @@
+timestamp,commit,branch,benchmark,estimate_ns
+2026-04-26T11:04:27Z,cbd4bf0,main,agent_id_new,65
+2026-04-26T11:04:27Z,cbd4bf0,main,trace_context_new,130
+2026-04-26T11:04:27Z,cbd4bf0,main,trace_context_child,50
+2026-04-26T11:04:27Z,cbd4bf0,main,sandbox_config_default,64
+2026-04-26T11:04:27Z,cbd4bf0,main,agent_id_to_str,210
+2026-04-26T11:04:27Z,cbd4bf0,main,agent_id_roundtrip,529
+2026-04-26T11:04:27Z,cbd4bf0,main,version_to_str,160
+2026-04-26T11:04:27Z,cbd4bf0,main,version_roundtrip,299
+2026-04-26T11:04:27Z,cbd4bf0,main,traceparent_format,755
+2026-04-26T11:04:27Z,cbd4bf0,main,inference_request_full,617
+2026-04-26T11:04:27Z,cbd4bf0,main,accelerator_device_full,166
+2026-04-26T11:04:27Z,cbd4bf0,main,security_context_full,224
+2026-04-26T11:04:27Z,cbd4bf0,main,message_build_3turn,618
+2026-04-26T11:04:27Z,cbd4bf0,main,token_usage_update,41
+2026-04-26T11:04:27Z,cbd4bf0,main,injection_scores_to_json,865
+2026-04-26T11:04:27Z,cbd4bf0,main,agent_stats_to_json,715
