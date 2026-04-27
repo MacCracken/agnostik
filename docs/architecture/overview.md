@@ -31,7 +31,7 @@ agnostik (Cyrius)
 │                        TextMapCarrier trait, TextMapPropagator trait
 ├── src/audit.cyr      — AuditEntry, AuditSeverity, AuditResult, IntegrityFields,
 │                        RetentionPolicy, AuditSink trait
-├── src/llm.cyr        �� LlmProvider (13), MessageRole, Message, ContentBlock (8 types),
+├── src/llm.cyr        — LlmProvider (13), MessageRole, Message, ContentBlock (8 types),
 │                        ToolDefinition, ToolCall, ToolResult, ToolChoice, SamplingParams,
 │                        InferenceRequest, InferenceResponse, TokenUsage, FinishReason,
 │                        ResponseFormat, ModelCapabilities, RateLimitInfo, StreamEvent,
@@ -88,11 +88,17 @@ InjectionScores, AcceleratorFlags, EdgeResourceOverrides, TelemetryConfig.
 
 ## Consumers
 
-Every AGNOS component depends on agnostik for shared types:
-- **daimon** — AgentId, AgentConfig, AgentStatus, TraceContext
-- **hoosh** — InferenceRequest, TokenUsage, LlmProvider, Message, ToolCall
-- **aegis** — SecurityPolicy, LinuxCapability, CapabilitySet, AuditEntry, Role, TokenPayload
-- **argonaut** — EnvironmentProfile, AgnosConfig
-- **kavach** — SandboxConfig, Permission, CgroupLimits, LandlockRuleset, NamespaceConfig
-- **secureyeoman** — ClassificationLevel, ValidationResult, AcceleratorDevice, Role
-- **All consumer apps** — AgentManifest, AgentEvent
+Every AGNOS component depends on agnostik for shared types. Canonical list maintained in [`../development/state.md`](../development/state.md); typical type usage:
+
+- **daimon** — agent runtime: AgentId, AgentConfig, AgentStatus, TraceContext
+- **hoosh** — LLM grounding service: InferenceRequest, TokenUsage, LlmProvider, Message, ToolCall
+- **agnoshi** — shell: AgentEvent, AuthContext
+- **aegis** — security policy engine: SecurityPolicy, LinuxCapability, CapabilitySet, AuditEntry, Role, TokenPayload
+- **argonaut** — agent orchestrator: EnvironmentProfile, AgnosConfig, FleetConfig
+- **sigil** — capability/auth issuer: TokenPayload, Role, AuthContext
+- **ark** — packaging / distributable: AgentManifest, ComponentConfig
+- **kavach** — sandbox enforcement: SandboxConfig, Permission, CgroupLimits, LandlockRuleset, NamespaceConfig, SeccompProfile
+- **stiva** — telemetry pipeline: Span, MetricDataPoint, LogRecord
+- **nein** — refusal / safety layer: ValidationResult, InjectionScores, ClassificationLevel, PiiKind
+- **yukti** — device abstraction: AcceleratorDevice, AcceleratorFlags, AcceleratorSummary
+- **All consumer apps** — AgentManifest, AgentEvent, ValidationResult

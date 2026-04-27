@@ -1,7 +1,8 @@
 # tests/tcyr/test_audit_5712.tcyr
 #
-# Regression coverage for findings filed in
-# docs/audit/2026-04-26-audit-5712.md (post-1.0 toolchain-5.7.12 audit).
+# Regression coverage for the 1.0.0 audit findings F-008/F-009/F-010
+# (filed in docs/audit/2026-04-26-audit.md, surfaced by the mid-pass
+# toolchain bump 5.7.6 → 5.7.12).
 #
 # F-008: _json_int silent i64 overflow on 19-digit values past i64::MAX
 # F-009: _json_str OOB read in `null` literal probe at end of input
@@ -117,7 +118,7 @@ fn test_f010_mixed_whitespace_pretty_printed() {
 
 fn main() {
     alloc_init();
-    println("=== agnostik audit 5.7.12 (post-1.0) regression ===");
+    println("=== agnostik audit F-008/F-009/F-010 regression ===");
     test_f008_overflow_19_nines();
     test_f008_max_safe_19_digit_still_works();
     test_f008_attacker_cannot_negative_via_wrap();

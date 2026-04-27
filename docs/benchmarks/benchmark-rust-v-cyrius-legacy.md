@@ -1,4 +1,17 @@
-# Benchmarks
+# Benchmarks — Rust vs Cyrius (legacy reference)
+
+> **Legacy / historical.** Captured at the Rust → Cyrius port boundary
+> (Cyrius `v0.95.0` / `cc2 v2.6.4` vs Rust `v0.90.0` / Criterion) to
+> frame the migration cost-benefit at the time. **Numbers below are
+> not current** — the Cyrius side has moved through several toolchain
+> revs (cc2 → cc5; pinned at 5.7.12 as of 1.0.0) and agnostik through
+> the 1.0.0 audit (CSPRNG migration alone moved `agent_id_new` from
+> ~35 ns to ~600 ns; see `CHANGELOG.md` 1.0.0 / F-001).
+>
+> Live benchmark data lives at [`history.csv`](history.csv); current
+> baseline runs via `cyrius bench tests/bcyr/agnostik.bcyr`. This
+> file is preserved only to document the Rust comparison that
+> motivated the port.
 
 Cyrius v0.95.0 (cc2 v2.6.4) vs Rust v0.90.0 (Criterion) — comparable operations measured on the same hardware.
 

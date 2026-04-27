@@ -1,5 +1,86 @@
 # Changelog
 
+## [1.0.1] - 2026-04-26
+
+Documentation cleanup pass after the 1.0.0 release. Pure docs — no
+code, manifest, or test changes; `dist/agnostik.cyr` is byte-identical
+to 1.0.0.
+
+### Changed
+
+- **`CONTRIBUTING.md`** rewritten. Pre-port content (Cyrius `v3.2.1+`,
+  `cc2`, `cyrius.toml`, `benches/` path, `cat src/main.cyr | cc2 > out`
+  build invocation) replaced with the current toolchain story:
+  manifest-driven `cyrius build` / `cyrius deps` / `cyrius distlib`,
+  per-test `cyrius test`, format/lint sweeps, and a code-standards
+  bullet calling out the F-011 lesson (do not stack `#derive(Serialize)`
+  alongside hand-written serde adapters).
+- **`SECURITY.md`** supported-versions table refreshed: 1.0.x now
+  marked supported; pre-1.0 marked unsupported (upgrade path). Scope
+  section pulled in pointers to F-001 (CSPRNG) and the CI security
+  scan as the source of truth for what's in/out of scope.
+- **`docs/development/roadmap.md`** Status block updated from v0.97.0
+  / Cyrius v3.2.4 / 613 assertions to v1.0.0 / Cyrius 5.7.12 / 653
+  assertions. The previously-empty `## v1.0.0` section now lists the
+  shipped scope as a completed checklist; future considerations
+  (`\uXXXX` decoder, `_json_int` Result-return ABI) parked with
+  rationale.
+- **`docs/architecture/overview.md`** fixed: two U+FFFD replacement
+  glyphs on the `src/llm.cyr` row of the module map; consumer list
+  rewritten to match `state.md` (added agnoshi, sigil, ark, stiva,
+  nein, yukti; removed stale `secureyeoman` reference).
+- **`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`**
+  re-stamped: removed "post-1.0" framing now that 1.0.0 has shipped;
+  relinked from the deleted `docs/audit/2026-04-26-audit-5712.md` to
+  the canonical `docs/audit/2026-04-26-audit.md` (where F-008..F-011
+  are merged).
+- **`tests/tcyr/test_audit_5712.tcyr`** header comment + run banner
+  re-framed: was "post-1.0 toolchain-5.7.12 audit"; now
+  "F-008/F-009/F-010 regression for the 1.0.0 audit (surfaced by the
+  mid-pass toolchain bump)".
+
+### Moved
+
+- **`benchmark-rustvcyrius.md`** → **`docs/benchmarks/benchmark-rust-v-cyrius-legacy.md`**.
+  The file is the Rust → Cyrius port-boundary comparison (Cyrius
+  v0.95.0 / cc2 vs Rust v0.90.0 / Criterion). Numbers are no longer
+  current — the Cyrius side has moved through several toolchain revs
+  and the 1.0.0 audit's CSPRNG migration alone moved `agent_id_new`
+  from ~35 ns to ~600 ns. Preserved as legacy reference for the
+  migration cost-benefit story; new top-of-file note marks it as
+  historical and points to `history.csv` for live data.
+
+### Removed
+
+- **`bench-history.log`** — Rust-era Criterion output (April 6, before
+  the Cyrius port). Superseded by the structured CSV at
+  `docs/benchmarks/history.csv`. The 0.97.0 CHANGELOG entry already
+  declared this removed; reality now matches.
+
+### Fixed (CI)
+
+- 3 lint warnings for lines exceeding 120 bytes (`cyrius lint` counts
+  UTF-8 bytes, not glyphs — box-drawing `─` is 3 bytes each):
+  `tests/tcyr/agnostik.tcyr:490` (long `integrity_fields_new(...)` call,
+  wrapped to multi-line); `tests/tcyr/test_audit_2026_04_26.tcyr:25`
+  and `tests/tcyr/test_audit_5712.tcyr:86` (F-001 / F-010 section
+  headers, trailing `─` decoration trimmed).
+- 2 `cyrfmt --check` drift hits absorbed by `cyrfmt --write`:
+  `src/main.cyr` (multi-arg call continuation indent normalized 8→4)
+  and `tests/tcyr/test_audit_5712.tcyr` (F-009 test body re-indented
+  via comment-relocation to dodge a cyrfmt formatter quirk on
+  multi-line in-body comments — issue worth filing upstream once
+  reproducible).
+
+### `.gitignore`
+
+- Removed `/dist/` to match the yukti/vidya gold-standard pattern.
+  `dist/agnostik.cyr` is the canonical bundle consumers fetch via
+  `[deps].modules = ["dist/agnostik.cyr"]` from the git tag, so it
+  must be tracked. CI's "Verify dist bundle is in sync with src/"
+  step now actually verifies — pre-fix it ran vacuously because
+  `git diff` reported nothing for an ignored path.
+
 ## [1.0.0] - 2026-04-26
 
 First stable release. Toolchain refresh to Cyrius **5.7.12**, P(-1)

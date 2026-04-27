@@ -5,9 +5,18 @@
 
 ## Version
 
-**1.0.0** — first stable release. Toolchain refresh to Cyrius
-5.7.12, manifest migration `cyrius.toml` → `cyrius.cyml`, P(-1)
-scaffold hardening, security audit pass (11 findings closed,
+**1.0.1** — pure documentation cleanup pass on top of 1.0.0 (same
+day). CONTRIBUTING / SECURITY / roadmap / overview / issue files
+brought current; `benchmark-rustvcyrius.md` moved to
+`docs/benchmarks/benchmark-rust-v-cyrius-legacy.md` with a "not
+current" header; `bench-history.log` removed (superseded by
+`history.csv`); `.gitignore` no longer hides `/dist/` so the CI
+sync gate is meaningful. No code, manifest, or test changes —
+`dist/agnostik.cyr` byte-identical to 1.0.0.
+
+**1.0.0** (parent) — first stable release. Toolchain refresh to
+Cyrius 5.7.12, manifest migration `cyrius.toml` → `cyrius.cyml`,
+P(-1) scaffold hardening, security audit pass (11 findings closed,
 F-006 resolved upstream in 5.7.7, 1 new upstream issue filed),
 and layout aligned with vidya/yukti conventions. See
 [`docs/audit/2026-04-26-audit.md`](../audit/2026-04-26-audit.md)
@@ -83,7 +92,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.0` (this release).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.1` (this release; same-day docs cleanup on top of 1.0.0).
 
 ## Verification hosts
 

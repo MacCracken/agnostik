@@ -1,11 +1,11 @@
 # `cyrius audit` invokes `~/.cyrius/bin/check.sh` but install never ships it
 
-**Discovered:** 2026-04-26 during agnostik post-1.0 toolchain bump 5.7.6 → 5.7.12
+**Discovered:** 2026-04-26 during agnostik 1.0.0 closeout pass (mid-pass toolchain bump 5.7.6 → 5.7.12)
 **Severity:** Low (tooling — `cyrius audit` is broken on a fresh install of any 5.7.x; users must run the constituents `build` / `test` / `fmt --check` / `lint` individually as a workaround. No correctness or runtime impact on shipped agnostik.)
 **Affects:** Cyrius toolchain 5.7.x (verified on 5.7.12; the `cmd_audit` codepath
 in `cbt/commands.cyr:395-398` calls `make_path(_scripts_dir, "check.sh")`
 without ever shipping that script in the install bundle).
-**Filed by:** agnostik (post-1.0 audit, [`docs/audit/2026-04-26-audit-5712.md`](../../audit/2026-04-26-audit-5712.md))
+**Filed by:** agnostik (1.0.0 audit, [`docs/audit/2026-04-26-audit.md`](../../audit/2026-04-26-audit.md))
 
 ## Summary
 
@@ -97,7 +97,7 @@ mechanism. (2) is more durable but a larger refactor.
 
 ## Workaround used by agnostik
 
-For the post-1.0 audit pass, agnostik ran the audit-equivalent gate
+For the 1.0.0 closeout audit, agnostik ran the audit-equivalent gate
 manually:
 
 ```sh
