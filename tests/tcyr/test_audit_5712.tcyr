@@ -83,7 +83,7 @@ fn test_f009_real_null_still_returns_zero() {
     return 0;
 }
 
-# ─── F-010: parser skips RFC 7159 whitespace ────────────────────────
+# ─── F-010: parser skips RFC 7159 whitespace
 # Pre-fix: the value-skip loop after `:` only accepted ASCII space (32).
 # RFC 7159 §2 defines JSON whitespace as one of: space (32), tab (9),
 # LF (10), CR (13). Inputs from any RFC-compliant pretty-printer

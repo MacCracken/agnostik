@@ -22,7 +22,7 @@ fn now_ns() {
     return load64(&ts) * 1000000000 + load64(&ts + 8);
 }
 
-# ─── F-001: CSPRNG produces unique IDs ─────────────────────────────
+# ─── F-001: CSPRNG produces unique IDs
 # The pre-1.0 PRNG seeded a 64-bit xorshift state once and could
 # silently fall back to a hardcoded constant. After the fix, every
 # agent_id_new() call hits getrandom(2)/urandom and yields fresh
