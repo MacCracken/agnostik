@@ -7,7 +7,17 @@ fn device_family_name(f) {
     elif (f == DEV_CPU)        { return "CPU"; }
     return "Unknown";
 }
-enum DeviceVendor { VENDOR_NVIDIA; VENDOR_AMD; VENDOR_INTEL; VENDOR_APPLE; VENDOR_GOOGLE; VENDOR_QUALCOMM; VENDOR_HABANA; VENDOR_AWS; VENDOR_CUSTOM; }
+enum DeviceVendor {
+    VENDOR_NVIDIA;
+    VENDOR_AMD;
+    VENDOR_INTEL;
+    VENDOR_APPLE;
+    VENDOR_GOOGLE;
+    VENDOR_QUALCOMM;
+    VENDOR_HABANA;
+    VENDOR_AWS;
+    VENDOR_CUSTOM;
+}
 fn device_vendor_name(v) {
     if (v == VENDOR_NVIDIA)   { return "Nvidia"; }
     elif (v == VENDOR_AMD)      { return "AMD"; }
@@ -26,7 +36,20 @@ fn device_health_name(h) {
     elif (h == HEALTH_FAILED)      { return "Failed"; }
     return "Unknown";
 }
-enum MemoryType { MEM_GDDR5; MEM_GDDR6; MEM_GDDR6X; MEM_HBM2; MEM_HBM2E; MEM_HBM3; MEM_LPDDR4; MEM_LPDDR5; MEM_LPDDR5X; MEM_DDR4; MEM_DDR5; MEM_UNKNOWN; }
+enum MemoryType {
+    MEM_GDDR5;
+    MEM_GDDR6;
+    MEM_GDDR6X;
+    MEM_HBM2;
+    MEM_HBM2E;
+    MEM_HBM3;
+    MEM_LPDDR4;
+    MEM_LPDDR5;
+    MEM_LPDDR5X;
+    MEM_DDR4;
+    MEM_DDR5;
+    MEM_UNKNOWN;
+}
 fn memory_type_name(t) {
     if (t == MEM_GDDR5)        { return "GDDR5"; }
     elif (t == MEM_GDDR6)      { return "GDDR6"; }
@@ -42,7 +65,17 @@ fn memory_type_name(t) {
     return "Unknown";
 }
 #derive(Serialize)
-struct AcceleratorFlags { cuda_available; rocm_available; metal_available; vulkan_available; oneapi_available; tpu_available; sycl_available; openvino_available; directml_available; }
+struct AcceleratorFlags {
+    cuda_available;
+    rocm_available;
+    metal_available;
+    vulkan_available;
+    oneapi_available;
+    tpu_available;
+    sycl_available;
+    openvino_available;
+    directml_available;
+}
 fn AcceleratorFlags_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"cuda_available\": ");
         str_builder_add_int(sb, load64(ptr));

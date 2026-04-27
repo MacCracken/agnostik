@@ -1,0 +1,182 @@
+# tests/tcyr/test_audit_2026_04_26.tcyr
+#
+# Regression coverage for findings filed in
+# docs/audit/2026-04-26-audit.md.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+fn now_ns() {
+    var ts[16];
+    syscall(228, 4, &ts);
+    return load64(&ts) * 1000000000 + load64(&ts + 8);
+}
+
+# ─── F-001: CSPRNG produces unique IDs ─────────────────────────────
+# The pre-1.0 PRNG seeded a 64-bit xorshift state once and could
+# silently fall back to a hardcoded constant. After the fix, every
+# agent_id_new() call hits getrandom(2)/urandom and yields fresh
+# entropy.
+
+fn test_f001_agent_id_unique() {
+    var a = agent_id_new();
+    var b = agent_id_new();
+    var c = agent_id_new();
+    # 1/2^128 collision probability — failures here mean CSPRNG broke.
+    assert_eq(agent_id_eq(a, b), 0, "F-001: agent_id_new a != b");
+    assert_eq(agent_id_eq(b, c), 0, "F-001: agent_id_new b != c");
+    assert_eq(agent_id_eq(a, c), 0, "F-001: agent_id_new a != c");
+    return 0;
+}
+
+fn test_f001_agent_id_v4_marker() {
+    var id = agent_id_new();
+    # Byte 6 high nibble must be 0x4, byte 8 top two bits must be 10.
+    var b6 = load8(id + 6);
+    var b8 = load8(id + 8);
+    assert_eq((b6 & 0xF0) == 0x40, 1, "F-001: byte 6 = 0x4_");
+    assert_eq((b8 & 0xC0) == 0x80, 1, "F-001: byte 8 top bits = 10");
+    return 0;
+}
+
+fn test_f001_span_id_unique() {
+    var s1 = span_id_new();
+    var s2 = span_id_new();
+    assert_eq(span_id_eq(s1, s2), 0, "F-001: span_id_new s1 != s2");
+    return 0;
+}
+
+# ─── F-002: _json_str respects escape sequences ────────────────────
+# Pre-fix: scanning stopped at the first 0x22 byte regardless of a
+# preceding backslash. Now escaped quotes pass through and we decode
+# the standard set.
+
+fn test_f002_escaped_quote() {
+    var src = str_from("{\"name\": \"abc\\\"xyz\", \"id\": 42}");
+    var s = _json_str(src, str_from("name"));
+    assert_eq(str_eq(s, str_from("abc\"xyz")), 1, "F-002: \\\" decoded");
+    var n = _json_int(src, str_from("id"));
+    assert_eq(n, 42, "F-002: subsequent int field unaffected by escape");
+    return 0;
+}
+
+fn test_f002_escape_set() {
+    var src = str_from("{\"v\": \"a\\\\b\\nc\\td\\re\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 9, "F-002: decoded length");
+    assert_eq(load8(d + 0), 97, "F-002: 'a'");
+    assert_eq(load8(d + 1), 92, "F-002: '\\\\' -> 0x5c");
+    assert_eq(load8(d + 2), 98, "F-002: 'b'");
+    assert_eq(load8(d + 3), 10, "F-002: '\\n' -> 0x0a");
+    assert_eq(load8(d + 4), 99, "F-002: 'c'");
+    assert_eq(load8(d + 5), 9,  "F-002: '\\t' -> 0x09");
+    assert_eq(load8(d + 6), 100, "F-002: 'd'");
+    assert_eq(load8(d + 7), 13, "F-002: '\\r' -> 0x0d");
+    assert_eq(load8(d + 8), 101, "F-002: 'e'");
+    return 0;
+}
+
+# ─── F-003: _json_int handles sign + overflow ──────────────────────
+
+fn test_f003_negative() {
+    var src = str_from("{\"x\": -42, \"y\": 7}");
+    assert_eq(_json_int(src, str_from("x")), 0 - 42, "F-003: negative");
+    assert_eq(_json_int(src, str_from("y")), 7, "F-003: positive sibling");
+    return 0;
+}
+
+fn test_f003_overflow_capped() {
+    # 22-digit input — pre-fix this wrapped i64. Now we stop at 19
+    # digits; the result is the value of the first 19 digits without
+    # silently consuming the rest.
+    var src = str_from("{\"x\": 1234567890123456789012}");
+    var v = _json_int(src, str_from("x"));
+    # 1234567890123456789 = first 19 digits, fits in i64 (< 2^63).
+    assert_eq(v, 1234567890123456789, "F-003: capped at 19 digits");
+    return 0;
+}
+
+# ─── F-005: version_from_str rejects non-numeric segments ──────────
+
+fn test_f005_reject_alpha_major() {
+    var r = version_from_str(str_from("abc.1.2"));
+    assert_eq(is_ok(r), 0, "F-005: 'abc.1.2' rejected");
+    return 0;
+}
+
+fn test_f005_reject_empty_segment() {
+    var r = version_from_str(str_from("1..2"));
+    assert_eq(is_ok(r), 0, "F-005: '1..2' rejected");
+    return 0;
+}
+
+fn test_f005_accept_valid() {
+    var r = version_from_str(str_from("1.2.3"));
+    assert_eq(is_ok(r), 1, "F-005: '1.2.3' accepted");
+    var v = payload(r);
+    assert_eq(version_major(v), 1, "F-005: major");
+    assert_eq(version_minor(v), 2, "F-005: minor");
+    assert_eq(version_patch(v), 3, "F-005: patch");
+    return 0;
+}
+
+fn test_f005_accept_with_prerelease() {
+    var r = version_from_str(str_from("1.0.0-beta.1"));
+    assert_eq(is_ok(r), 1, "F-005: '1.0.0-beta.1' accepted");
+    return 0;
+}
+
+# ─── F-004: _json_find_value respects string boundaries ─────────────
+# Pre-fix the strstr probe could find `"max_memory":` inside an
+# adjacent string value. After the fix the walker stays out of strings
+# and only matches at the top level.
+
+fn test_f004_key_inside_string_value() {
+    # The "note" string value contains the literal text `"max_memory":99999`
+    # which used to poison the lookup for the real max_memory field.
+    var src = str_from("{\"note\": \"see \\\"max_memory\\\":99999 below\", \"max_memory\": 42}");
+    var v = _json_int(src, str_from("max_memory"));
+    assert_eq(v, 42, "F-004: key inside string value not matched");
+    return 0;
+}
+
+fn test_f004_string_with_escaped_quotes() {
+    # Confirm the in-string escape walker handles `\"` so the closing
+    # quote isn't seen prematurely (which would re-expose F-004).
+    var src = str_from("{\"a\": \"he said \\\"id\\\":1\", \"id\": 7}");
+    assert_eq(_json_int(src, str_from("id")), 7, "F-004: escaped quotes inside string");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik audit 2026-04-26 regression ===");
+    test_f001_agent_id_unique();
+    test_f001_agent_id_v4_marker();
+    test_f001_span_id_unique();
+    test_f002_escaped_quote();
+    test_f002_escape_set();
+    test_f003_negative();
+    test_f003_overflow_capped();
+    test_f005_reject_alpha_major();
+    test_f005_reject_empty_segment();
+    test_f005_accept_valid();
+    test_f005_accept_with_prerelease();
+    test_f004_key_inside_string_value();
+    test_f004_string_with_escaped_quotes();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

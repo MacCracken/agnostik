@@ -36,7 +36,7 @@ fn trace_id_from_str(s) {
 fn trace_id_eq(a, b) { return agent_id_eq(a, b); }
 fn span_id_new() {
     var id = alloc(8);
-    store64(id, _prng_next());
+    _fill_random(id, 8);
     return id;
 }
 fn span_id_to_str(id) {

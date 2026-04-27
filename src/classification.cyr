@@ -6,7 +6,24 @@ fn classification_level_name(l) {
     elif (l == CLASS_RESTRICTED)   { return "Restricted"; }
     return "Unknown";
 }
-enum PiiKind { PII_EMAIL; PII_PHONE; PII_SSN; PII_CREDIT_CARD; PII_IP_ADDRESS; PII_PASSPORT; PII_DRIVERS_LICENSE; PII_DATE_OF_BIRTH; PII_FULL_NAME; PII_STREET_ADDRESS; PII_BANK_ACCOUNT; PII_TAX_ID; PII_NATIONAL_ID; PII_MEDICAL_RECORD; PII_BIOMETRIC_DATA; PII_CUSTOM; }
+enum PiiKind {
+    PII_EMAIL;
+    PII_PHONE;
+    PII_SSN;
+    PII_CREDIT_CARD;
+    PII_IP_ADDRESS;
+    PII_PASSPORT;
+    PII_DRIVERS_LICENSE;
+    PII_DATE_OF_BIRTH;
+    PII_FULL_NAME;
+    PII_STREET_ADDRESS;
+    PII_BANK_ACCOUNT;
+    PII_TAX_ID;
+    PII_NATIONAL_ID;
+    PII_MEDICAL_RECORD;
+    PII_BIOMETRIC_DATA;
+    PII_CUSTOM;
+}
 fn pii_kind_name(k) {
     if (k == PII_EMAIL)                 { return "Email"; }
     elif (k == PII_PHONE)               { return "Phone"; }

@@ -15,3 +15,17 @@ timestamp,commit,branch,benchmark,estimate_ns
 2026-04-26T11:04:27Z,cbd4bf0,main,token_usage_update,41
 2026-04-26T11:04:27Z,cbd4bf0,main,injection_scores_to_json,865
 2026-04-26T11:04:27Z,cbd4bf0,main,agent_stats_to_json,715
+2026-04-26T11:11:44Z,a847813,main,agent_id_new,608
+2026-04-26T11:11:44Z,a847813,main,trace_context_child,566
+2026-04-26T11:11:44Z,a847813,main,sandbox_config_default,60
+2026-04-26T11:11:44Z,a847813,main,agent_id_to_str,728
+2026-04-26T11:11:44Z,a847813,main,version_to_str,155
+2026-04-26T11:11:44Z,a847813,main,version_roundtrip,311
+2026-04-26T11:11:44Z,a847813,main,inference_request_full,535
+2026-04-26T11:11:44Z,a847813,main,accelerator_device_full,184
+2026-04-26T11:11:44Z,a847813,main,security_context_full,720
+2026-04-26T11:11:44Z,a847813,main,message_build_3turn,475
+2026-04-26T11:11:44Z,a847813,main,token_usage_update,40
+2026-04-26T11:11:44Z,a847813,main,token_usage_to_json,930
+2026-04-26T11:11:44Z,a847813,main,injection_scores_to_json,870
+2026-04-26T11:11:44Z,a847813,main,agent_stats_to_json,714

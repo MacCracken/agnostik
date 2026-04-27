@@ -1,33 +1,38 @@
-var _prng_state = 0;
-fn _prng_init() {
-    if (_prng_state != 0) { return 0; }
-    var buf[16];
+# CSPRNG — fills `n` bytes at `buf` with kernel-supplied randomness.
+# Audit 2026-04-26 F-001: removed xorshift state and the deterministic
+# fallback constant. UUIDs now draw fresh entropy per call.
+fn _fill_random(buf, n) {
+    # Primary: getrandom(2) — syscall 318 on x86_64. Preferred over
+    # opening /dev/urandom because it works in sandboxed envs that
+    # block file IO and never returns short reads for buffers <= 256 B.
+    var got = syscall(318, buf, n, 0);
+    if (got == n) { return 0; }
+    # Fallback: /dev/urandom for older kernels / restricted seccomp.
     var fd = syscall(2, "/dev/urandom", 0, 0);
     if (fd >= 0) {
-        syscall(0, fd, &buf, 8);
+        # Loop in case the kernel returns a short read (rare for small n
+        # but legal per read(2)).
+        var off = 0;
+        while (off < n) {
+            var r = syscall(0, fd, buf + off, n - off);
+            if (r <= 0) { off = 0 - 1; }
+            else { off = off + r; }
+        }
         syscall(3, fd);
-        _prng_state = load64(&buf);
+        if (off == n) { return 0; }
     }
-    if (_prng_state == 0) {
-        syscall(228, 4, &buf);
-        _prng_state = load64(&buf) ^ load64(&buf + 8);
-    }
-    if (_prng_state == 0) { _prng_state = 0x853c49e6748fea9b; }
-    return 0;
-}
-fn _prng_next() {
-    _prng_init();
-    var x = _prng_state;
-    x = x ^ (x << 13);
-    x = x ^ (x >> 7);
-    x = x ^ (x << 17);
-    _prng_state = x;
-    return x;
+    # Both sources failed. Identifier generation is security-critical
+    # (agent_id, session_id, trace_id back authorisation in aegis/sigil)
+    # so we fail loudly rather than degrade to a deterministic seed.
+    syscall(1, 2, "agnostik: CSPRNG unavailable (getrandom + /dev/urandom both failed)\n", 67);
+    syscall(60, 70);
+    return 0 - 1;
 }
 fn agent_id_new() {
     var id = alloc(16);
-    store64(id, _prng_next());
-    store64(id + 8, _prng_next());
+    _fill_random(id, 16);
+    # RFC 4122 v4 markers: high nibble of byte 6 = 0100, top two bits
+    # of byte 8 = 10.
     var b6 = load8(id + 6);
     b6 = (b6 & 0x0F) | 0x40;
     store8(id + 6, b6);
@@ -96,36 +101,82 @@ fn agent_id_from_str(s) {
     }
     return Ok(id);
 }
-# --- JSON field extractors (uses strstr/memeq to avoid nested loop codegen bug) ---
+# --- JSON field extractors ------------------------------------------------
+# Audit 2026-04-26 F-004: a strstr probe for `"key":` was matching the
+# needle when it appeared *inside* a string value, e.g. an attacker-
+# controlled `"note":"max_memory:..."` poisoned a sibling lookup for
+# `max_memory`. The walker now tracks string boundaries and only
+# matches when the cursor is outside `"..."`. Backslash escapes inside
+# strings respected so `"\""` doesn't end the string early (parallels
+# the F-002 fix in `_json_str`).
 fn _json_find_value(src, key) {
-    # Build "key": needle and find it via strstr
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "\"");
     str_builder_add(sb, key);
     str_builder_add_cstr(sb, "\":");
     var needle = str_builder_build(sb);
-    var pos = strstr(str_data(src), str_data(needle));
-    if (pos < 0) { return 0 - 1; }
-    var vi = pos + str_len(needle);
+    var nd = str_data(needle);
+    var nlen = str_len(needle);
     var data = str_data(src);
     var slen = str_len(src);
-    while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
-    return vi;
+    var i = 0;
+    var in_str = 0;
+    while (i + nlen <= slen) {
+        var ch = load8(data + i);
+        if (in_str == 1) {
+            if (ch == 92 && i + 1 < slen) { i = i + 2; }
+            elif (ch == 34) { in_str = 0; i = i + 1; }
+            else { i = i + 1; }
+        } else {
+            if (ch == 34) {
+                # Possible start of a string OR start of our needle.
+                # If the next nlen bytes match the needle, treat as a
+                # match (top-level key). Else enter string mode.
+                if (memeq(data + i, nd, nlen) == 1) {
+                    var vi = i + nlen;
+                    while (vi < slen && load8(data + vi) == 32) { vi = vi + 1; }
+                    return vi;
+                }
+                in_str = 1;
+                i = i + 1;
+            } else { i = i + 1; }
+        }
+    }
+    return 0 - 1;
 }
+# Audit 2026-04-26 F-003: handle leading '-' for negatives; cap at 19
+# digits before the 20th overflows i64. Past 19 digits we stop reading
+# and return whatever fit — wrapping to garbage was the prior behavior
+# (matches GHSA-72HV-8253-57QQ pattern).
 fn _json_int(src, key) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
     var data = str_data(src);
     var slen = str_len(src);
+    var neg = 0;
+    if (vi < slen && load8(data + vi) == 45) { neg = 1; vi = vi + 1; }
     var val = 0;
+    var digits = 0;
     var parsing = 1;
     while (vi < slen && parsing == 1) {
         var ch = load8(data + vi);
-        if (ch >= 48 && ch <= 57) { val = val * 10 + (ch - 48); vi = vi + 1; }
-        else { parsing = 0; }
+        if (ch >= 48 && ch <= 57) {
+            if (digits >= 19) { parsing = 0; }
+            else {
+                val = val * 10 + (ch - 48);
+                digits = digits + 1;
+                vi = vi + 1;
+            }
+        } else { parsing = 0; }
     }
+    if (neg == 1) { return 0 - val; }
     return val;
 }
+# Audit 2026-04-26 F-002: respect '\' escape so `"abc\"xyz"` parses as
+# the full string, not just the prefix. We decode the common escapes
+# (\" \\ \/ \n \t \r \b \f) by writing into a fresh buffer; the buffer
+# is at most as long as the source so allocating slen bytes is safe.
+# `\uXXXX` is left as a known limitation — F-004 follow-up.
 fn _json_str(src, key) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
@@ -135,9 +186,28 @@ fn _json_str(src, key) {
     if (vi >= slen) { return 0; }
     if (load8(data + vi) != 34) { return 0; }
     vi = vi + 1;
-    var vs = vi;
-    while (vi < slen && load8(data + vi) != 34) { vi = vi + 1; }
-    return str_new(data + vs, vi - vs);
+    var out = alloc(slen + 1);
+    var op = 0;
+    var done = 0;
+    while (vi < slen && done == 0) {
+        var ch = load8(data + vi);
+        if (ch == 34) { done = 1; }
+        elif (ch == 92 && vi + 1 < slen) {
+            var esc = load8(data + vi + 1);
+            if (esc == 34)      { store8(out + op, 34); op = op + 1; }
+            elif (esc == 92)    { store8(out + op, 92); op = op + 1; }
+            elif (esc == 47)    { store8(out + op, 47); op = op + 1; }
+            elif (esc == 110)   { store8(out + op, 10); op = op + 1; }
+            elif (esc == 116)   { store8(out + op, 9);  op = op + 1; }
+            elif (esc == 114)   { store8(out + op, 13); op = op + 1; }
+            elif (esc == 98)    { store8(out + op, 8);  op = op + 1; }
+            elif (esc == 102)   { store8(out + op, 12); op = op + 1; }
+            else { store8(out + op, 92); store8(out + op + 1, esc); op = op + 2; }
+            vi = vi + 2;
+        }
+        else { store8(out + op, ch); op = op + 1; vi = vi + 1; }
+    }
+    return str_new(out, op);
 }
 
 fn user_id_new()              { return agent_id_new(); }
@@ -225,18 +295,45 @@ fn version_from_str(s) {
     var plus = strchr(data + dot2 + 1, 43);
     if (hyph >= 0) { patch_end = dot2 + 1 + hyph; }
     elif (plus >= 0) { patch_end = dot2 + 1 + plus; }
-    # Parse major
-    var major_s = str_new(data, dot1);
-    var major = str_to_int(major_s);
-    store64(v, major);
-    # Parse minor
-    var minor_s = str_new(data + dot1 + 1, dot2 - dot1 - 1);
-    var minor = str_to_int(minor_s);
-    store64(v + 8, minor);
-    # Parse patch
-    var patch_s = str_new(data + dot2 + 1, patch_end - dot2 - 1);
-    var patch = str_to_int(patch_s);
-    store64(v + 16, patch);
+    # Audit 2026-04-26 F-005: every segment must be wholly digits.
+    # str_to_int silently returns 0 for non-numeric input, so a string
+    # like "abc.1.2" used to parse as 0.1.2; now it errors.
+    var maj_len = dot1;
+    var min_len = dot2 - dot1 - 1;
+    var pat_len = patch_end - dot2 - 1;
+    if (maj_len == 0 || min_len == 0 || pat_len == 0) {
+        return err_invalid_argument(str_from("invalid version: empty segment"));
+    }
+    var k = 0;
+    while (k < maj_len) {
+        var c = load8(data + k);
+        if (c < 48 || c > 57) {
+            return err_invalid_argument(str_from("invalid version: non-digit in major"));
+        }
+        k = k + 1;
+    }
+    k = 0;
+    while (k < min_len) {
+        var c = load8(data + dot1 + 1 + k);
+        if (c < 48 || c > 57) {
+            return err_invalid_argument(str_from("invalid version: non-digit in minor"));
+        }
+        k = k + 1;
+    }
+    k = 0;
+    while (k < pat_len) {
+        var c = load8(data + dot2 + 1 + k);
+        if (c < 48 || c > 57) {
+            return err_invalid_argument(str_from("invalid version: non-digit in patch"));
+        }
+        k = k + 1;
+    }
+    var major_s = str_new(data, maj_len);
+    store64(v, str_to_int(major_s));
+    var minor_s = str_new(data + dot1 + 1, min_len);
+    store64(v + 8, str_to_int(minor_s));
+    var patch_s = str_new(data + dot2 + 1, pat_len);
+    store64(v + 16, str_to_int(patch_s));
     # Parse prerelease and build if present
     if (patch_end < slen) {
         var sep = load8(data + patch_end);

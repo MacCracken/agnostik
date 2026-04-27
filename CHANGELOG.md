@@ -1,5 +1,161 @@
 # Changelog
 
+## [1.0.0] - 2026-04-26
+
+First stable release. Toolchain refresh to Cyrius 5.7.6, P(-1) scaffold
+hardening pass, security audit with external CVE / 0-day research, and
+layout alignment with the vidya / yukti gold-standard project shape.
+
+### Security
+
+- **F-001 (HIGH) — UUID PRNG hardened** (`src/types.cyr`,
+  `src/telemetry.cyr`). Pre-1.0 the PRNG seeded a 64-bit xorshift state
+  once from 8 bytes of `/dev/urandom` and silently fell through to
+  `clock_gettime(CLOCK_MONOTONIC)` and ultimately a hardcoded constant
+  on urandom failure. Same shape as **CVE-2025-66630** (gofiber UUID
+  silent fallback). Replaced with a per-call `_fill_random` helper that
+  reads 16 bytes via `getrandom(2)` (syscall 318), falls back to
+  `/dev/urandom` open+read with short-read retry, and aborts the
+  process on stderr if both fail. Identifier generation cost rose from
+  ~65 ns to ~600 ns per UUID — accepted to remove the predictable-ID
+  failure mode in sandboxed deployments.
+- **F-002 (MEDIUM) — JSON string escape decoding**
+  (`src/types.cyr:_json_str`). Pre-1.0 the extractor terminated at the
+  first `"` byte regardless of preceding `\`, so a value like
+  `"abc\"xyz"` was truncated to `abc\` and the parse cursor was
+  desynchronised for every subsequent field. Pattern-related to
+  **CVE-2025-27788** (Ruby JSON unescape OOB). Now decodes the
+  standard escape set (`\" \\ \/ \n \t \r \b \f`); `\uXXXX` left as a
+  documented limitation.
+- **F-003 (MEDIUM) — JSON integer sign + overflow guard**
+  (`src/types.cyr:_json_int`). Pre-1.0 negatives parsed as `0` and
+  long digit strings silently wrapped i64. Pattern-related to
+  **GHSA-72HV-8253-57QQ** (Jackson async unchecked numeric lengths).
+  Now handles a leading `-` and stops accepting digits after the 19th.
+- **F-004 (LOW) — JSON key search respects string boundaries**
+  (`src/types.cyr:_json_find_value`). Pre-1.0 the lookup did a raw
+  `strstr` for `"key":` which could match the same byte pattern when
+  it appeared inside a string *value* (e.g. an attacker-controlled
+  `"note":"max_memory:..."` poisoning a sibling `max_memory` lookup).
+  The walker now tracks string boundaries with `\` escape awareness
+  and only matches the needle outside of `"..."`.
+- **F-005 (LOW) — `version_from_str` digit validation**
+  (`src/types.cyr`). Pre-1.0 `version_from_str("abc.1.2")` produced
+  `Version{0, 1, 2}` because `str_to_int` silently returns `0` on
+  garbage. Each segment is now validated to be wholly digits before
+  parsing; non-numeric or empty segments return `Err`.
+- **F-007 (INFO) — long-line cleanup**. 16 single-line `enum`/`struct`
+  declarations across `classification.cyr`, `hardware.cyr`, `llm.cyr`,
+  `main.cyr`, and `security.cyr` rewrapped to one variant/field per
+  line. Clears the entire `line exceeds 120 characters` lint set.
+
+### Filed upstream
+
+- **F-006 (UPSTREAM) — Cyrius lint flags hand-written UFCS-style serde fns**.
+  `cyrius lint` raises `fn name should be snake_case` against agnostik's
+  hand-written `<PascalStructName>_<snake_verb>` adapters
+  (`ResourceLimits_to_json`, `AgentInfo_from_json`, etc.) — 28 sites
+  across 6 modules, 100 % false-positive rate. The flagged functions
+  are hand-written, not derive codegen; an earlier draft of the
+  upstream report mis-attributed them to `#derive(Serialize)` and
+  was corrected after the user caught the misread. Suggested upstream
+  fix: recognise `^[A-Z][A-Za-z0-9]*_[a-z][a-z0-9_]*$` (PascalCase
+  prefix + snake suffix) as a UFCS method pattern when the prefix
+  resolves to an in-scope struct/enum. Filed at
+  [`docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md).
+  Stays local; no mirror, no GitHub POST.
+
+Full audit report and verification: [`docs/audit/2026-04-26-audit.md`](docs/audit/2026-04-26-audit.md).
+
+### Changed
+
+- **Cyrius compiler target**: v3.2.5 → **v5.7.6**. Build pipeline moved
+  from raw `cat src/main.cyr | cc2 > out` to the manifest-driven
+  `cyrius build` CLI (`cc5` underneath). Stdlib + git dependencies are
+  resolved by `cyrius deps` from `[deps]` in the manifest; source files
+  no longer carry their own stdlib `include` lines.
+- **Manifest format**: `cyrius.toml` → `cyrius.cyml`. Version now
+  pulled from `VERSION` via `${file:VERSION}` so the file is the only
+  source of truth. Toolchain pinned in `[package].cyrius`.
+- **Project layout**: `tests/*.tcyr` → `tests/tcyr/`,
+  `benches/*.bcyr` → `tests/bcyr/agnostik.bcyr`, `tests/test.sh` →
+  `scripts/run-tests.sh`.
+- **Build / bench / version-bump scripts** rewritten to call `cyrius
+  {build,test,bench}` and to drop all Cargo.toml references inherited
+  from the Rust era.
+- **CI / release workflows** rewritten to the yukti / vidya pattern:
+  toolchain version pulled from `cyrius.cyml`, dead-code-eliminated
+  build (`CYRIUS_DCE=1`), `cyrius lint` / `cyrius fmt --check` /
+  `cyrius vet` sweep, ELF magic verification, best-effort aarch64
+  cross-build, dist-bundle synchronisation check.
+- **`.gitignore`** updated to the gold-standard form: `lib/*.cyr`
+  ignored (regenerated by `cyrius deps`), build / dist / toolchain
+  artifacts excluded.
+- **CLAUDE.md** rewritten to the agnosticos `example_claude.md` gold
+  standard. Volatile state (versions, sizes, test counts, consumers,
+  verification hosts) moved to `docs/development/state.md`; CLAUDE.md
+  is now durable preferences, process, and procedures only.
+
+### Added
+
+- **`docs/development/state.md`** — live state snapshot, refreshed
+  every release (mandated by the new CLAUDE.md template).
+- **`docs/audit/2026-04-26-audit.md`** — security audit report with
+  external CVE references and per-finding remediation notes.
+- **`tests/tcyr/test_audit_2026_04_26.tcyr`** — 28 regression
+  assertions covering F-001 / F-002 / F-003 / F-005 with positive and
+  negative cases per finding.
+- **`docs/benchmarks/history.csv`** — bench history, appended by
+  `scripts/bench-history.sh`.
+- Canonical doc directories scaffolded: `docs/adr/`,
+  `docs/architecture/`, `docs/guides/`, `docs/examples/`,
+  `docs/audit/`.
+
+### Removed
+
+- **`cyrius.toml`** (replaced by `cyrius.cyml`).
+- **`benches/`** (consolidated under `tests/bcyr/`).
+- **`bench-history.log`**, **`benchmark-rustvcyrius.md`** — Rust-era
+  bench artifacts superseded by `docs/benchmarks/history.csv`.
+- Vendored stdlib copies in `lib/*.cyr` un-tracked (regenerated by
+  `cyrius deps`).
+
+### Testing
+
+- **643 assertions, 0 failures** across 8 test files (up from 613
+  across 7 — all 30 new assertions are audit regressions).
+- 25 benchmarks, all green. Identifier-generation tier shows the
+  expected CSPRNG cost; serde / format / integration tiers within
+  ±10 % of the pre-fix baseline.
+
+### Performance
+
+| Tier            | Pre-fix (5.7.6) | Post-fix (1.0.0) | Note                  |
+|-----------------|-----------------|-------------------|-----------------------|
+| `agent_id_new`  | 65 ns           | 608 ns            | CSPRNG cost (F-001)   |
+| `span_id_new`*  | (PRNG)          | (CSPRNG)          | F-001                 |
+| `version_to_str`| 160 ns          | 155 ns            | unchanged             |
+| `version_roundtrip` | 299 ns      | 311 ns            | +4 % (segment validation) |
+| serde tier      | 700 ns – 8 µs   | 700 ns – 8 µs     | unchanged             |
+
+\* indirect (used by trace_context_*).
+
+### Breaking
+
+This is the 1.0.0 cut. Consumers should expect:
+
+- Build invocation: `cat src/main.cyr | cc2 > build/agnostik` no longer
+  works. Use `cyrius build src/main.cyr build/agnostik`.
+- Manifest filename / format. If a consumer was reading
+  `cyrius.toml`, switch to `cyrius.cyml`.
+- `_json_int` now stops at the 19th digit and honours a leading `-`.
+  Consumers serializing numbers > 19 decimal digits via `_to_json` and
+  expecting the same wrapped value to roundtrip will see different
+  output. (No agnostik field type today exceeds 19 digits.)
+- `version_from_str` rejects non-numeric and empty segments.
+  Consumers passing `"latest"` or `"main"` through this parser will
+  now get `Err`.
+
 ## [0.97.1] - 2026-04-09
 
 ### Changed
