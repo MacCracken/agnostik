@@ -488,9 +488,9 @@ fn test_integration() {
     var ig = integrity_fields_genesis(str_from("genesis-sig"));
     assert_eq(integrity_is_genesis(ig), 1, "genesis check");
     var ig2 = integrity_fields_new(
-        version_new(1, 0, 0),
-        str_from("sig2"),
-        str_from("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+    version_new(1, 0, 0),
+    str_from("sig2"),
+    str_from("abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
     );
     assert_eq(integrity_is_genesis(ig2), 0, "non-genesis check");
     return 0;

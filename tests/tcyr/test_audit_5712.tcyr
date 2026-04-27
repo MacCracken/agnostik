@@ -65,11 +65,10 @@ fn test_f008_attacker_cannot_negative_via_wrap() {
 # a freelist allocator it could SIGSEGV at a page boundary.
 # Post-fix: the probe is gated on `vi + 4 <= slen`.
 
+# Only 2 bytes (`nu`) remain after the `:`; the pre-fix memeq probe
+# read past slen. Test asserts "doesn't crash"; the returned scalar
+# value is irrelevant — what matters is the parser doesn't OOB-read.
 fn test_f009_truncated_value_2_bytes() {
-    # Find_value lands past the `:`, only 2 bytes ('nu') remain before
-    # the closing `}`. The pre-fix memeq probe would read past end.
-    # The point of this test is "doesn't crash"; whatever scalar comes
-    # back is fine — the parser just must not OOB-read.
     var src = str_from("{\"a\":nu}");
     _json_str(src, str_from("a"));
     assert_eq(1, 1, "F-009: truncated null probe survives (no crash)");
