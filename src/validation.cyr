@@ -23,7 +23,6 @@ fn vwarn_message(w)  { return load64(w + 8); }
 fn vwarn_severity(w) { return load64(w + 16); }
 fn vwarn_position(w) { return load64(w + 24); }
 fn vwarn_pattern(w)  { return load64(w + 32); }
-#derive(Serialize)
 struct InjectionScores { sql; xss; command; path_traversal; prompt_injection; }
 fn InjectionScores_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"sql\": ");

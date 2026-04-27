@@ -272,7 +272,6 @@ fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
 fn span_dropped_attrs(s)  { return load64(s + 88); }
 fn span_dropped_events(s) { return load64(s + 96); }
 fn span_dropped_links(s)  { return load64(s + 104); }
-#derive(Serialize)
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
 fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"enabled\": ");

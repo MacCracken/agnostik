@@ -1,8 +1,14 @@
 # `cyrius lint` flags hand-written `<PascalStruct>_<snake_verb>` fns as non-snake_case
 
+**Status:** ✅ Resolved upstream in cyrius 5.7.7 (UFCS Pascal-prefix
+exemption added to `programs/cyrlint.cyr`). Verified post-bump on
+agnostik 2026-04-26 under toolchain 5.7.12 — `cyrius lint src/*.cyr`
+returns 0 warnings across all 14 source files. Original report
+retained below for audit lineage.
+
 **Discovered:** 2026-04-26 during agnostik 0.97.1 → 1.0.0 closeout pass under `cyrius` 5.7.6 (cc5 5.7.6)
 **Severity:** Low (ergonomic — false-positive lint warnings; 100 % false-positive rate against agnostik's UFCS-style serde naming. No correctness or codegen impact.)
-**Affects:** `cyrius lint` shipped in toolchain 5.7.6 (`cc5 --version` → `cc5 5.7.6`)
+**Affects:** `cyrius lint` shipped in toolchain 5.7.6 (`cc5 --version` → `cc5 5.7.6`); fixed in 5.7.7.
 **Filed by:** agnostik (P(-1) audit, [`docs/audit/2026-04-26-audit.md`](../../audit/2026-04-26-audit.md) F-006)
 **Supersedes:** an earlier draft of this report mis-attributed the warnings to `#derive(Serialize)` codegen. They are not codegen — see "what I got wrong" below.
 

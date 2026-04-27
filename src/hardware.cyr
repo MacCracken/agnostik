@@ -64,7 +64,6 @@ fn memory_type_name(t) {
     elif (t == MEM_DDR5)       { return "DDR5"; }
     return "Unknown";
 }
-#derive(Serialize)
 struct AcceleratorFlags {
     cuda_available;
     rocm_available;

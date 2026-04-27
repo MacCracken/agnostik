@@ -1,0 +1,135 @@
+# tests/tcyr/test_audit_5712.tcyr
+#
+# Regression coverage for findings filed in
+# docs/audit/2026-04-26-audit-5712.md (post-1.0 toolchain-5.7.12 audit).
+#
+# F-008: _json_int silent i64 overflow on 19-digit values past i64::MAX
+# F-009: _json_str OOB read in `null` literal probe at end of input
+# F-010: _json_find_value / _json_int only skipped ASCII space (32);
+#        RFC 7159 whitespace also includes \t \n \r
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# ─── F-008: _json_int detects i64 overflow on 19-digit values ──────
+# Pre-fix: the 19-digit cap let inputs like 9999999999999999999 (19
+# nines, > i64::MAX = 9223372036854775807) silently wrap to a negative
+# i64. A downstream guard like `if (total_tokens > LIMIT)` would see
+# the negative number and pass.
+# Post-fix: the parser stops accepting digits before the multiply
+# would wrap, returning the largest in-bounds prefix.
+
+fn test_f008_overflow_19_nines() {
+    # 19 nines exceeds i64::MAX. Pre-fix wrapped to -8446744073709551617 etc.
+    # Post-fix stops at digit 18 (since digit 19 would overflow).
+    var src = str_from("{\"x\": 9999999999999999999}");
+    var v = _json_int(src, str_from("x"));
+    # 18 nines = 999999999999999999, which is < 2^63 (9223372036854775807).
+    assert_eq(v, 999999999999999999, "F-008: stop on overflow at 19th nine");
+    return 0;
+}
+
+fn test_f008_max_safe_19_digit_still_works() {
+    # 1234567890123456789 (19 digits) is < i64::MAX, must still parse.
+    var src = str_from("{\"x\": 1234567890123456789}");
+    var v = _json_int(src, str_from("x"));
+    assert_eq(v, 1234567890123456789, "F-008: 19-digit safe value still parses");
+    return 0;
+}
+
+fn test_f008_attacker_cannot_negative_via_wrap() {
+    # If wrap occurred, an attacker could submit a huge unsigned value
+    # that ends up < a downstream non-negative limit check.
+    var src = str_from("{\"max_memory\": 99999999999999999999}");
+    var v = _json_int(src, str_from("max_memory"));
+    # Whatever the parser returns, it must NOT be negative.
+    assert_eq(v >= 0, 1, "F-008: parsed value must not be negative");
+    return 0;
+}
+
+# ─── F-009: _json_str bounds-checks the `null` probe ────────────────
+# Pre-fix: `memeq(data + vi, "null", 4)` ran without checking that 4
+# bytes were actually available, reading up to 3 bytes past slen on
+# truncated input. With heap-bump allocators the read would land in
+# adjacent valid memory (info leak / non-deterministic decision); with
+# a freelist allocator it could SIGSEGV at a page boundary.
+# Post-fix: the probe is gated on `vi + 4 <= slen`.
+
+fn test_f009_truncated_value_2_bytes() {
+    # Find_value lands past the `:`, only 2 bytes ('nu') remain before
+    # the closing `}`. The pre-fix memeq probe would read past end.
+    # The point of this test is "doesn't crash"; whatever scalar comes
+    # back is fine — the parser just must not OOB-read.
+    var src = str_from("{\"a\":nu}");
+    _json_str(src, str_from("a"));
+    assert_eq(1, 1, "F-009: truncated null probe survives (no crash)");
+    return 0;
+}
+
+fn test_f009_real_null_still_returns_zero() {
+    # The legitimate `null` shape must still be recognized and return 0.
+    var src = str_from("{\"a\": null, \"b\": 5}");
+    var s = _json_str(src, str_from("a"));
+    assert_eq(s, 0, "F-009: legitimate null still recognized");
+    return 0;
+}
+
+# ─── F-010: parser skips RFC 7159 whitespace ────────────────────────
+# Pre-fix: the value-skip loop after `:` only accepted ASCII space (32).
+# RFC 7159 §2 defines JSON whitespace as one of: space (32), tab (9),
+# LF (10), CR (13). Inputs from any RFC-compliant pretty-printer
+# (Python json.dumps(indent=2), jq, ...) would silently fail to parse.
+
+fn test_f010_skip_tab_after_colon() {
+    var src = str_from("{\"x\":\t42}");
+    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip tab");
+    return 0;
+}
+
+fn test_f010_skip_newline_after_colon() {
+    var src = str_from("{\"x\":\n42}");
+    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip LF");
+    return 0;
+}
+
+fn test_f010_skip_cr_after_colon() {
+    var src = str_from("{\"x\":\r42}");
+    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip CR");
+    return 0;
+}
+
+fn test_f010_mixed_whitespace_pretty_printed() {
+    # Shape produced by `python3 -c 'import json; print(json.dumps({...}, indent=2))'`.
+    var src = str_from("{\n  \"x\": 7,\n  \"y\": 13\n}");
+    assert_eq(_json_int(src, str_from("x")), 7, "F-010: pretty-printed x");
+    assert_eq(_json_int(src, str_from("y")), 13, "F-010: pretty-printed y");
+    return 0;
+}
+
+fn main() {
+    alloc_init();
+    println("=== agnostik audit 5.7.12 (post-1.0) regression ===");
+    test_f008_overflow_19_nines();
+    test_f008_max_safe_19_digit_still_works();
+    test_f008_attacker_cannot_negative_via_wrap();
+    test_f009_truncated_value_2_bytes();
+    test_f009_real_null_still_returns_zero();
+    test_f010_skip_tab_after_colon();
+    test_f010_skip_newline_after_colon();
+    test_f010_skip_cr_after_colon();
+    test_f010_mixed_whitespace_pretty_printed();
+    println("");
+    return assert_summary();
+}
+var r = main();
+syscall(SYS_EXIT, r);

@@ -31,7 +31,6 @@ fn acfg_generation(c)   { return load64(c + 24); }
 fn acfg_content_hash(c) { return load64(c + 32); }
 fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
 fn acfg_set_hostname(c, v) { store64(c + 8, v); return 0; }
-#derive(Serialize)
 struct EdgeResourceOverrides { max_memory; max_cpu_time; max_agents; }
 fn EdgeResourceOverrides_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "{\"max_memory\": ");

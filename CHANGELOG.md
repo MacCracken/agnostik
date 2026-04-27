@@ -2,9 +2,11 @@
 
 ## [1.0.0] - 2026-04-26
 
-First stable release. Toolchain refresh to Cyrius 5.7.6, P(-1) scaffold
-hardening pass, security audit with external CVE / 0-day research, and
-layout alignment with the vidya / yukti gold-standard project shape.
+First stable release. Toolchain refresh to Cyrius **5.7.12**, P(-1)
+scaffold hardening pass, security audit with external CVE / 0-day
+research (11 findings closed, 1 resolved upstream, 1 new upstream
+issue filed), and layout alignment with the vidya / yukti
+gold-standard project shape.
 
 ### Security
 
@@ -48,32 +50,88 @@ layout alignment with the vidya / yukti gold-standard project shape.
   declarations across `classification.cyr`, `hardware.cyr`, `llm.cyr`,
   `main.cyr`, and `security.cyr` rewrapped to one variant/field per
   line. Clears the entire `line exceeds 120 characters` lint set.
+- **F-008 (LOW) — `_json_int` i64 overflow on 19-digit inputs**
+  (`src/types.cyr`). F-003's fix capped the digit run at 19, but
+  i64::MAX (`9223372036854775807`) is also 19 digits. Inputs in
+  `[9223372036854775808, 9999999999999999999]` were accepted and
+  silently wrapped — pre-fix `{"x":9999999999999999999}` returned
+  `-8446744073709551617`, which would slip past a downstream
+  `if (x > LIMIT)` non-negative guard. Replaced the digit cap with
+  a pre-multiply overflow check
+  (`val > 922337203685477580 || (val == 922337203685477580 &&
+  d > 7)`); the magnitude check is symmetric for negatives so
+  i64::MIN is unrepresentable by 1, accepted as a deliberate
+  trade. Pattern shape: **GHSA-72HV-8253-57QQ**, CWE-190.
+  Surfaced during the post-toolchain-bump re-scan.
+- **F-009 (LOW) — `_json_str` OOB read on truncated `null` literal**
+  (`src/types.cyr`). The 4-byte `memeq(data + vi, "null", 4)` probe
+  ran without checking that 4 bytes were available, reading up to
+  3 bytes past `slen` on truncated input like `{"x":nu}`. Bounded
+  over-read; bump-allocator info-leak shape, freelist-allocator
+  near-page-boundary SIGSEGV shape. Gated the probe on
+  `vi + 4 <= slen`. Pattern shape: **CVE-2025-27788** family.
+- **F-010 (INFO) — RFC 7159 whitespace handling**
+  (`src/types.cyr:_json_find_value`). The post-colon value-skip
+  loop only advanced past ASCII space (32). RFC 7159 §2 also
+  includes tab (9), LF (10), CR (13). Any pretty-printed input
+  (`python json.dumps(indent=2)`, `jq .`) silently failed to find
+  values, returning 0 — indistinguishable from "value really was
+  0". Replaced with the full RFC whitespace set.
+- **F-011 (LOW) — silent dead-code: derive + hand-written serde
+  collision** (9 sites across `src/agent.cyr` × 4, `src/config.cyr`,
+  `src/hardware.cyr`, `src/llm.cyr`, `src/telemetry.cyr`,
+  `src/validation.cyr`). Each affected struct carried both
+  `#derive(Serialize)` and a hand-written `<Type>_to_json` /
+  `_from_json`; cyrius last-define-wins meant the hand-written
+  adapter shadowed the derive output, but the dead bytes still
+  shipped in the binary. Surfaced by Cyrius v5.7.9's new
+  `duplicate fn` warning. Dropped the 9 derive markers; the
+  hand-written adapters are the canonical form (and incorporate
+  F-002 / F-003 / F-008 fixes that derive doesn't).
 
-### Filed upstream
+### Filed upstream — resolved
 
-- **F-006 (UPSTREAM) — Cyrius lint flags hand-written UFCS-style serde fns**.
-  `cyrius lint` raises `fn name should be snake_case` against agnostik's
-  hand-written `<PascalStructName>_<snake_verb>` adapters
-  (`ResourceLimits_to_json`, `AgentInfo_from_json`, etc.) — 28 sites
-  across 6 modules, 100 % false-positive rate. The flagged functions
-  are hand-written, not derive codegen; an earlier draft of the
-  upstream report mis-attributed them to `#derive(Serialize)` and
-  was corrected after the user caught the misread. Suggested upstream
-  fix: recognise `^[A-Z][A-Za-z0-9]*_[a-z][a-z0-9_]*$` (PascalCase
-  prefix + snake suffix) as a UFCS method pattern when the prefix
-  resolves to an in-scope struct/enum. Filed at
-  [`docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md).
-  Stays local; no mirror, no GitHub POST.
+- **F-006 (UPSTREAM) → resolved upstream in Cyrius v5.7.7.**
+  `cyrius lint`'s snake_case rule was raising 28 false-positives
+  against agnostik's hand-written `<PascalStructName>_<snake_verb>`
+  UFCS-style serde adapters. Upstream landed a Pascal-prefix
+  carve-out in 5.7.7 (`programs/cyrlint.cyr`); after the toolchain
+  bump to 5.7.12, `cyrius lint src/*.cyr` returns 0 warnings.
+  Local report at
+  [`docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md)
+  re-stamped with resolution status; stays local for audit lineage.
+
+### Filed upstream — new
+
+- **`cyrius audit` invokes `~/.cyrius/bin/check.sh` but the install
+  never ships it.** Verified on a freshly-`cyriusly install`'d
+  5.7.12: `cmd_audit` in `cbt/commands.cyr:395-398` expects
+  `check.sh` next to the cyrius binary, but Cyrius's release
+  manifest `scripts` array omits it. `cyrius audit` exits 127 on
+  every fresh install of 5.7.x. Workaround: run `cyrius self /
+  test / fmt --check / lint` individually. Filed locally:
+  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md).
 
 Full audit report and verification: [`docs/audit/2026-04-26-audit.md`](docs/audit/2026-04-26-audit.md).
 
 ### Changed
 
-- **Cyrius compiler target**: v3.2.5 → **v5.7.6**. Build pipeline moved
-  from raw `cat src/main.cyr | cc2 > out` to the manifest-driven
+- **Cyrius compiler target**: v3.2.5 → **v5.7.12**. Build pipeline
+  moved from raw `cat src/main.cyr | cc2 > out` to the manifest-driven
   `cyrius build` CLI (`cc5` underneath). Stdlib + git dependencies are
-  resolved by `cyrius deps` from `[deps]` in the manifest; source files
-  no longer carry their own stdlib `include` lines.
+  resolved by `cyrius deps` from `[deps]` in the manifest; source
+  files no longer carry their own stdlib `include` lines. The
+  closeout pass absorbed a mid-pass toolchain refresh from 5.7.6 →
+  5.7.12 that brought the F-006 lint-rule fix upstream (5.7.7), the
+  duplicate-fn warning that surfaced F-011 (5.7.9), and a
+  consumer-transparent `input_buf` 512 KB → 1 MB bump (5.7.10).
+- **Stdlib deps**: `[deps].stdlib` includes `"io"` so `lib/json.cyr`'s
+  reference to `file_read_all` resolves. Pre-fix the build emitted
+  `warning: undefined function 'file_read_all'` with a synthesised
+  runtime trap; agnostik never calls `json_parse_file` so no runtime
+  impact, but the warning would have masked a real one. DCE strips
+  the unused fns; net binary +2,328 B for the unavoidable syscall
+  wrappers.
 - **Manifest format**: `cyrius.toml` → `cyrius.cyml`. Version now
   pulled from `VERSION` via `${file:VERSION}` so the file is the only
   source of truth. Toolchain pinned in `[package].cyrius`.
@@ -102,9 +160,11 @@ Full audit report and verification: [`docs/audit/2026-04-26-audit.md`](docs/audi
   every release (mandated by the new CLAUDE.md template).
 - **`docs/audit/2026-04-26-audit.md`** — security audit report with
   external CVE references and per-finding remediation notes.
-- **`tests/tcyr/test_audit_2026_04_26.tcyr`** — 28 regression
-  assertions covering F-001 / F-002 / F-003 / F-005 with positive and
-  negative cases per finding.
+- **`tests/tcyr/test_audit_2026_04_26.tcyr`** — 30 regression
+  assertions covering F-001 / F-002 / F-003 / F-004 / F-005 with
+  positive and negative cases per finding.
+- **`tests/tcyr/test_audit_5712.tcyr`** — 10 regression assertions
+  covering F-008 / F-009 / F-010 (post-toolchain-bump findings).
 - **`docs/benchmarks/history.csv`** — bench history, appended by
   `scripts/bench-history.sh`.
 - Canonical doc directories scaffolded: `docs/adr/`,
@@ -122,21 +182,36 @@ Full audit report and verification: [`docs/audit/2026-04-26-audit.md`](docs/audi
 
 ### Testing
 
-- **643 assertions, 0 failures** across 8 test files (up from 613
-  across 7 — all 30 new assertions are audit regressions).
+- **653 assertions, 0 failures** across 9 test files (up from 613
+  across 7 — 40 new assertions: 30 covering F-001..F-005 in
+  `test_audit_2026_04_26.tcyr`, 10 covering F-008..F-010 in
+  `test_audit_5712.tcyr`).
 - 25 benchmarks, all green. Identifier-generation tier shows the
   expected CSPRNG cost; serde / format / integration tiers within
-  ±10 % of the pre-fix baseline.
+  ±10 % of the pre-fix baseline. F-008's pre-multiply overflow
+  check adds a single comparison per digit, undetectable in the
+  bench.
+
+### Stats (final closeout)
+
+| Metric                | Value     | Note                                |
+|-----------------------|-----------|-------------------------------------|
+| Binary (DCE'd)        | 214,560 B | After F-011 dead-derive removal (-40 KB vs the pre-F-011 closeout build) |
+| Test files            | 9         |                                     |
+| Test assertions       | 653       |                                     |
+| Build warnings        | 0         |                                     |
+| Lint warnings         | 0         | (was 28 false positives pre-5.7.7; resolved upstream) |
+| Duplicate-fn warnings | 0         | (was 18 silent dead-code pre-F-011) |
 
 ### Performance
 
-| Tier            | Pre-fix (5.7.6) | Post-fix (1.0.0) | Note                  |
+| Tier            | Pre-fix (cc3)   | Post-fix (1.0.0)  | Note                  |
 |-----------------|-----------------|-------------------|-----------------------|
 | `agent_id_new`  | 65 ns           | 608 ns            | CSPRNG cost (F-001)   |
 | `span_id_new`*  | (PRNG)          | (CSPRNG)          | F-001                 |
 | `version_to_str`| 160 ns          | 155 ns            | unchanged             |
 | `version_roundtrip` | 299 ns      | 311 ns            | +4 % (segment validation) |
-| serde tier      | 700 ns – 8 µs   | 700 ns – 8 µs     | unchanged             |
+| serde tier      | 700 ns – 8 µs   | 700 ns – 8 µs     | unchanged (F-008 overhead negligible) |
 
 \* indirect (used by trace_context_*).
 

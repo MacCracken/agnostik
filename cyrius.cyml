@@ -5,7 +5,7 @@ description = "Shared types and domain primitives for AGNOS"
 license = "GPL-3.0-only"
 repository = "https://github.com/MacCracken/2mp/agnostik"
 language = "cyrius"
-cyrius = "5.7.6"
+cyrius = "5.7.12"
 
 [build]
 entry = "src/main.cyr"
@@ -45,5 +45,6 @@ stdlib = [
     "fnptr",
     "trait",
     "assert",
+    "io",
     "json",
 ]
