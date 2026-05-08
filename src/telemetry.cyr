@@ -215,13 +215,9 @@ fn tctx_from_traceparent(s) {
     if (load8(data + 35) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
     if (load8(data + 52) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
     # Parse trace_id (32 hex chars at offset 3)
-    var tid_str = str_new(data + 3, 32);
-    var tid_result = trace_id_from_str(tid_str);
-    if (is_ok(tid_result) == 0) { return tid_result; }
+    var tid = trace_id_from_str(str_new(data + 3, 32))?;
     # Parse span_id (16 hex chars at offset 36)
-    var sid_str = str_new(data + 36, 16);
-    var sid_result = span_id_from_str(sid_str);
-    if (is_ok(sid_result) == 0) { return sid_result; }
+    var sid = span_id_from_str(str_new(data + 36, 16))?;
     # Parse flags (2 hex chars at offset 53)
     var fhi = _hex_nibble(load8(data + 53));
     var flo = _hex_nibble(load8(data + 54));
@@ -229,8 +225,8 @@ fn tctx_from_traceparent(s) {
     if (flo < 0) { return err_invalid_argument(str_from("invalid hex in traceparent flags")); }
     var flags = fhi << 4 | flo;
     var ctx = alloc(40);
-    store64(ctx, payload(tid_result));
-    store64(ctx + 8, payload(sid_result));
+    store64(ctx, tid);
+    store64(ctx + 8, sid);
     store64(ctx + 16, 0);
     store64(ctx + 24, flags);
     store64(ctx + 32, str_from(""));
@@ -244,7 +240,7 @@ fn span_new(name, trace_id, span_id) {
     store64(s + 24, 0);
     store64(s + 32, SPAN_UNSET);
     store64(s + 40, SPAN_INTERNAL);
-    store64(s + 48, now_ns());
+    store64(s + 48, clock_now_ns());
     store64(s + 56, 0);
     store64(s + 64, map_new());
     store64(s + 72, vec_new());
@@ -309,7 +305,7 @@ fn telcfg_sample_rate(c){ return load64(c + 8); }
 fn telcfg_endpoint(c)   { return load64(c + 16); }
 fn log_record_new(severity, body) {
     var lr = alloc(64);
-    store64(lr, now_ns());
+    store64(lr, clock_now_ns());
     store64(lr + 8, 0);
     store64(lr + 16, severity);
     store64(lr + 24, body);
@@ -334,7 +330,7 @@ fn crash_report_new(agent_id, error_msg) {
     store64(cr, agent_id);
     store64(cr + 8, error_msg);
     store64(cr + 16, 0);
-    store64(cr + 24, now_ns());
+    store64(cr + 24, clock_now_ns());
     return cr;
 }
 fn crash_agent_id(cr)  { return load64(cr); }
@@ -356,7 +352,7 @@ fn iscope_attributes(s) { return _lazy_map(s + 24); }
 fn span_event_new(evt_name) {
     var e = alloc(24);
     store64(e, evt_name);
-    store64(e + 8, now_ns());
+    store64(e + 8, clock_now_ns());
     store64(e + 16, 0);
     return e;
 }
@@ -378,7 +374,7 @@ fn exemplar_new(ex_trace_id, ex_span_id, value) {
     store64(e, ex_trace_id);
     store64(e + 8, ex_span_id);
     store64(e + 16, value);
-    store64(e + 24, now_ns());
+    store64(e + 24, clock_now_ns());
     store64(e + 32, 0);
     return e;
 }
@@ -422,7 +418,7 @@ fn metric_data_point_new(inst_name, mv) {
     store64(dp, inst_name);
     store64(dp + 8, mv);
     store64(dp + 16, 0);
-    store64(dp + 24, now_ns());
+    store64(dp + 24, clock_now_ns());
     store64(dp + 32, TEMPORALITY_CUMULATIVE);
     store64(dp + 40, 0);
     return dp;

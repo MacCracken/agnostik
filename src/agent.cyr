@@ -342,7 +342,7 @@ fn agent_message_new(sender, receiver, payload_str) {
     store64(m + 24, 0);
     store64(m + 32, 0);
     store64(m + 40, payload_str);
-    store64(m + 48, now_ns());
+    store64(m + 48, clock_now_ns());
     return m;
 }
 fn amsg_id(m)             { return load64(m); }
@@ -496,7 +496,7 @@ fn topic_message_new(topic_name, publisher) {
     store64(m + 8, topic_name);
     store64(m + 16, publisher);
     store64(m + 24, str_from("{}"));
-    store64(m + 32, now_ns());
+    store64(m + 32, clock_now_ns());
     store64(m + 40, 0);
     store64(m + 48, 0);
     return m;

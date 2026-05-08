@@ -117,7 +117,6 @@ fn test_f010_mixed_whitespace_pretty_printed() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik audit F-008/F-009/F-010 regression ===");
     test_f008_overflow_19_nines();
     test_f008_max_safe_19_digit_still_works();
@@ -131,5 +130,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

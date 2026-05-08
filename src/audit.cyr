@@ -50,7 +50,7 @@ fn audit_entry_new(id, agent_id, action, severity) {
     var e = alloc(112);
     store64(e, id);
     store64(e + 8, 0);
-    store64(e + 16, now_ns());
+    store64(e + 16, clock_now_ns());
     store64(e + 24, agent_id);
     store64(e + 32, action);
     store64(e + 40, severity);

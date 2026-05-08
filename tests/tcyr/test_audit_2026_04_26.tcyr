@@ -16,12 +16,6 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 # ─── F-001: CSPRNG produces unique IDs
 # The pre-1.0 PRNG seeded a 64-bit xorshift state once and could
 # silently fall back to a hardcoded constant. After the fix, every
@@ -160,7 +154,6 @@ fn test_f004_string_with_escaped_quotes() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik audit 2026-04-26 regression ===");
     test_f001_agent_id_unique();
     test_f001_agent_id_v4_marker();
@@ -178,5 +171,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

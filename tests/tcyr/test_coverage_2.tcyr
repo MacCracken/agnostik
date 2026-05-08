@@ -14,12 +14,6 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 fn test_telemetry_resource() {
     var r = resource_new(str_from("svc"), str_from("1.0"), str_from("i1"));
     assert_eq(str_eq(res_service_name(r), str_from("svc")), 1, "res name");
@@ -118,7 +112,6 @@ fn test_telemetry_parse_errors() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik coverage 2 (telemetry) ===");
     test_telemetry_resource();
     test_telemetry_span();
@@ -131,5 +124,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

@@ -42,9 +42,11 @@ stdlib = [
     "vec",
     "hashmap",
     "tagged",
+    "result",
     "fnptr",
     "trait",
     "assert",
     "io",
     "json",
+    "chrono",
 ]

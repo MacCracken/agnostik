@@ -14,12 +14,6 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 fn test_agent_resource_limits_setters() {
     var rl = resource_limits_new();
     # defaults
@@ -412,7 +406,6 @@ fn test_llm_streaming() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik extended coverage 1 (agent/security/llm) ===");
     test_agent_resource_limits_setters();
     test_agent_resource_usage_accessors();
@@ -445,5 +438,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

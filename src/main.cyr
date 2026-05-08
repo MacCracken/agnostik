@@ -13,13 +13,6 @@ include "lib/fnptr.cyr"
 include "lib/trait.cyr"
 include "lib/assert.cyr"
 
-# Inline now_ns from bench.cyr (avoids including full bench lib)
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 include "src/error.cyr"
 include "src/types.cyr"
 include "src/agent.cyr"
@@ -532,7 +525,6 @@ fn test_name_functions() {
     return 0;
 }
 fn main() {
-    alloc_init();
     println("=== agnostik test suite ===");
     test_error();
     test_types();
@@ -560,5 +552,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

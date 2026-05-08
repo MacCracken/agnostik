@@ -14,12 +14,6 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 fn _ser(ptr, fn_ptr) {
     var sb = str_builder_new();
     fncall2(fn_ptr, ptr, sb);
@@ -148,7 +142,6 @@ fn test_injection_scores_roundtrip() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik serde roundtrip tests ===");
     test_resource_limits_roundtrip();
     test_resource_usage_roundtrip();
@@ -161,5 +154,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);

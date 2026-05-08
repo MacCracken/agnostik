@@ -52,7 +52,7 @@ CYRIUS_DCE=1 cyrius build ...                   # dead-code-eliminated release b
 - Test after EVERY change, not after the feature is "done"
 - ONE change at a time — never bundle unrelated changes
 - Research before implementation — check vidya for existing patterns
-- Programs call `main()` at top level: `var exit_code = main(); syscall(60, exit_code);`
+- `cyrius build`/`test`/`bench` auto-inject the `main()` caller and lazy-init the heap (since 5.10.x); do not write `var r = main(); syscall(SYS_EXIT, r);` or call `alloc_init()` explicitly
 - **Build with `cyrius build`, never raw `cat file | cc5`** — the manifest auto-resolves deps and prepends includes
 - Source files only need project includes — stdlib / external deps auto-resolve from `cyrius.cyml`
 - Every buffer declaration is a contract: `var buf[N]` = N **bytes**, not N entries

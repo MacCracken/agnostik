@@ -128,7 +128,6 @@ fn run(bname, fp, batch, rounds) {
     return 0;
 }
 fn main() {
-    alloc_init();
     _bench_parent = trace_context_new();
     _bench_vs = str_from("0.90.0");
     println("=== agnostik benchmarks ===");
@@ -178,5 +177,3 @@ fn main() {
     println("\n=== done ===");
     return 0;
 }
-var r = main();
-syscall(SYS_EXIT, r);

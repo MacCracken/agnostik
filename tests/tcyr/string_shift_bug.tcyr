@@ -24,15 +24,7 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 fn main() {
-    alloc_init();
-
     # This test passes in isolation but FAILS in agnostik.tcyr when
     # message_type_name() and system_status_name() are added to types.cyr
     var vp = version_new(1, 0, 0);
@@ -54,6 +46,3 @@ fn main() {
 
     return assert_summary();
 }
-
-var r = main();
-syscall(SYS_EXIT, r);

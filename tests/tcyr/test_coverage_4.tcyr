@@ -15,12 +15,6 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-fn now_ns() {
-    var ts[16];
-    syscall(228, 4, &ts);
-    return load64(&ts) * 1000000000 + load64(&ts + 8);
-}
-
 fn test_audit_entry() {
     var id = agent_id_new();
     var ae = audit_entry_new(str_from("e1"), id, str_from("read"), AUDIT_INFO);
@@ -163,7 +157,6 @@ fn test_security_enum_names() {
 }
 
 fn main() {
-    alloc_init();
     println("=== agnostik coverage 4 (audit/secrets/config/validation/classification) ===");
     test_audit_entry();
     test_audit_integrity();
@@ -177,5 +170,3 @@ fn main() {
     println("");
     return assert_summary();
 }
-var r = main();
-syscall(SYS_EXIT, r);
