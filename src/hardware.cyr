@@ -97,7 +97,7 @@ fn AcceleratorFlags_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn AcceleratorFlags_from_json(src) {
+fn AcceleratorFlags_from_json(src: Str) {
     var f = alloc(72);
     store64(f, _json_int(src, str_from("cuda_available")));
     store64(f + 8, _json_int(src, str_from("rocm_available")));
@@ -134,7 +134,7 @@ fn aflags_set_tpu(f, v)      { store64(f + 40, v); return 0; }
 fn aflags_set_sycl(f, v)     { store64(f + 48, v); return 0; }
 fn aflags_set_openvino(f, v) { store64(f + 56, v); return 0; }
 fn aflags_set_directml(f, v) { store64(f + 64, v); return 0; }
-fn accelerator_device_new(index, dname, vendor, family) {
+fn accelerator_device_new(index, dname: Str, vendor, family) {
     var d = alloc(120);
     store64(d, index);
     store64(d + 8, dname);
@@ -168,8 +168,8 @@ fn adev_set_vram_total(d, v)           { store64(d + 32, v); return 0; }
 fn adev_set_vram_used(d, v)            { store64(d + 40, v); return 0; }
 fn adev_set_utilization(d, v)          { store64(d + 48, v); return 0; }
 fn adev_set_temperature(d, v)          { store64(d + 56, v); return 0; }
-fn adev_set_driver_version(d, v)       { store64(d + 64, v); return 0; }
-fn adev_set_compute_capability(d, v)   { store64(d + 72, v); return 0; }
+fn adev_set_driver_version(d, v: Str)      { store64(d + 64, v); return 0; }
+fn adev_set_compute_capability(d, v: Str)  { store64(d + 72, v); return 0; }
 fn adev_set_power_watts(d, v)          { store64(d + 88, v); return 0; }
 fn adev_set_memory_bandwidth_gbps(d,v) { store64(d + 96, v); return 0; }
 fn adev_set_memory_type(d, v)          { store64(d + 104, v); return 0; }
