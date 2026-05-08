@@ -46,42 +46,42 @@ enum ContentBlockType {
     CB_AUDIO;
     CB_CITATION;
 }
-fn content_text(text) { return tagged_new(CB_TEXT, text); }
-fn content_tool_use(tid, tname, targs) {
+fn content_text(text: Str) { return tagged_new(CB_TEXT, text); }
+fn content_tool_use(tid: Str, tname: Str, targs: Str) {
     var tu = alloc(24);
     store64(tu, tid);
     store64(tu + 8, tname);
     store64(tu + 16, targs);
     return tagged_new(CB_TOOL_USE, tu);
 }
-fn content_tool_result(tuid, tcontent, tiserr) {
+fn content_tool_result(tuid: Str, tcontent: Str, tiserr) {
     var tr = alloc(24);
     store64(tr, tuid);
     store64(tr + 8, tcontent);
     store64(tr + 16, tiserr);
     return tagged_new(CB_TOOL_RESULT, tr);
 }
-fn content_thinking(text) { return tagged_new(CB_THINKING, text); }
-fn content_image(source, media_type, is_url) {
+fn content_thinking(text: Str) { return tagged_new(CB_THINKING, text); }
+fn content_image(source: Str, media_type: Str, is_url) {
     var img = alloc(24);
     store64(img, source);
     store64(img + 8, media_type);
     store64(img + 16, is_url);
     return tagged_new(CB_IMAGE, img);
 }
-fn content_document(source, media_type) {
+fn content_document(source: Str, media_type: Str) {
     var doc = alloc(16);
     store64(doc, source);
     store64(doc + 8, media_type);
     return tagged_new(CB_DOCUMENT, doc);
 }
-fn content_audio(source, media_type) {
+fn content_audio(source: Str, media_type: Str) {
     var aud = alloc(16);
     store64(aud, source);
     store64(aud + 8, media_type);
     return tagged_new(CB_AUDIO, aud);
 }
-fn content_citation(source, text) {
+fn content_citation(source: Str, text: Str) {
     var cit = alloc(16);
     store64(cit, source);
     store64(cit + 8, text);
@@ -129,14 +129,14 @@ fn message_new(role) {
     store64(m + 16, 0);
     return m;
 }
-fn message_text(role, text) {
+fn message_text(role, text: Str) {
     var m = message_new(role);
     vec_push(load64(m + 8), content_text(text));
     return m;
 }
 fn msg_role(m)    { return load64(m); }
 fn msg_content(m) { return load64(m + 8); }
-fn tool_definition_new(tname, desc, params) {
+fn tool_definition_new(tname: Str, desc: Str, params: Str) {
     var t = alloc(32);
     store64(t, tname);
     store64(t + 8, desc);
@@ -147,7 +147,7 @@ fn tool_definition_new(tname, desc, params) {
 fn tooldef_name(t)   { return load64(t); }
 fn tooldef_desc(t)   { return load64(t + 8); }
 fn tooldef_params(t) { return load64(t + 16); }
-fn tool_call_new(tid, tname, targs) {
+fn tool_call_new(tid: Str, tname: Str, targs: Str) {
     var tc = alloc(24);
     store64(tc, tid);
     store64(tc + 8, tname);
@@ -191,7 +191,7 @@ fn TokenUsage_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn TokenUsage_from_json(src) {
+fn TokenUsage_from_json(src: Str) {
     var u = alloc(40);
     store64(u, _json_int(src, str_from("prompt_tok")));
     store64(u + 8, _json_int(src, str_from("completion_tok")));
@@ -216,7 +216,7 @@ fn tusage_set_completion(u, v) { store64(u + 8, v); return 0; }
 fn tusage_set_total(u, v)        { store64(u + 16, v); return 0; }
 fn tusage_set_cache_create(u, v) { store64(u + 24, v); return 0; }
 fn tusage_set_cache_read(u, v)   { store64(u + 32, v); return 0; }
-fn inference_request_new(model) {
+fn inference_request_new(model: Str) {
     var r = alloc(136);
     store64(r, model);
     store64(r + 8, str_from(""));
@@ -246,17 +246,17 @@ fn ireq_sampling(r)      { return load64(r + 40); }
 fn ireq_stream(r)        { return load64(r + 48); }
 fn ireq_tools(r)         { return load64(r + 56); }
 fn ireq_tool_choice(r)   { return load64(r + 64); }
-fn ireq_set_system(r, v)     { store64(r + 16, v); return 0; }
+fn ireq_set_system(r, v: Str)     { store64(r + 16, v); return 0; }
 fn ireq_set_max_tokens(r, v) { store64(r + 32, v); return 0; }
 fn ireq_set_stream(r, v)     { store64(r + 48, v); return 0; }
 fn ireq_service_tier(r)      { return load64(r + 112); }
 fn ireq_metadata(r)          { return load64(r + 120); }
 fn ireq_reasoning_effort(r)  { return load64(r + 128); }
 fn ireq_set_tool_choice(r, v)       { store64(r + 64, v); return 0; }
-fn ireq_set_service_tier(r, v)      { store64(r + 112, v); return 0; }
-fn ireq_set_metadata(r, v)          { store64(r + 120, v); return 0; }
-fn ireq_set_reasoning_effort(r, v)  { store64(r + 128, v); return 0; }
-fn inference_response_new(model) {
+fn ireq_set_service_tier(r, v: Str)     { store64(r + 112, v); return 0; }
+fn ireq_set_metadata(r, v)              { store64(r + 120, v); return 0; }
+fn ireq_set_reasoning_effort(r, v: Str) { store64(r + 128, v); return 0; }
+fn inference_response_new(model: Str) {
     var r = alloc(64);
     store64(r, 0);
     store64(r + 8, model);
@@ -274,14 +274,14 @@ fn iresp_content(r)        { return load64(r + 16); }
 fn iresp_usage(r)          { return load64(r + 24); }
 fn iresp_finish_reason(r)  { return load64(r + 32); }
 fn iresp_tool_calls(r)     { return load64(r + 40); }
-fn iresp_set_id(r, v)            { store64(r, v); return 0; }
+fn iresp_set_id(r, v: Str)       { store64(r, v); return 0; }
 fn iresp_set_finish_reason(r, v) { store64(r + 32, v); return 0; }
-fn stream_delta(text) { return tagged_new(STREAM_DELTA, text); }
+fn stream_delta(text: Str) { return tagged_new(STREAM_DELTA, text); }
 fn stream_done(finish_reason) { return tagged_new(STREAM_DONE, finish_reason); }
-fn stream_error(errmsg) { return tagged_new(STREAM_ERROR, errmsg); }
+fn stream_error(errmsg: Str) { return tagged_new(STREAM_ERROR, errmsg); }
 fn stream_usage(usage_ptr) { return tagged_new(STREAM_USAGE, usage_ptr); }
 fn stream_ping() { return tagged_new(STREAM_PING, 0); }
-fn model_capabilities_new(model_id, provider) {
+fn model_capabilities_new(model_id: Str, provider) {
     var m = alloc(96);
     store64(m, model_id);
     store64(m + 8, model_id);  # display_name defaults to model_id
@@ -302,7 +302,7 @@ fn mcap_supports_streaming(m)  { return load64(m + 64); }
 fn mcap_supports_thinking(m)   { return load64(m + 72); }
 fn mcap_supports_audio(m)      { return load64(m + 80); }
 fn mcap_supports_citations(m)  { return load64(m + 88); }
-fn mcap_set_display_name(m, v)    { store64(m + 8, v); return 0; }
+fn mcap_set_display_name(m, v: Str) { store64(m + 8, v); return 0; }
 fn mcap_set_context_window(m, v)  { store64(m + 24, v); return 0; }
 fn mcap_set_max_output(m, v)      { store64(m + 32, v); return 0; }
 fn rate_limit_info_new() {
@@ -316,7 +316,7 @@ fn rli_remaining_requests(r) { return load64(r + 8); }
 fn rli_limit_tokens(r)       { return load64(r + 16); }
 fn rli_remaining_tokens(r)   { return load64(r + 24); }
 fn rli_reset_seconds(r)      { return load64(r + 32); }
-fn tool_result_new(tuid, tcontent, tiserr) {
+fn tool_result_new(tuid: Str, tcontent: Str, tiserr) {
     var tr = alloc(24);
     store64(tr, tuid);
     store64(tr + 8, tcontent);
@@ -326,7 +326,7 @@ fn tool_result_new(tuid, tcontent, tiserr) {
 fn tresult_tool_use_id(tr) { return load64(tr); }
 fn tresult_content(tr)     { return load64(tr + 8); }
 fn tresult_is_error(tr)    { return load64(tr + 16); }
-fn logprob_entry_new(token, logprob) {
+fn logprob_entry_new(token: Str, logprob) {
     var e = alloc(24);
     store64(e, token);
     store64(e + 8, logprob);
@@ -336,7 +336,7 @@ fn logprob_entry_new(token, logprob) {
 fn lpe_token(e)       { return load64(e); }
 fn lpe_logprob(e)     { return load64(e + 8); }
 fn lpe_top_logprobs(e){ return _lazy_vec(e + 16); }
-fn token_logprob_new(token, logprob) {
+fn token_logprob_new(token: Str, logprob) {
     var t = alloc(16);
     store64(t, token);
     store64(t + 8, logprob);
@@ -354,7 +354,7 @@ fn safety_rating_new(category, probability, blocked) {
 fn srating_category(r)    { return load64(r); }
 fn srating_probability(r) { return load64(r + 8); }
 fn srating_blocked(r)     { return load64(r + 16); }
-fn embedding_request_new(model) {
+fn embedding_request_new(model: Str) {
     var r = alloc(24);
     store64(r, model);
     store64(r + 8, 0);
@@ -365,7 +365,7 @@ fn embreq_model(r)      { return load64(r); }
 fn embreq_inputs(r)     { return _lazy_vec(r + 8); }
 fn embreq_dimensions(r) { return load64(r + 16); }
 fn embreq_set_dimensions(r, v) { store64(r + 16, v); return 0; }
-fn embedding_response_new(model) {
+fn embedding_response_new(model: Str) {
     var r = alloc(24);
     store64(r, model);
     store64(r + 8, 0);
@@ -375,7 +375,7 @@ fn embedding_response_new(model) {
 fn embresp_model(r)      { return load64(r); }
 fn embresp_embeddings(r) { return _lazy_vec(r + 8); }
 fn embresp_usage(r)      { return load64(r + 16); }
-fn batch_request_new(custom_id, request) {
+fn batch_request_new(custom_id: Str, request) {
     var b = alloc(16);
     store64(b, custom_id);
     store64(b + 8, request);
@@ -383,7 +383,7 @@ fn batch_request_new(custom_id, request) {
 }
 fn breq_custom_id(b) { return load64(b); }
 fn breq_request(b)   { return load64(b + 8); }
-fn batch_result_new(custom_id) {
+fn batch_result_new(custom_id: Str) {
     var b = alloc(24);
     store64(b, custom_id);
     store64(b + 8, 0);
@@ -394,4 +394,4 @@ fn bresult_custom_id(b) { return load64(b); }
 fn bresult_response(b)  { return load64(b + 8); }
 fn bresult_error(b)     { return load64(b + 16); }
 fn bresult_set_response(b, v) { store64(b + 8, v); return 0; }
-fn bresult_set_error(b, v)    { store64(b + 16, v); return 0; }
+fn bresult_set_error(b, v: Str) { store64(b + 16, v); return 0; }
