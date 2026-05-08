@@ -25,14 +25,14 @@ fn audit_result_name(r) {
     return "Unknown";
 }
 var GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
-fn integrity_fields_genesis(signature) {
+fn integrity_fields_genesis(signature: Str) {
     var f = alloc(24);
     store64(f, version_default());
     store64(f + 8, signature);
     store64(f + 16, str_from(GENESIS_HASH));
     return f;
 }
-fn integrity_fields_new(version, signature, prev_hash) {
+fn integrity_fields_new(version, signature: Str, prev_hash: Str) {
     var f = alloc(24);
     store64(f, version);
     store64(f + 8, signature);
@@ -46,7 +46,7 @@ fn integrity_is_genesis(f) {
     var hash = load64(f + 16);
     return str_eq(hash, str_from(GENESIS_HASH));
 }
-fn audit_entry_new(id, agent_id, action, severity) {
+fn audit_entry_new(id: Str, agent_id, action: Str, severity) {
     var e = alloc(112);
     store64(e, id);
     store64(e + 8, 0);
@@ -78,12 +78,12 @@ fn aentry_target_resource(e) { return load64(e + 80); }
 fn aentry_duration_ms(e)     { return load64(e + 88); }
 fn aentry_tags(e)            { return load64(e + 96); }
 fn aentry_integrity(e)       { return load64(e + 104); }
-fn aentry_set_correlation_id(e, v) { store64(e + 8, v); return 0; }
-fn aentry_set_result(e, v)         { store64(e + 48, v); return 0; }
-fn aentry_set_details(e, v)        { store64(e + 56, v); return 0; }
-fn aentry_set_user_id(e, v)        { store64(e + 64, v); return 0; }
-fn aentry_set_source_ip(e, v)      { store64(e + 72, v); return 0; }
-fn aentry_set_target_resource(e, v){ store64(e + 80, v); return 0; }
+fn aentry_set_correlation_id(e, v: Str) { store64(e + 8, v); return 0; }
+fn aentry_set_result(e, v)              { store64(e + 48, v); return 0; }
+fn aentry_set_details(e, v: Str)        { store64(e + 56, v); return 0; }
+fn aentry_set_user_id(e, v: Str)        { store64(e + 64, v); return 0; }
+fn aentry_set_source_ip(e, v: Str)      { store64(e + 72, v); return 0; }
+fn aentry_set_target_resource(e, v: Str){ store64(e + 80, v); return 0; }
 fn aentry_set_duration_ms(e, v)    { store64(e + 88, v); return 0; }
 fn aentry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
 fn retention_policy_new(min_days) {
