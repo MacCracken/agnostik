@@ -32,7 +32,7 @@ enum StopReason {
     STOP_TIMEOUT;
     STOP_SYSTEM_SHUTDOWN;
 }
-fn stop_reason_new(kind, message) {
+fn stop_reason_new(kind, message: Str) {
     return tagged_new(kind, message);
 }
 fn stop_reason_kind(sr) { return tag(sr); }
@@ -59,7 +59,7 @@ fn ResourceLimits_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn ResourceLimits_from_json(src) {
+fn ResourceLimits_from_json(src: Str) {
     var r = alloc(48);
     store64(r, _json_int(src, str_from("max_memory")));
     store64(r + 8, _json_int(src, str_from("max_cpu_time")));
@@ -104,7 +104,7 @@ fn ResourceUsage_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn ResourceUsage_from_json(src) {
+fn ResourceUsage_from_json(src: Str) {
     var u = alloc(32);
     store64(u, _json_int(src, str_from("mem_used")));
     store64(u + 8, _json_int(src, str_from("cpu_used")));
@@ -162,7 +162,7 @@ fn lhooks_set_pre_start(h, v)  { store64(h, v); return 0; }
 fn lhooks_set_post_start(h, v) { store64(h + 8, v); return 0; }
 fn lhooks_set_pre_stop(h, v)   { store64(h + 16, v); return 0; }
 fn lhooks_set_post_stop(h, v)  { store64(h + 24, v); return 0; }
-fn agent_config_new(name) {
+fn agent_config_new(name: Str) {
     var c = alloc(104);
     store64(c, name);
     store64(c + 8, AGENT_TYPE_USER);
@@ -238,7 +238,7 @@ fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "\"}");
     return 0;
 }
-fn AgentInfo_from_json(src) {
+fn AgentInfo_from_json(src: Str) {
     var info = alloc(32);
     var id_str = _json_str(src, str_from("id"));
     if (id_str != 0) {
@@ -250,7 +250,7 @@ fn AgentInfo_from_json(src) {
     store64(info + 24, _json_int(src, str_from("status_id")));
     return info;
 }
-fn agent_info_new(id, name, atype, status) {
+fn agent_info_new(id, name: Str, atype, status) {
     var info = alloc(32);
     store64(info, id);
     store64(info + 8, name);
@@ -273,7 +273,7 @@ fn AgentStats_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn AgentStats_from_json(src) {
+fn AgentStats_from_json(src: Str) {
     var s = alloc(24);
     store64(s, _json_int(src, str_from("total_requests")));
     store64(s + 8, _json_int(src, str_from("total_tokens")));
@@ -290,7 +290,7 @@ fn agent_stats_new() {
 fn astats_requests(s)  { return load64(s); }
 fn astats_tokens(s)    { return load64(s + 8); }
 fn astats_uptime(s)    { return load64(s + 16); }
-fn agent_manifest_new(name) {
+fn agent_manifest_new(name: Str) {
     var m = alloc(80);
     store64(m, name);
     store64(m + 8, str_from(""));
@@ -334,7 +334,7 @@ fn agent_type_name(t) {
     return "Unknown";
 }
 enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST; }
-fn agent_message_new(sender, receiver, payload_str) {
+fn agent_message_new(sender, receiver, payload_str: Str) {
     var m = alloc(56);
     store64(m, agent_id_new());
     store64(m + 8, sender);
@@ -352,9 +352,9 @@ fn amsg_correlation_id(m) { return load64(m + 24); }
 fn amsg_reply_to(m)       { return load64(m + 32); }
 fn amsg_payload(m)        { return load64(m + 40); }
 fn amsg_timestamp(m)      { return load64(m + 48); }
-fn amsg_set_correlation_id(m, v) { store64(m + 24, v); return 0; }
-fn amsg_set_reply_to(m, v)      { store64(m + 32, v); return 0; }
-fn agent_dependency_new(required_agent, min_ver, required) {
+fn amsg_set_correlation_id(m, v: Str) { store64(m + 24, v); return 0; }
+fn amsg_set_reply_to(m, v: Str)       { store64(m + 32, v); return 0; }
+fn agent_dependency_new(required_agent: Str, min_ver, required) {
     var d = alloc(24);
     store64(d, required_agent);
     store64(d + 8, min_ver);
@@ -374,7 +374,7 @@ fn resource_request_new(agent_id, limits) {
 fn rreq_agent_id(r)      { return load64(r); }
 fn rreq_limits(r)        { return load64(r + 8); }
 fn rreq_justification(r) { return load64(r + 16); }
-fn rreq_set_justification(r, v) { store64(r + 16, v); return 0; }
+fn rreq_set_justification(r, v: Str) { store64(r + 16, v); return 0; }
 fn resource_grant_new(agent_id, limits, approved) {
     var g = alloc(32);
     store64(g, agent_id);
@@ -387,7 +387,7 @@ fn rgrant_agent_id(g) { return load64(g); }
 fn rgrant_limits(g)   { return load64(g + 8); }
 fn rgrant_approved(g) { return load64(g + 16); }
 fn rgrant_reason(g)   { return load64(g + 24); }
-fn rgrant_set_reason(g, v) { store64(g + 24, v); return 0; }
+fn rgrant_set_reason(g, v: Str) { store64(g + 24, v); return 0; }
 fn retry_policy_new() {
     var p = alloc(40);
     store64(p, 3);
@@ -414,7 +414,7 @@ fn rback_initial_delay(b) { return load64(b); }
 fn rback_multiplier(b)    { return load64(b + 8); }
 fn rback_max_delay(b)     { return load64(b + 16); }
 fn rback_jitter(b)        { return load64(b + 24); }
-fn agent_pool_new(pool_name, config) {
+fn agent_pool_new(pool_name: Str, config) {
     var p = alloc(40);
     store64(p, pool_name);
     store64(p + 8, config);
@@ -457,7 +457,7 @@ fn sched_pod_anti_affinity(s)  { return _lazy_vec(s + 24); }
 fn sched_priority(s)           { return load64(s + 32); }
 fn sched_preemptible(s)        { return load64(s + 40); }
 fn sched_set_priority(s, v)    { store64(s + 32, v); return 0; }
-fn label_selector_new(key, operator) {
+fn label_selector_new(key: Str, operator) {
     var l = alloc(24);
     store64(l, key);
     store64(l + 8, operator);
@@ -467,7 +467,7 @@ fn label_selector_new(key, operator) {
 fn lsel_key(l)      { return load64(l); }
 fn lsel_operator(l) { return load64(l + 8); }
 fn lsel_values(l)   { return _lazy_vec(l + 16); }
-fn topic_new(tname) {
+fn topic_new(tname: Str) {
     var t = alloc(24);
     store64(t, tname);
     store64(t + 8, str_from(""));
@@ -477,9 +477,9 @@ fn topic_new(tname) {
 fn topic_name(t)        { return load64(t); }
 fn topic_description(t) { return load64(t + 8); }
 fn topic_ttl(t)         { return load64(t + 16); }
-fn topic_set_description(t, v) { store64(t + 8, v); return 0; }
+fn topic_set_description(t, v: Str) { store64(t + 8, v); return 0; }
 fn topic_set_ttl(t, v)         { store64(t + 16, v); return 0; }
-fn subscription_new(agent_id, topic_name) {
+fn subscription_new(agent_id, topic_name: Str) {
     var s = alloc(24);
     store64(s, agent_id);
     store64(s + 8, topic_name);
@@ -489,8 +489,8 @@ fn subscription_new(agent_id, topic_name) {
 fn sub_agent_id(s) { return load64(s); }
 fn sub_topic(s)    { return load64(s + 8); }
 fn sub_filter(s)   { return load64(s + 16); }
-fn sub_set_filter(s, v) { store64(s + 16, v); return 0; }
-fn topic_message_new(topic_name, publisher) {
+fn sub_set_filter(s, v: Str) { store64(s + 16, v); return 0; }
+fn topic_message_new(topic_name: Str, publisher) {
     var m = alloc(56);
     store64(m, agent_id_new());
     store64(m + 8, topic_name);
@@ -508,6 +508,6 @@ fn tmsg_payload(m)   { return load64(m + 24); }
 fn tmsg_timestamp(m) { return load64(m + 32); }
 fn tmsg_priority(m)  { return load64(m + 40); }
 fn tmsg_ttl(m)       { return load64(m + 48); }
-fn tmsg_set_payload(m, v)  { store64(m + 24, v); return 0; }
+fn tmsg_set_payload(m, v: Str)  { store64(m + 24, v); return 0; }
 fn tmsg_set_priority(m, v) { store64(m + 40, v); return 0; }
 fn tmsg_set_ttl(m, v)      { store64(m + 48, v); return 0; }
