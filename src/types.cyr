@@ -54,7 +54,7 @@ fn _hex_byte(buf, offset, byte) {
     store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
     return 0;
 }
-fn agent_id_to_str(id) {
+fn agent_id_to_str(id): Str {
     # UUID format: 8-4-4-4-12 = 36 chars
     var buf = alloc(37);
     var pos = 0;
@@ -71,7 +71,7 @@ fn agent_id_to_str(id) {
     store8(buf + pos, 0);
     return str_new(buf, 36);
 }
-fn agent_id_from_str(s) {
+fn agent_id_from_str(s: Str) {
     var data = str_data(s);
     var slen = str_len(s);
     if (slen != 36) { return err_invalid_argument(str_from("invalid agent id: expected UUID")); }
@@ -109,7 +109,7 @@ fn agent_id_from_str(s) {
 # matches when the cursor is outside `"..."`. Backslash escapes inside
 # strings respected so `"\""` doesn't end the string early (parallels
 # the F-002 fix in `_json_str`).
-fn _json_find_value(src, key) {
+fn _json_find_value(src: Str, key: Str) {
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "\"");
     str_builder_add(sb, key);
@@ -157,7 +157,7 @@ fn _json_find_value(src, key) {
 # [9223372036854775808, 9999999999999999999] still overflowed and
 # wrapped silently. Both findings together close
 # GHSA-72HV-8253-57QQ-shape risk.
-fn _json_int(src, key) {
+fn _json_int(src: Str, key: Str) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
     var data = str_data(src);
@@ -190,7 +190,7 @@ fn _json_int(src, key) {
 # (\" \\ \/ \n \t \r \b \f) by writing into a fresh buffer; the buffer
 # is at most as long as the source so allocating slen bytes is safe.
 # `\uXXXX` is left as a known limitation — F-004 follow-up.
-fn _json_str(src, key) {
+fn _json_str(src: Str, key: Str) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
     var data = str_data(src);
@@ -229,8 +229,8 @@ fn user_id_new()              { return agent_id_new(); }
 fn user_id_high(id)           { return agent_id_high(id); }
 fn user_id_low(id)            { return agent_id_low(id); }
 fn user_id_eq(a, b)           { return agent_id_eq(a, b); }
-fn user_id_to_str(id)         { return agent_id_to_str(id); }
-fn user_id_from_str(s)        { return agent_id_from_str(s); }
+fn user_id_to_str(id): Str    { return agent_id_to_str(id); }
+fn user_id_from_str(s: Str)   { return agent_id_from_str(s); }
 fn version_new(major, minor, patch) {
     var v = alloc(40);
     store64(v, major);
@@ -246,9 +246,9 @@ fn version_minor(v)      { return load64(v + 8); }
 fn version_patch(v)      { return load64(v + 16); }
 fn version_prerelease(v) { return load64(v + 24); }
 fn version_build(v)      { return load64(v + 32); }
-fn version_set_prerelease(v, pre) { store64(v + 24, pre); return 0; }
-fn version_set_build(v, b)        { store64(v + 32, b); return 0; }
-fn version_to_str(v) {
+fn version_set_prerelease(v, pre: Str) { store64(v + 24, pre); return 0; }
+fn version_set_build(v, b: Str)        { store64(v + 32, b); return 0; }
+fn version_to_str(v): Str {
     var buf = alloc(128);
     var cap = 127;
     var pos = 0;
@@ -278,7 +278,7 @@ fn version_to_str(v) {
     store8(buf + pos, 0);
     return str_new(buf, pos);
 }
-fn version_from_str(s) {
+fn version_from_str(s: Str) {
     var data = str_data(s);
     var slen = str_len(s);
     var v = alloc(40);
@@ -415,7 +415,7 @@ fn capabilities_eq(a, b) {
     if (load64(a + 24) != load64(b + 24)) { return 0; }
     return 1;
 }
-fn component_config_new(name, enabled) {
+fn component_config_new(name: Str, enabled) {
     var c = alloc(24);
     store64(c, name);
     store64(c + 8, enabled);
