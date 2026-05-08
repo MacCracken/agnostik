@@ -35,7 +35,7 @@ fn InjectionScores_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 24));
     str_builder_add_cstr(sb, ", \"prompt_injection\": ");
     str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, "}");
+    str_builder_putc(sb, '}');
     return 0;
 }
 fn InjectionScores_from_json(src: Str) {

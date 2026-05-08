@@ -111,7 +111,7 @@ fn agent_id_from_str(s: Str) {
 # the F-002 fix in `_json_str`).
 fn _json_find_value(src: Str, key: Str) {
     var sb = str_builder_new();
-    str_builder_add_cstr(sb, "\"");
+    str_builder_putc(sb, '"');
     str_builder_add(sb, key);
     str_builder_add_cstr(sb, "\":");
     var needle = str_builder_build(sb);

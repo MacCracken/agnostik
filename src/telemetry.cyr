@@ -189,9 +189,9 @@ fn tctx_to_traceparent(c): Str {
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "00-");
     str_builder_add(sb, trace_id_to_str(tctx_trace_id(c)));
-    str_builder_add_cstr(sb, "-");
+    str_builder_putc(sb, '-');
     str_builder_add(sb, span_id_to_str(tctx_span_id(c)));
-    str_builder_add_cstr(sb, "-");
+    str_builder_putc(sb, '-');
     var flags = tctx_trace_flags(c);
     var fbuf = alloc(3);
     _hex_byte(fbuf, 0, flags & 0xFF);
@@ -277,13 +277,13 @@ fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_cstr(sb, ", \"export_endpoint\": ");
     var ep = load64(ptr + 16);
     if (ep != 0) {
-        str_builder_add_cstr(sb, "\"");
+        str_builder_putc(sb, '"');
         str_builder_add(sb, ep);
-        str_builder_add_cstr(sb, "\"");
+        str_builder_putc(sb, '"');
     } else {
         str_builder_add_cstr(sb, "null");
     }
-    str_builder_add_cstr(sb, "}");
+    str_builder_putc(sb, '}');
     return 0;
 }
 fn TelemetryConfig_from_json(src: Str) {
