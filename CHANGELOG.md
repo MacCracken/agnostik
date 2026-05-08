@@ -1,10 +1,34 @@
 # Changelog
 
-## [1.0.1] - 2026-04-26
+## [1.0.1] - 2026-05-08
 
-Documentation cleanup pass after the 1.0.0 release. Pure docs — no
-code, manifest, or test changes; `dist/agnostik.cyr` is byte-identical
-to 1.0.0.
+Documentation cleanup + toolchain refresh on top of 1.0.0. Manifest
+pin moved from Cyrius `5.7.12` to `5.10.3` (the latest released
+version) and the bench banner stripped of its hardcoded toolchain
+literal. Public API unchanged; all 653 assertions across 9 `.tcyr`
+files pass; stdlib dependencies (`syscalls`, `string`, `alloc`, `str`,
+`fmt`, `vec`, `hashmap`, `tagged`, `fnptr`, `trait`, `assert`, `io`,
+`json`) re-resolved against 5.10.3 via `cyrius deps`.
+
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.7.12` → `5.10.3`.
+  Locally installed `cyrius` may report a newer dev build (e.g.,
+  `5.10.4`); the manifest always pins to the latest **released**
+  version so CI and external contributors get a reproducible
+  toolchain.
+- **`tests/bcyr/agnostik.bcyr`** banner literal stripped of the
+  toolchain version (`=== agnostik benchmarks (Cyrius v5.7.12) ===`
+  → `=== agnostik benchmarks ===`) so it no longer drifts from the
+  manifest pin on every refresh.
+- **DCE binary size** floor moved from `214 KB` (5.7.12) to `261 KB`
+  (5.10.3). Pure codegen difference — no new code in `src/`.
+- **`cyrius audit`** is still broken on 5.10.x (`check.sh` missing
+  from the toolchain install — same upstream issue carried forward
+  from 5.7.12, tracked in
+  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md)).
+  Workaround unchanged: run `cyrius {test,fmt --check,lint}`
+  individually.
 
 ### Changed
 
