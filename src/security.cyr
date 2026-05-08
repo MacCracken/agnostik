@@ -187,8 +187,8 @@ fn sandbox_readonly_paths(s){ return _lazy_vec(s + 72); }
 fn sandbox_sysctl(s)        { return _lazy_map(s + 80); }
 fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
 fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
-fn sandbox_set_apparmor(s, v)     { store64(s + 40, v); return 0; }
-fn sandbox_set_selinux(s, v)      { store64(s + 48, v); return 0; }
+fn sandbox_set_apparmor(s, v: Str) { store64(s + 40, v); return 0; }
+fn sandbox_set_selinux(s, v: Str)  { store64(s + 48, v); return 0; }
 fn security_context_new(agent_id) {
     var ctx = alloc(56);
     store64(ctx, agent_id);
@@ -207,7 +207,7 @@ fn secctx_run_as_user(c)     { return load64(c + 24); }
 fn secctx_run_as_group(c)    { return load64(c + 32); }
 fn secctx_readonly_root(c)   { return load64(c + 40); }
 fn secctx_no_new_privs(c)    { return load64(c + 48); }
-fn security_policy_new(name, effect) {
+fn security_policy_new(name: Str, effect) {
     var p = alloc(24);
     store64(p, name);
     store64(p + 8, effect);
@@ -255,7 +255,7 @@ fn scarg_index(a)     { return load64(a); }
 fn scarg_value(a)     { return load64(a + 8); }
 fn scarg_value_two(a) { return load64(a + 16); }
 fn scarg_op(a)        { return load64(a + 24); }
-fn filesystem_rule_new(path, access) {
+fn filesystem_rule_new(path: Str, access) {
     var r = alloc(48);
     store64(r, path);
     store64(r + 8, access);
@@ -318,7 +318,7 @@ fn rlimit_new(limit_type, soft, hard) {
 fn rlimit_type(r) { return load64(r); }
 fn rlimit_soft(r) { return load64(r + 8); }
 fn rlimit_hard(r) { return load64(r + 16); }
-fn device_rule_new(allow, dtype, access_str) {
+fn device_rule_new(allow, dtype, access_str: Str) {
     var r = alloc(40);
     store64(r, allow);
     store64(r + 8, dtype);
@@ -340,7 +340,7 @@ fn namespace_entry_new(ns_type) {
 }
 fn nsentry_type(e) { return load64(e); }
 fn nsentry_path(e) { return load64(e + 8); }
-fn nsentry_set_path(e, v) { store64(e + 8, v); return 0; }
+fn nsentry_set_path(e, v: Str) { store64(e + 8, v); return 0; }
 fn id_mapping_new(inside_id, outside_id, count) {
     var m = alloc(24);
     store64(m, inside_id);
@@ -351,7 +351,7 @@ fn id_mapping_new(inside_id, outside_id, count) {
 fn idmap_inside(m)  { return load64(m); }
 fn idmap_outside(m) { return load64(m + 8); }
 fn idmap_count(m)   { return load64(m + 16); }
-fn landlock_fs_rule_new(path) {
+fn landlock_fs_rule_new(path: Str) {
     var r = alloc(16);
     store64(r, path);
     store64(r + 8, 0);
@@ -377,7 +377,7 @@ fn landlock_ruleset_new() {
 fn llrs_fs_rules(r)  { return _lazy_vec(r); }
 fn llrs_net_rules(r) { return _lazy_vec(r + 8); }
 fn llrs_scoped(r)    { return _lazy_vec(r + 16); }
-fn permission_condition_new(field, operator, value) {
+fn permission_condition_new(field: Str, operator, value) {
     var c = alloc(24);
     store64(c, field);
     store64(c + 8, operator);
@@ -387,7 +387,7 @@ fn permission_condition_new(field, operator, value) {
 fn pcond_field(c)    { return load64(c); }
 fn pcond_operator(c) { return load64(c + 8); }
 fn pcond_value(c)    { return load64(c + 16); }
-fn role_permission_new(resource) {
+fn role_permission_new(resource: Str) {
     var p = alloc(24);
     store64(p, resource);
     store64(p + 8, 0);
@@ -397,7 +397,7 @@ fn role_permission_new(resource) {
 fn rperm_resource(p)   { return load64(p); }
 fn rperm_actions(p)    { return _lazy_vec(p + 8); }
 fn rperm_conditions(p) { return _lazy_vec(p + 16); }
-fn token_payload_new(sub, role) {
+fn token_payload_new(sub: Str, role) {
     var t = alloc(64);
     store64(t, sub);
     store64(t + 8, role);
