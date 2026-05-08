@@ -1,6 +1,6 @@
 var TRACE_FLAG_SAMPLED = 1;
 fn trace_id_new() { return agent_id_new(); }
-fn trace_id_to_str(id) {
+fn trace_id_to_str(id): Str {
     # 32 hex chars (no dashes)
     var buf = alloc(33);
     var i = 0;
@@ -11,7 +11,7 @@ fn trace_id_to_str(id) {
     store8(buf + 32, 0);
     return str_new(buf, 32);
 }
-fn trace_id_from_str(s) {
+fn trace_id_from_str(s: Str) {
     var data = str_data(s);
     var slen = str_len(s);
     if (slen != 32) { return err_invalid_argument(str_from("expected 32 hex digits")); }
@@ -39,7 +39,7 @@ fn span_id_new() {
     _fill_random(id, 8);
     return id;
 }
-fn span_id_to_str(id) {
+fn span_id_to_str(id): Str {
     # 16 hex chars
     var buf = alloc(17);
     var val = load64(id);
@@ -52,7 +52,7 @@ fn span_id_to_str(id) {
     store8(buf + 16, 0);
     return str_new(buf, 16);
 }
-fn span_id_from_str(s) {
+fn span_id_from_str(s: Str) {
     var data = str_data(s);
     var slen = str_len(s);
     if (slen != 16) { return err_invalid_argument(str_from("expected 16 hex digits")); }
@@ -87,7 +87,7 @@ fn span_status_name(s) {
     elif (s == SPAN_ERROR)     { return "Error"; }
     return "Unknown";
 }
-fn span_status_error(message) {
+fn span_status_error(message: Str) {
     return tagged_new(SPAN_ERROR, message);
 }
 enum SpanKind {
@@ -141,7 +141,7 @@ fn log_severity_name(s) {
     elif (s == LOG_FATAL) { return "FATAL"; }
     return "UNKNOWN";
 }
-fn resource_new(name, version, instance_id) {
+fn resource_new(name: Str, version: Str, instance_id: Str) {
     var r = alloc(40);
     store64(r, name);
     store64(r + 8, version);
@@ -185,7 +185,7 @@ fn tctx_child(parent) {
     store64(child + 32, load64(parent + 32)); # propagate state
     return child;
 }
-fn tctx_to_traceparent(c) {
+fn tctx_to_traceparent(c): Str {
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "00-");
     str_builder_add(sb, trace_id_to_str(tctx_trace_id(c)));
@@ -205,7 +205,7 @@ fn _hex_nibble(ch) {
     if (ch >= 65 && ch <= 70) { return ch - 55; }
     return 0 - 1;
 }
-fn tctx_from_traceparent(s) {
+fn tctx_from_traceparent(s: Str) {
     # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"
     # Total: 55 chars
     var data = str_data(s);
@@ -232,7 +232,7 @@ fn tctx_from_traceparent(s) {
     store64(ctx + 32, str_from(""));
     return Ok(ctx);
 }
-fn span_new(name, trace_id, span_id) {
+fn span_new(name: Str, trace_id, span_id) {
     var s = alloc(112);
     store64(s, name);
     store64(s + 8, trace_id);
@@ -286,7 +286,7 @@ fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn TelemetryConfig_from_json(src) {
+fn TelemetryConfig_from_json(src: Str) {
     var c = alloc(24);
     store64(c, _json_int(src, str_from("enabled")));
     store64(c + 8, _json_int(src, str_from("sample_rate")));
@@ -303,7 +303,7 @@ fn telemetry_config_new() {
 fn telcfg_enabled(c)    { return load64(c); }
 fn telcfg_sample_rate(c){ return load64(c + 8); }
 fn telcfg_endpoint(c)   { return load64(c + 16); }
-fn log_record_new(severity, body) {
+fn log_record_new(severity, body: Str) {
     var lr = alloc(64);
     store64(lr, clock_now_ns());
     store64(lr + 8, 0);
@@ -325,7 +325,7 @@ fn logrec_resource(lr)   { return load64(lr + 56); }
 fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
 fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
 fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
-fn crash_report_new(agent_id, error_msg) {
+fn crash_report_new(agent_id, error_msg: Str) {
     var cr = alloc(32);
     store64(cr, agent_id);
     store64(cr + 8, error_msg);
@@ -337,7 +337,7 @@ fn crash_agent_id(cr)  { return load64(cr); }
 fn crash_error(cr)     { return load64(cr + 8); }
 fn crash_backtrace(cr) { return load64(cr + 16); }
 fn crash_timestamp(cr) { return load64(cr + 24); }
-fn instrumentation_scope_new(scope_name, scope_version) {
+fn instrumentation_scope_new(scope_name: Str, scope_version: Str) {
     var s = alloc(32);
     store64(s, scope_name);
     store64(s + 8, scope_version);
@@ -349,7 +349,7 @@ fn iscope_name(s)       { return load64(s); }
 fn iscope_version(s)    { return load64(s + 8); }
 fn iscope_schema_url(s) { return load64(s + 16); }
 fn iscope_attributes(s) { return _lazy_map(s + 24); }
-fn span_event_new(evt_name) {
+fn span_event_new(evt_name: Str) {
     var e = alloc(24);
     store64(e, evt_name);
     store64(e + 8, clock_now_ns());
@@ -389,14 +389,14 @@ fn baggage_new() {
     return b;
 }
 fn baggage_entries(b) { return _lazy_map(b); }
-fn baggage_set(b, key, value) {
+fn baggage_set(b, key: Str, value: Str) {
     map_set(baggage_entries(b), key, value);
     return 0;
 }
-fn baggage_get(b, key) {
+fn baggage_get(b, key: Str) {
     return map_get(baggage_entries(b), key);
 }
-fn instrument_descriptor_new(inst_name, desc, unit, kind) {
+fn instrument_descriptor_new(inst_name: Str, desc: Str, unit: Str, kind) {
     var d = alloc(32);
     store64(d, inst_name);
     store64(d + 8, desc);
@@ -413,7 +413,7 @@ fn metric_int(val)   { return tagged_new(MV_INT, val); }
 fn metric_float(val) { return tagged_new(MV_FLOAT, val); }
 fn metric_value_type(mv) { return tag(mv); }
 fn metric_value_val(mv)  { return payload(mv); }
-fn metric_data_point_new(inst_name, mv) {
+fn metric_data_point_new(inst_name: Str, mv) {
     var dp = alloc(48);
     store64(dp, inst_name);
     store64(dp + 8, mv);
@@ -438,9 +438,9 @@ fn textmap_carrier_vtable(get_fn, set_fn) {
     return vt;
 }
 fn textmap_carrier_new(vtable, data) { return trait_obj_new(vtable, data); }
-fn textmap_get(carrier, key) { return trait_call1(carrier, TEXTMAP_GET, key); }
+fn textmap_get(carrier, key: Str) { return trait_call1(carrier, TEXTMAP_GET, key); }
 var _textmap_extra = 0;
-fn textmap_set(carrier, key, value) {
+fn textmap_set(carrier, key: Str, value: Str) {
     _textmap_extra = value;
     return trait_call1(carrier, TEXTMAP_SET, key);
 }
