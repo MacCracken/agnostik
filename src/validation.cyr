@@ -9,7 +9,7 @@ fn validation_severity_name(s) {
     elif (s == VSEV_HIGH)      { return "High"; }
     return "Unknown";
 }
-fn validation_warning_new(code, message, severity) {
+fn validation_warning_new(code, message: Str, severity) {
     var w = alloc(40);
     store64(w, code);
     store64(w + 8, message);
@@ -38,7 +38,7 @@ fn InjectionScores_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "}");
     return 0;
 }
-fn InjectionScores_from_json(src) {
+fn InjectionScores_from_json(src: Str) {
     var s = alloc(40);
     store64(s, _json_int(src, str_from("sql")));
     store64(s + 8, _json_int(src, str_from("xss")));
@@ -58,7 +58,7 @@ fn iscore_xss(s)              { return load64(s + 8); }
 fn iscore_command(s)          { return load64(s + 16); }
 fn iscore_path_traversal(s)   { return load64(s + 24); }
 fn iscore_prompt_injection(s) { return load64(s + 32); }
-fn validation_result_new(valid, sanitized) {
+fn validation_result_new(valid, sanitized: Str) {
     var r = alloc(56);
     store64(r, valid);
     store64(r + 8, sanitized);
@@ -76,7 +76,7 @@ fn vresult_blocked(r)          { return load64(r + 24); }
 fn vresult_block_reason(r)     { return load64(r + 32); }
 fn vresult_injection_score(r)  { return load64(r + 40); }
 fn vresult_injection_scores(r) { return load64(r + 48); }
-fn vresult_set_blocked(r, reason) {
+fn vresult_set_blocked(r, reason: Str) {
     store64(r + 24, 1);
     store64(r + 32, reason);
     return 0;
