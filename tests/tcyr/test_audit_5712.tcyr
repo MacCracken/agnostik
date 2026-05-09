@@ -116,12 +116,13 @@ fn _f010_case(src, key, expected, label) {
 
 fn test_f010_whitespace_table() {
     var cases = vec_new();
-    vec_push(cases, _f010_case(str_from("{\"x\":\t42}"),                str_from("x"), 42, "F-010: skip tab"));
-    vec_push(cases, _f010_case(str_from("{\"x\":\n42}"),                str_from("x"), 42, "F-010: skip LF"));
-    vec_push(cases, _f010_case(str_from("{\"x\":\r42}"),                str_from("x"), 42, "F-010: skip CR"));
+    vec_push(cases, _f010_case(str_from("{\"x\":\t42}"), str_from("x"), 42, "F-010: skip tab"));
+    vec_push(cases, _f010_case(str_from("{\"x\":\n42}"), str_from("x"), 42, "F-010: skip LF"));
+    vec_push(cases, _f010_case(str_from("{\"x\":\r42}"), str_from("x"), 42, "F-010: skip CR"));
     # Shape produced by `python3 -c 'import json; print(json.dumps({...}, indent=2))'`.
-    vec_push(cases, _f010_case(str_from("{\n  \"x\": 7,\n  \"y\": 13\n}"), str_from("x"), 7,  "F-010: pretty-printed x"));
-    vec_push(cases, _f010_case(str_from("{\n  \"x\": 7,\n  \"y\": 13\n}"), str_from("y"), 13, "F-010: pretty-printed y"));
+    var pretty = str_from("{\n  \"x\": 7,\n  \"y\": 13\n}");
+    vec_push(cases, _f010_case(pretty, str_from("x"), 7,  "F-010: pretty-printed x"));
+    vec_push(cases, _f010_case(pretty, str_from("y"), 13, "F-010: pretty-printed y"));
     test_each(cases, &_check_f010);
     return 0;
 }
