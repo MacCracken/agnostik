@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-05-09
+
+### Added
+
+- **`docs/adr/` directory + ADR-001** documenting the v1.1.0
+  `#derive(Serialize)` revival decision. ADR-001 reviews the F-011
+  history (pre-1.0 audit dropped 9 derive markers because the old
+  cyrius compiler emitted dead-code stubs that shadowed hand-written
+  adapters), summarizes the cyrius codegen maturation arc closing
+  every consumer-pain shape (v5.9.30 typed-i64; v5.9.36 narrow-int;
+  v5.9.39 Mach-O ARM64 ASLR; v5.10.7 Str-field positional init;
+  v5.10.8 JSON escape; v5.10.14 multi-stack derive directives),
+  considers three options (status quo / replace outright / hybrid),
+  picks **Option B** gated by a four-step verification plan (golden
+  corpus, boundary cases, roundtrip, consumer sweep), and explicitly
+  documents what the choice forecloses (custom per-struct JSON
+  shapes; per-field default-value control).
+- **`docs/adr/README.md`** establishing the convention — when to
+  write an ADR, monotonic numbering rule, template, and an index
+  pointing at ADR-001.
+- **`docs/proposals/`** scaffold (per the v1.0.4 working agreement
+  in `docs/development/roadmap.md` — new items draft as proposals
+  before earning a roadmap slot).
+
+### Changed
+
+- **Pointer-to-struct dot syntax** adopted in 8 parsers across
+  `src/types.cyr` (agent_id_from_str, _json_find_value, _json_int,
+  _json_str, version_from_str) and `src/telemetry.cyr`
+  (trace_id_from_str, span_id_from_str, tctx_from_traceparent).
+  Pattern: `var data = str_data(s); var slen = str_len(s);` →
+  `var data = s.data; var slen = s.len;`. Pure substitution; zero
+  behavior change. Cyrius v5.8.17 (dot syntax on `: Str` params)
+  + v5.10.4 (type inference through `var x = f(...)`) make the
+  shape clean for both annotated params and inferred Str locals.
+  Not wholesale — selective to the parser cluster where readability
+  benefits most; other `str_data` / `str_len` call sites stay as-is
+  and future slots pick up the convention opportunistically.
+
 ### Fixed
 
 - **`baggage_set` / `baggage_get` / `textmap_set` / `textmap_get`
@@ -20,6 +59,8 @@
   `grep -v "/lib/"` missed them. Switch to `^warning:lib/` and
   route output through a tempfile to avoid the `$()` substitution
   dropping null bytes from the cyrius mixed-stream output.
+
+## [1.0.3] - 2026-05-09
 
 ### Toolchain
 
