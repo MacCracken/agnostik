@@ -94,6 +94,20 @@ jobs:
           CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik
           echo "agnostik: $(wc -c < build/agnostik) bytes"
 
+      - name: Type-check (CYRIUS_TYPE_CHECK=1)
+        # Verifies the v1.0.2 `: Str` annotation pass doesn't drift.
+        # Filters /lib/ self-flags (currently none on 5.10.14, but the
+        # filter is durable across stdlib churn). Becomes redundant if
+        # cyrius ever flips CYRIUS_TYPE_CHECK default-on.
+        run: |
+          out=$(CYRIUS_TYPE_CHECK=1 cyrius build src/main.cyr build/agnostik 2>&1)
+          if echo "$out" | grep -E "^warning:" | grep -v "/lib/" | head -1 | grep -q .; then
+            echo "type-check: agnostik-side warnings present"
+            echo "$out" | grep -E "^warning:" | grep -v "/lib/"
+            exit 1
+          fi
+          echo "type-check: no agnostik-side warnings"
+
       - name: Verify ELF
         run: xxd -l 4 build/agnostik | grep -q "7f45 4c46"
 
