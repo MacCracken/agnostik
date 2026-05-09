@@ -13,7 +13,7 @@ include "lib/hashmap.cyr"
 include "lib/tagged.cyr"
 include "lib/fnptr.cyr"
 include "lib/trait.cyr"
-include "lib/assert.cyr"
+include "lib/test.cyr"
 include "src/lib.cyr"
 
 # ─── F-001: CSPRNG produces unique IDs
@@ -102,32 +102,46 @@ fn test_f003_overflow_capped() {
 }
 
 # ─── F-005: version_from_str rejects non-numeric segments ──────────
+#
+# Table-driven accept/reject via lib/test.cyr's test_each. Case layout:
+#   c+0  : input Str
+#   c+8  : expected is_ok (1 = accept, 0 = reject)
+#   c+16 : label cstr
+# Detailed major/minor/patch extraction lives in test_f005_canonical_parse
+# below — that case is heterogeneous so it stays separate.
 
-fn test_f005_reject_alpha_major() {
-    var r = version_from_str(str_from("abc.1.2"));
-    assert_eq(is_ok(r), 0, "F-005: 'abc.1.2' rejected");
+fn _check_f005(c) {
+    var input    = load64(c);
+    var expected = load64(c + 8);
+    var label    = load64(c + 16);
+    assert_eq(is_ok(version_from_str(input)), expected, label);
     return 0;
 }
 
-fn test_f005_reject_empty_segment() {
-    var r = version_from_str(str_from("1..2"));
-    assert_eq(is_ok(r), 0, "F-005: '1..2' rejected");
+fn _f005_case(input, expected, label) {
+    var c = alloc(24);
+    store64(c,      input);
+    store64(c + 8,  expected);
+    store64(c + 16, label);
+    return c;
+}
+
+fn test_f005_accept_reject_table() {
+    var cases = vec_new();
+    vec_push(cases, _f005_case(str_from("abc.1.2"),      0, "F-005: 'abc.1.2' rejected"));
+    vec_push(cases, _f005_case(str_from("1..2"),         0, "F-005: '1..2' rejected"));
+    vec_push(cases, _f005_case(str_from("1.2.3"),        1, "F-005: '1.2.3' accepted"));
+    vec_push(cases, _f005_case(str_from("1.0.0-beta.1"), 1, "F-005: '1.0.0-beta.1' accepted"));
+    test_each(cases, &_check_f005);
     return 0;
 }
 
-fn test_f005_accept_valid() {
+fn test_f005_canonical_parse() {
     var r = version_from_str(str_from("1.2.3"));
-    assert_eq(is_ok(r), 1, "F-005: '1.2.3' accepted");
     var v = payload(r);
     assert_eq(version_major(v), 1, "F-005: major");
     assert_eq(version_minor(v), 2, "F-005: minor");
     assert_eq(version_patch(v), 3, "F-005: patch");
-    return 0;
-}
-
-fn test_f005_accept_with_prerelease() {
-    var r = version_from_str(str_from("1.0.0-beta.1"));
-    assert_eq(is_ok(r), 1, "F-005: '1.0.0-beta.1' accepted");
     return 0;
 }
 
@@ -162,10 +176,8 @@ fn main() {
     test_f002_escape_set();
     test_f003_negative();
     test_f003_overflow_capped();
-    test_f005_reject_alpha_major();
-    test_f005_reject_empty_segment();
-    test_f005_accept_valid();
-    test_f005_accept_with_prerelease();
+    test_f005_accept_reject_table();
+    test_f005_canonical_parse();
     test_f004_key_inside_string_value();
     test_f004_string_with_escaped_quotes();
     println("");

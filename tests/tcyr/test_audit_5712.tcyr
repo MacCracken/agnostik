@@ -19,7 +19,7 @@ include "lib/hashmap.cyr"
 include "lib/tagged.cyr"
 include "lib/fnptr.cyr"
 include "lib/trait.cyr"
-include "lib/assert.cyr"
+include "lib/test.cyr"
 include "src/lib.cyr"
 
 # ─── F-008: _json_int detects i64 overflow on 19-digit values ──────
@@ -89,30 +89,40 @@ fn test_f009_real_null_still_returns_zero() {
 # RFC 7159 §2 defines JSON whitespace as one of: space (32), tab (9),
 # LF (10), CR (13). Inputs from any RFC-compliant pretty-printer
 # (Python json.dumps(indent=2), jq, ...) would silently fail to parse.
+#
+# Table-driven via lib/test.cyr's test_each. Case layout:
+#   c+0  : src Str
+#   c+8  : key Str
+#   c+16 : expected int
+#   c+24 : label cstr
 
-fn test_f010_skip_tab_after_colon() {
-    var src = str_from("{\"x\":\t42}");
-    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip tab");
+fn _check_f010(c) {
+    var src      = load64(c);
+    var key      = load64(c + 8);
+    var expected = load64(c + 16);
+    var label    = load64(c + 24);
+    assert_eq(_json_int(src, key), expected, label);
     return 0;
 }
 
-fn test_f010_skip_newline_after_colon() {
-    var src = str_from("{\"x\":\n42}");
-    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip LF");
-    return 0;
+fn _f010_case(src, key, expected, label) {
+    var c = alloc(32);
+    store64(c,      src);
+    store64(c + 8,  key);
+    store64(c + 16, expected);
+    store64(c + 24, label);
+    return c;
 }
 
-fn test_f010_skip_cr_after_colon() {
-    var src = str_from("{\"x\":\r42}");
-    assert_eq(_json_int(src, str_from("x")), 42, "F-010: skip CR");
-    return 0;
-}
-
-fn test_f010_mixed_whitespace_pretty_printed() {
+fn test_f010_whitespace_table() {
+    var cases = vec_new();
+    vec_push(cases, _f010_case(str_from("{\"x\":\t42}"),                str_from("x"), 42, "F-010: skip tab"));
+    vec_push(cases, _f010_case(str_from("{\"x\":\n42}"),                str_from("x"), 42, "F-010: skip LF"));
+    vec_push(cases, _f010_case(str_from("{\"x\":\r42}"),                str_from("x"), 42, "F-010: skip CR"));
     # Shape produced by `python3 -c 'import json; print(json.dumps({...}, indent=2))'`.
-    var src = str_from("{\n  \"x\": 7,\n  \"y\": 13\n}");
-    assert_eq(_json_int(src, str_from("x")), 7, "F-010: pretty-printed x");
-    assert_eq(_json_int(src, str_from("y")), 13, "F-010: pretty-printed y");
+    vec_push(cases, _f010_case(str_from("{\n  \"x\": 7,\n  \"y\": 13\n}"), str_from("x"), 7,  "F-010: pretty-printed x"));
+    vec_push(cases, _f010_case(str_from("{\n  \"x\": 7,\n  \"y\": 13\n}"), str_from("y"), 13, "F-010: pretty-printed y"));
+    test_each(cases, &_check_f010);
     return 0;
 }
 
@@ -123,10 +133,7 @@ fn main() {
     test_f008_attacker_cannot_negative_via_wrap();
     test_f009_truncated_value_2_bytes();
     test_f009_real_null_still_returns_zero();
-    test_f010_skip_tab_after_colon();
-    test_f010_skip_newline_after_colon();
-    test_f010_skip_cr_after_colon();
-    test_f010_mixed_whitespace_pretty_printed();
+    test_f010_whitespace_table();
     println("");
     return assert_summary();
 }
