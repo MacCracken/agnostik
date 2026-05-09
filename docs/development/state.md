@@ -5,6 +5,22 @@
 
 ## Version
 
+**1.0.6** — Performance observability on top of 1.0.5. Adds a
+**bench-regression CI gate** (`scripts/bench-regression.sh`) that
+compares per-op averages against the most recent committed baseline
+in `docs/benchmarks/history.csv` and fails on slowdown beyond the
+threshold (50% ns-bracket, 80% us-bracket — tuned for cyrius's
+whole-µs rounding + CI jitter). Intentional perf trade-offs ack'd
+via `[bench-regression-ack]` in the HEAD commit message. The
+**compile-time profile pass** ran (CYRIUS_PROF=1) and recorded
+findings: lex dominates at 68%, all top phases upstream-bound; no
+agnostik-side action — slot closes with `docs/development/compile-profile-2026-05-09.md`.
+Three stabilization tail-fixes from the 1.0.5 line folded in: the
+1.0.5 api-surface snapshot wasn't portable (stdlib platform peers +
+locale-sensitive sort) and `bench-history.sh` was dropping
+us-bracket rows via a too-narrow regex. No public API changes;
+653/653 tests pass.
+
 **1.0.5** — Test + API hygiene on top of 1.0.4. Adopts
 `lib/test.cyr`'s `test_each` helper for the F-005 + F-010
 audit-regression clusters (homogeneous accept/reject + whitespace
@@ -141,7 +157,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.5` (`lib/test.cyr` table-driven adoption for F-005/F-010 + API surface snapshot CI gate at the 1317-fn baseline).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.6` (bench-regression CI gate + compile-time profile snapshot + 1.0.5 stabilization tail-fixes).
 
 ## Verification hosts
 
