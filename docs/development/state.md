@@ -35,7 +35,7 @@ for full release notes.
 
 ## Toolchain
 
-- **Cyrius**: `5.10.9` (pinned in `cyrius.cyml [package].cyrius`)
+- **Cyrius**: `5.10.10` (pinned in `cyrius.cyml [package].cyrius`)
 - **Compiler**: `cc5` — invoked via `cyrius {build,test,bench}`; raw
   `cat | cc5` is forbidden (manifest auto-resolves deps and prepends includes)
 - **Locally installed vs released**: `cyrius --version` may report
@@ -46,12 +46,6 @@ for full release notes.
   — same upstream issue as 5.7.12, filed in
   [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md)).
   Workaround: run `cyrius self / test / fmt --check / lint` individually.
-- **cyrlint char-literal brace bug** filed in
-  [`docs/development/issues/cyrlint-char-literal-brace-bug-2026-05-09.md`](issues/cyrlint-char-literal-brace-bug-2026-05-09.md).
-  Same family as the cyrfmt bug fixed upstream in 5.10.6; cyrlint
-  still has it. Workaround: 8 `str_builder_putc(sb, '}')` sites use
-  the bare byte `125` instead. Revert when upstream ships the same
-  skip cyrfmt got.
 
 ## Source layout
 

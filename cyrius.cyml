@@ -3,9 +3,9 @@ name = "agnostik"
 version = "${file:VERSION}"
 description = "Shared types and domain primitives for AGNOS"
 license = "GPL-3.0-only"
-repository = "https://github.com/MacCracken/2mp/agnostik"
+repository = "https://github.com/MacCracken/agnostik"
 language = "cyrius"
-cyrius = "5.10.9"
+cyrius = "5.10.10"
 
 [build]
 entry = "src/main.cyr"

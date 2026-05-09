@@ -39,7 +39,7 @@ fn EdgeResourceOverrides_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 8));
     str_builder_add_cstr(sb, ", \"max_agents\": ");
     str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_putc(sb, 125);
+    str_builder_putc(sb, '}');
     return 0;
 }
 fn EdgeResourceOverrides_from_json(src: Str) {

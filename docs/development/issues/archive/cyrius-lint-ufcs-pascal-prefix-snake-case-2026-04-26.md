@@ -9,7 +9,7 @@ retained below for audit lineage.
 **Discovered:** 2026-04-26 during agnostik 0.97.1 → 1.0.0 closeout pass under `cyrius` 5.7.6 (cc5 5.7.6)
 **Severity:** Low (ergonomic — false-positive lint warnings; 100 % false-positive rate against agnostik's UFCS-style serde naming. No correctness or codegen impact.)
 **Affects:** `cyrius lint` shipped in toolchain 5.7.6 (`cc5 --version` → `cc5 5.7.6`); fixed in 5.7.7.
-**Filed by:** agnostik (P(-1) audit, [`docs/audit/2026-04-26-audit.md`](../../audit/2026-04-26-audit.md) F-006)
+**Filed by:** agnostik (P(-1) audit, [`docs/audit/2026-04-26-audit.md`](../../../audit/2026-04-26-audit.md) F-006)
 **Supersedes:** an earlier draft of this report mis-attributed the warnings to `#derive(Serialize)` codegen. They are not codegen — see "what I got wrong" below.
 
 ## Summary
@@ -113,5 +113,5 @@ CI tolerates the warnings. The audit doc explicitly catalogues the false positiv
 ## Tracking
 
 - Filed locally in agnostik under `docs/development/issues/`.
-- Audit reference: [`docs/audit/2026-04-26-audit.md`](../../audit/2026-04-26-audit.md) §F-006.
+- Audit reference: [`docs/audit/2026-04-26-audit.md`](../../../audit/2026-04-26-audit.md) §F-006.
 - Stays local — not mirrored to `MacCracken/cyrius`, not POSTed as a GitHub issue. The user takes responsibility for distribution.

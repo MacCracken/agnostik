@@ -4,25 +4,51 @@
 
 ### Toolchain
 
-- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.3` → `5.10.9`.
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.3` → `5.10.10`.
   Picks up the v5.10.x type-system arc closures (5.10.5: agnosys
   1.1.12 verbatim repro CLOSE + extended overload dispatch +
   diagnostic hint catalog), the cyrfmt char-literal brace fix
   (5.10.6 — the bug that drove the 1.0.2 `'}'` → `125` workaround),
   the `#derive(Serialize)` Str-field positional-init fix (5.10.7),
-  the JSON escape fix for derive (5.10.8), and the version-pinned
+  the JSON escape fix for derive (5.10.8), the version-pinned
   lib path that kills cross-version snapshot contamination
-  (5.10.9). DCE binary `273 KB` → `274 KB`.
+  (5.10.9), and the cyrlint char-literal brace fix (5.10.10 —
+  filed by agnostik's 5.10.9 refresh; closes the workaround that
+  was holding `125` at 8 putc sites). DCE binary `273 KB` → `274 KB`.
 - **`CYRIUS_TYPE_CHECK=1`** build is now warning-free including
   on stdlib — 5.10.4's param-side `: Str` annotation pass closed
   the two `lib/str.cyr:268/276` self-flags that 1.0.2 had to
   filter past.
-- **cyrfmt fix verified live**: `'}'` char literals no longer
-  trip the brace counter under 5.10.9. cyrlint, however, still
-  has the same bug class — see new issue
-  [`docs/development/issues/cyrlint-char-literal-brace-bug-2026-05-09.md`](docs/development/issues/cyrlint-char-literal-brace-bug-2026-05-09.md).
-  The 1.0.2 `'}'` → `125` workaround stays in place at the 8 putc
-  call sites until upstream lands the same skip cyrfmt got.
+
+### Changed
+
+- **Reverted the 1.0.2 `'}'` putc workaround** at 8 call sites
+  across `agent.cyr`, `config.cyr`, `hardware.cyr`, `llm.cyr`,
+  `telemetry.cyr`, `validation.cyr`. cyrlint 5.10.10 handles the
+  char-literal brace token correctly; `str_builder_putc(sb, '}')`
+  is the readable form again.
+
+### Docs
+
+- **Resolved-issue archive**: introduced
+  `docs/development/issues/archive/` with a short README explaining
+  the convention. Two issues moved in:
+  - `cyrlint-char-literal-brace-bug-2026-05-09.md` — fixed upstream
+    in cyrius 5.10.10 (this slot).
+  - `cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md` —
+    fixed upstream in cyrius 5.7.7 (was already marked resolved
+    in-file but had stayed under `issues/`).
+  Each archived file carries a resolution-status header pointing
+  at the fixing release; original reports preserved for audit
+  lineage. Inbound references in `docs/audit/2026-04-26-audit.md`
+  repointed.
+
+### Fixed
+
+- **`cyrius.cyml [package].repository`** typo:
+  `https://github.com/MacCracken/2mp/agnostik` →
+  `https://github.com/MacCracken/agnostik`. Stray `2mp/` segment
+  removed; the repo has always lived at the un-prefixed path.
 
 ## [1.0.2] - 2026-05-09
 
@@ -282,7 +308,7 @@ gold-standard project shape.
   carve-out in 5.7.7 (`programs/cyrlint.cyr`); after the toolchain
   bump to 5.7.12, `cyrius lint src/*.cyr` returns 0 warnings.
   Local report at
-  [`docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](docs/development/issues/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md)
+  [`docs/development/issues/archive/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](docs/development/issues/archive/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md)
   re-stamped with resolution status; stays local for audit lineage.
 
 ### Filed upstream — new

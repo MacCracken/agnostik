@@ -1,5 +1,13 @@
 # `cyrlint` brace counter mistakes `'}'` char literal for closing brace
 
+**Status:** ✅ Resolved upstream in cyrius 5.10.10 — same skip pattern
+cyrfmt got at 5.10.6 was added to cyrlint's two brace-counting sites
+(`lint()` main loop + `lint_globals_init_order()` second-pass walker).
+Verified live on agnostik 2026-05-09 under toolchain 5.10.10: 0
+warnings across all 14 source files; the 8 `'}'` putc call sites
+reverted from the `125` workaround to char-literal form. Original
+report retained below for audit lineage.
+
 **Discovered:** 2026-05-09 during agnostik 5.10.3 → 5.10.9 toolchain refresh
 **Severity:** Low (tooling — same family as the cyrfmt bug fixed in
 v5.10.6; cyrlint emits false-positive `unmatched closing brace` warnings
@@ -8,7 +16,7 @@ impact; emitted bytes unchanged.)
 **Affects:** Cyrius toolchain 5.10.x (verified on 5.10.9; the cyrfmt
 sibling fix at v5.10.6 closed the same class of bug for cyrfmt but not
 for cyrlint).
-**Filed by:** agnostik (5.10.9 toolchain refresh — see [`CHANGELOG.md`](../../../CHANGELOG.md))
+**Filed by:** agnostik (5.10.9 toolchain refresh — see [`CHANGELOG.md`](../../../../CHANGELOG.md))
 
 ## Summary
 

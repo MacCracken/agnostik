@@ -188,7 +188,7 @@ fn TokenUsage_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 24));
     str_builder_add_cstr(sb, ", \"cache_read_tok\": ");
     str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_putc(sb, 125);
+    str_builder_putc(sb, '}');
     return 0;
 }
 fn TokenUsage_from_json(src: Str) {
