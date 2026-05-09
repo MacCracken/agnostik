@@ -5,6 +5,16 @@
 
 ## Version
 
+**1.0.5** — Test + API hygiene on top of 1.0.4. Adopts
+`lib/test.cyr`'s `test_each` helper for the F-005 + F-010
+audit-regression clusters (homogeneous accept/reject + whitespace
+shapes); heterogeneous clusters stay as direct test fns. Adds an
+**API surface snapshot gate** in CI — `cyrius_api_surface` diffs
+the live public-fn surface (1317 fns at the 1.0.5 baseline) against
+`docs/api-surface.snapshot` and fails on unexplained drift.
+Intentional API bumps regenerate via `cyrius_api_surface --update`
+and commit alongside. No public API changes; 653/653 tests pass.
+
 **1.0.4** — Doc + ergonomic small wins on top of 1.0.3. Introduces
 the `docs/adr/` convention (ADR-001 captures the v1.1.0 derive
 revival decision: trigger conditions, golden-corpus verification
@@ -131,7 +141,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.4` (`docs/adr/` convention + ADR-001 derive plan + pointer-dot syntax in 8 parsers + post-1.0.3 type-check fast-follow fixes).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.5` (`lib/test.cyr` table-driven adoption for F-005/F-010 + API surface snapshot CI gate at the 1317-fn baseline).
 
 ## Verification hosts
 
