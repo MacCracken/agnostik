@@ -2,6 +2,40 @@
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-05-09
+
+### Added
+
+- **API surface snapshot gate** in CI (`docs/api-surface.snapshot`,
+  1317 public fns at the 1.0.5 baseline). The new
+  `Verify API surface snapshot` step runs `cyrius_api_surface`,
+  which diffs the live surface against the committed snapshot and
+  fails on unexplained additions or removals. Catches the failure
+  mode where a public fn gets renamed / removed between releases
+  and downstream consumers only find out on rebuild. Workflow for
+  intentional API bumps: `cyrius_api_surface --update` then commit
+  the regenerated snapshot alongside the API change in the same PR.
+
+### Changed
+
+- **F-005 + F-010 audit-regression files adopt `lib/test.cyr`'s
+  `test_each` helper.** Two clearly-homogeneous case clusters
+  collapse to one driver fn + one case-builder per cluster:
+  - **F-010** (`test_audit_5712.tcyr`): 4 single-purpose
+    `test_f010_*` fns → one `test_f010_whitespace_table` of 5 rows
+    through `_check_f010`. Adding a new whitespace edge case is
+    now one `vec_push(_f010_case(...))` line.
+  - **F-005** (`test_audit_2026_04_26.tcyr`): 3 of 4 fns were
+    `is_ok(version_from_str(...))` accept/reject — collapsed to a
+    4-row table through `_check_f005`. The fourth case's detailed
+    `version_major/minor/patch` extraction moved to its own
+    `test_f005_canonical_parse` (heterogeneous shape).
+
+  Heterogeneous clusters (F-001 / F-002 / F-003 / F-004 / F-008 /
+  F-009) stay as direct test fns; their assertions don't fit a
+  homogeneous case-row shape. Test counts unchanged (30 in 04_26;
+  10 in 5712).
+
 ## [1.0.4] - 2026-05-09
 
 ### Added
