@@ -2,29 +2,68 @@
 
 ## [Unreleased]
 
+## [1.0.6] - 2026-05-09
+
+### Added
+
+- **Bench-regression CI gate** (`scripts/bench-regression.sh`).
+  Runs benches, compares each per-op average against the most
+  recent committed baseline in `docs/benchmarks/history.csv`,
+  fails on slowdown beyond the threshold:
+  - **50%** on ns-bracket (sub-µs ops; ns-precision allows tighter
+    detection)
+  - **80%** on us-bracket (cyrius rounds to whole µs and CI runners
+    have ±20-30% jitter; threshold accounts for both)
+  Intentional perf trade-offs ack'd via `[bench-regression-ack]`
+  in the HEAD commit message. Baseline updates ride
+  `history.csv` on each release tag (via the existing
+  `scripts/bench-history.sh`).
+- **Compile-time profile pass** documented at
+  `docs/development/compile-profile-2026-05-09.md`. Per-phase
+  distribution snapshot under `CYRIUS_PROF=1`: lex 68%, fixup 18%,
+  gvar 10%, others <1%. Slot closes with no agnostik-side action —
+  the >30% phase is upstream-bound (lex performance is a cyrius
+  toolchain concern; agnostik can't shrink its public surface
+  without losing functionality). Future compile-time wins ride
+  cyrius slot bumps, not agnostik refactors.
+
 ### Fixed
 
-- **API surface snapshot was not portable** between build environments.
-  The 1.0.5 snapshot included 146 stdlib platform-specific peer fns
-  (`alloc_macos`, `alloc_windows`, `syscalls_aarch64_linux`,
-  `syscalls_x86_64_linux`) that `cyrius_api_surface` picks up locally
-  whenever the install path holds those peers. CI on Linux x86_64
-  only resolves what the dispatcher needs, so the gate fired as
+- **`scripts/bench-history.sh` parser** was capturing only
+  ns-bracket benches via `([0-9]+)ns`; the 12 us-bracket entries
+  (and any future ms-bracket) silently dropped from
+  `history.csv`. Now matches `(ns|us|ms) avg` and normalizes to
+  ns. Lossy by construction (cyrius rounds; 1µs = 1000ns ±
+  sub-µs jitter) but no longer drops rows.
+- **API surface snapshot was not portable** between build
+  environments. The 1.0.5 snapshot included 146 stdlib
+  platform-specific peer fns (`alloc_macos`, `alloc_windows`,
+  `syscalls_aarch64_linux`, `syscalls_x86_64_linux`) that
+  `cyrius_api_surface` picks up locally whenever the install path
+  holds those peers. CI on Linux x86_64 only resolves what the
+  dispatcher needs, so the gate fired as
   `BREAKING: 146 removed`. Filter the snapshot to **agnostik
   namespaces only** (859 fns: `agent`, `audit`, `classification`,
   `config`, `error`, `hardware`, `lib`, `llm`, `main`, `secrets`,
   `security`, `telemetry`, `types`, `validation`) — that's the
-  actual API contract; stdlib churn is tracked by the toolchain pin,
-  not by the API gate.
+  actual API contract; stdlib churn is tracked by the toolchain
+  pin, not by the API gate.
+- **API surface snapshot ordering** depended on host locale.
+  Arch defaults to dictionary order (case-folded `Aa`); ubuntu CI
+  defaults to byte order (uppercase first). Same content,
+  different line order — gate fired "BREAKING" on every CI run.
+  Pin `LC_ALL=C sort` in both `update` and `check` paths for
+  portable byte-order ordering.
 
-### Added
+### Changed
 
-- **`scripts/api-surface.sh`** wrapper for `cyrius_api_surface` —
-  `check` (CI gate: generate live → filter to agnostik → diff) and
-  `update` (regenerate the committed snapshot the same way).
-  Replaces the direct `cyrius_api_surface` call in CI; the agnostik
-  module list is the single source of truth and any new
-  `src/<name>.cyr` adds `<name>` to the regex.
+- **`scripts/api-surface.sh`** wrapper for `cyrius_api_surface`
+  added as part of these fixes — `check` (CI gate: generate live
+  → filter to agnostik → diff) and `update` (regenerate the
+  committed snapshot the same way). Replaces the direct
+  `cyrius_api_surface` call in CI; the agnostik module list lives
+  in the script as the single source of truth (any new
+  `src/<name>.cyr` adds `<name>` to the regex).
 
 ## [1.0.5] - 2026-05-09
 
