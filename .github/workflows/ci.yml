@@ -96,17 +96,25 @@ jobs:
 
       - name: Type-check (CYRIUS_TYPE_CHECK=1)
         # Verifies the v1.0.2 `: Str` annotation pass doesn't drift.
-        # Filters /lib/ self-flags (currently none on 5.10.14, but the
-        # filter is durable across stdlib churn). Becomes redundant if
-        # cyrius ever flips CYRIUS_TYPE_CHECK default-on.
+        # Filters stdlib self-flags (warnings format the path as
+        # `lib/<file>.cyr` — no leading slash). Routes output through
+        # a tempfile because $(...) drops null bytes that show up in
+        # mixed cyrius stderr streams, which made the prior shape
+        # spuriously trip a bash warning. Becomes redundant if cyrius
+        # ever flips CYRIUS_TYPE_CHECK default-on.
         run: |
-          out=$(CYRIUS_TYPE_CHECK=1 cyrius build src/main.cyr build/agnostik 2>&1)
-          if echo "$out" | grep -E "^warning:" | grep -v "/lib/" | head -1 | grep -q .; then
+          tmp=$(mktemp)
+          CYRIUS_TYPE_CHECK=1 cyrius build src/main.cyr build/agnostik > "$tmp" 2>&1
+          # `warning:lib/...` → stdlib self-flag; drop those.
+          # `warning:src/...` or any other path → agnostik-side; fail.
+          if grep -E "^warning:" "$tmp" | grep -vE "^warning:lib/" | head -1 | grep -q .; then
             echo "type-check: agnostik-side warnings present"
-            echo "$out" | grep -E "^warning:" | grep -v "/lib/"
+            grep -E "^warning:" "$tmp" | grep -vE "^warning:lib/"
+            rm -f "$tmp"
             exit 1
           fi
           echo "type-check: no agnostik-side warnings"
+          rm -f "$tmp"
 
       - name: Verify ELF
         run: xxd -l 4 build/agnostik | grep -q "7f45 4c46"

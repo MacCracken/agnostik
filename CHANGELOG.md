@@ -2,7 +2,24 @@
 
 ## [Unreleased]
 
-## [1.0.3] - 2026-05-09
+### Fixed
+
+- **`baggage_set` / `baggage_get` / `textmap_set` / `textmap_get`
+  over-annotation** in `src/telemetry.cyr`. The 1.0.2 `: Str`
+  annotation pass tagged the key/value params on these four
+  pass-through helpers, but the function bodies forward the values
+  straight into the stdlib hashmap (`map_set` / `map_get`) and
+  trait dispatch (`trait_call1`) which take untyped 8-byte slots.
+  cyrius 5.10.14's call-site type-checker now flags the mismatch.
+  Drop the annotations — these helpers don't inspect the bytes,
+  and the stdlib slot semantics are opaque-pointer, not Str. (The
+  surface was hidden until 1.0.3 wired `CYRIUS_TYPE_CHECK=1` into
+  CI.)
+- **CI `Type-check` step filter pattern**: stdlib self-flags format
+  the path as `lib/<file>.cyr` (no leading slash); the prior
+  `grep -v "/lib/"` missed them. Switch to `^warning:lib/` and
+  route output through a tempfile to avoid the `$()` substitution
+  dropping null bytes from the cyrius mixed-stream output.
 
 ### Toolchain
 

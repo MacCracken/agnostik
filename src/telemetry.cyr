@@ -389,11 +389,11 @@ fn baggage_new() {
     return b;
 }
 fn baggage_entries(b) { return _lazy_map(b); }
-fn baggage_set(b, key: Str, value: Str) {
+fn baggage_set(b, key, value) {
     map_set(baggage_entries(b), key, value);
     return 0;
 }
-fn baggage_get(b, key: Str) {
+fn baggage_get(b, key) {
     return map_get(baggage_entries(b), key);
 }
 fn instrument_descriptor_new(inst_name: Str, desc: Str, unit: Str, kind) {
@@ -438,9 +438,9 @@ fn textmap_carrier_vtable(get_fn, set_fn) {
     return vt;
 }
 fn textmap_carrier_new(vtable, data) { return trait_obj_new(vtable, data); }
-fn textmap_get(carrier, key: Str) { return trait_call1(carrier, TEXTMAP_GET, key); }
+fn textmap_get(carrier, key) { return trait_call1(carrier, TEXTMAP_GET, key); }
 var _textmap_extra = 0;
-fn textmap_set(carrier, key: Str, value: Str) {
+fn textmap_set(carrier, key, value) {
     _textmap_extra = value;
     return trait_call1(carrier, TEXTMAP_SET, key);
 }
