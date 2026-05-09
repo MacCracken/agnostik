@@ -167,6 +167,16 @@ jobs:
       - name: Bench
         run: cyrius bench tests/bcyr/agnostik.bcyr
 
+      - name: Bench-regression gate
+        # Compares the current bench run against the most recent committed
+        # baseline in docs/benchmarks/history.csv. Fails on per-op slowdown
+        # beyond the threshold (50% on ns-bracket, 80% on us-bracket — tuned
+        # for CI noise + cyrius's whole-µs rounding). Skip via
+        # [bench-regression-ack] in the HEAD commit message for intentional
+        # perf trade-offs. Baseline updates ride history.csv on release.
+        # v1.0.6+ gate.
+        run: scripts/bench-regression.sh
+
   security:
     name: Security Scan
     runs-on: ubuntu-latest
