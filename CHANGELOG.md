@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.3` → `5.10.9`.
+  Picks up the v5.10.x type-system arc closures (5.10.5: agnosys
+  1.1.12 verbatim repro CLOSE + extended overload dispatch +
+  diagnostic hint catalog), the cyrfmt char-literal brace fix
+  (5.10.6 — the bug that drove the 1.0.2 `'}'` → `125` workaround),
+  the `#derive(Serialize)` Str-field positional-init fix (5.10.7),
+  the JSON escape fix for derive (5.10.8), and the version-pinned
+  lib path that kills cross-version snapshot contamination
+  (5.10.9). DCE binary `273 KB` → `274 KB`.
+- **`CYRIUS_TYPE_CHECK=1`** build is now warning-free including
+  on stdlib — 5.10.4's param-side `: Str` annotation pass closed
+  the two `lib/str.cyr:268/276` self-flags that 1.0.2 had to
+  filter past.
+- **cyrfmt fix verified live**: `'}'` char literals no longer
+  trip the brace counter under 5.10.9. cyrlint, however, still
+  has the same bug class — see new issue
+  [`docs/development/issues/cyrlint-char-literal-brace-bug-2026-05-09.md`](docs/development/issues/cyrlint-char-literal-brace-bug-2026-05-09.md).
+  The 1.0.2 `'}'` → `125` workaround stays in place at the 8 putc
+  call sites until upstream lands the same skip cyrfmt got.
+
 ## [1.0.2] - 2026-05-09
 
 Cyrius 5.10.3 modernization pass on top of 1.0.1. No public API
