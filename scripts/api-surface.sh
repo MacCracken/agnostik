@@ -18,17 +18,21 @@ trap 'rm -f "$LIVE" "$LIVE.agnostik"' EXIT
 # adds <name> to this list.
 AGNOSTIK_MODULES='^(agent|audit|classification|config|error|hardware|lib|llm|main|secrets|security|telemetry|types|validation)::'
 
+# `sort` collation differs by locale (Arch defaults to dictionary
+# order; ubuntu-latest CI defaults to byte order); pin LC_ALL=C in
+# both update + check paths so the snapshot is environment-portable.
+
 cmd="${1:-check}"
 
 case "$cmd" in
   update)
     cyrius_api_surface --update --snapshot="$LIVE"
-    grep -E "$AGNOSTIK_MODULES" "$LIVE" | sort > "$SNAPSHOT"
+    grep -E "$AGNOSTIK_MODULES" "$LIVE" | LC_ALL=C sort > "$SNAPSHOT"
     echo "snapshot updated: $(wc -l < "$SNAPSHOT") agnostik public fns"
     ;;
   check)
     cyrius_api_surface --update --snapshot="$LIVE" > /dev/null
-    grep -E "$AGNOSTIK_MODULES" "$LIVE" | sort > "$LIVE.agnostik"
+    grep -E "$AGNOSTIK_MODULES" "$LIVE" | LC_ALL=C sort > "$LIVE.agnostik"
     if diff -q "$SNAPSHOT" "$LIVE.agnostik" > /dev/null; then
       echo "ok: $(wc -l < "$SNAPSHOT") agnostik public fns, surface matches snapshot"
     else
