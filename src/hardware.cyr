@@ -94,7 +94,7 @@ fn AcceleratorFlags_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 56));
     str_builder_add_cstr(sb, ", \"directml_available\": ");
     str_builder_add_int(sb, load64(ptr + 64));
-    str_builder_putc(sb, '}');
+    str_builder_putc(sb, 125);
     return 0;
 }
 fn AcceleratorFlags_from_json(src: Str) {

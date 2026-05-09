@@ -56,7 +56,7 @@ fn ResourceLimits_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 32));
     str_builder_add_cstr(sb, ", \"net_bw\": ");
     str_builder_add_int(sb, load64(ptr + 40));
-    str_builder_putc(sb, '}');
+    str_builder_putc(sb, 125);
     return 0;
 }
 fn ResourceLimits_from_json(src: Str) {
@@ -101,7 +101,7 @@ fn ResourceUsage_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 16));
     str_builder_add_cstr(sb, ", \"procs_used\": ");
     str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_putc(sb, '}');
+    str_builder_putc(sb, 125);
     return 0;
 }
 fn ResourceUsage_from_json(src: Str) {
@@ -270,7 +270,7 @@ fn AgentStats_to_json(ptr, sb) {
     str_builder_add_int(sb, load64(ptr + 8));
     str_builder_add_cstr(sb, ", \"uptime_seconds\": ");
     str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_putc(sb, '}');
+    str_builder_putc(sb, 125);
     return 0;
 }
 fn AgentStats_from_json(src: Str) {

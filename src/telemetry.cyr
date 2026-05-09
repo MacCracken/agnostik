@@ -283,7 +283,7 @@ fn TelemetryConfig_to_json(ptr, sb) {
     } else {
         str_builder_add_cstr(sb, "null");
     }
-    str_builder_putc(sb, '}');
+    str_builder_putc(sb, 125);
     return 0;
 }
 fn TelemetryConfig_from_json(src: Str) {
