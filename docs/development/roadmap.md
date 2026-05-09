@@ -2,129 +2,253 @@
 
 ## Status
 
-**v1.0.0** — first stable release. 12 modules, 653 test assertions across 9 test files, 25 benchmarks, zero external dependencies, Cyrius 5.7.12. Full audit pass (F-001..F-011 closed; F-006 resolved upstream in cyrius 5.7.7). See [`state.md`](state.md) for the live snapshot, [`../audit/2026-04-26-audit.md`](../audit/2026-04-26-audit.md) for the audit report, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for the release notes.
+**v1.0.3** — most recent stable. 12 modules, 653 test assertions across 9 test files,
+25 benchmarks, zero external dependencies, Cyrius 5.10.14. See [`state.md`](state.md)
+for the live snapshot, [`../audit/2026-04-26-audit.md`](../audit/2026-04-26-audit.md)
+for the 1.0.0 audit report, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
+release notes.
 
-## v1.0.0 (completed)
+Every item in this roadmap is pinned to a specific release — no "Future
+Considerations" bucket, no held-without-trigger items. The principle: if work is worth
+doing, it has a slot; if it isn't, it isn't here.
 
-- ✅ Toolchain refresh — Cyrius 3.2.5 → 5.7.12; build pipeline manifest-driven (`cyrius build` / `cyrius deps`).
-- ✅ Manifest format — `cyrius.toml` → `cyrius.cyml`; version pulled from `VERSION` via `${file:VERSION}`.
-- ✅ Layout aligned with the vidya / yukti gold standard — `tests/tcyr/`, `tests/bcyr/`, `dist/agnostik.cyr` tracked, CI / release workflows reusable.
-- ✅ Security audit — 11 findings closed (CSPRNG, JSON escape/sign/overflow/string-boundary/null-probe/whitespace, segment validation, derive-collision dead-code, line length).
-- ✅ Documentation set — CLAUDE.md durable rules; `docs/development/state.md` volatile state; ADR / architecture / audit / issues directories scaffolded.
-- ✅ CI gates — fmt, lint, vet, dist-bundle sync, ELF verify, aarch64 cross-build (best-effort), test, bench, security scan, docs check.
+## Shipped (terse)
 
-## Engineering Backlog
+- ✅ **v1.0.0** — first stable; toolchain refresh 3.2.5 → 5.7.12; manifest format
+  migration; layout aligned with vidya/yukti; F-001..F-011 audit closed.
+- ✅ **v1.0.1** — toolchain refresh 5.7.12 → 5.10.3; doc cleanup (CONTRIBUTING,
+  SECURITY, roadmap status); benchmark legacy file moved.
+- ✅ **v1.0.2** — Cyrius 5.10 modernization: test boilerplate drop, `chrono` adoption
+  (`clock_now_ns`), `?` operator in parse fns, `: Str` annotation pass across 12
+  source files, single-char `str_builder_putc`.
+- ✅ **v1.0.3** — toolchain refresh 5.10.3 → 5.10.14; `CYRIUS_TYPE_CHECK=1` CI gate;
+  `'}'` putc workaround reverted; `docs/development/issues/archive/` convention; CI
+  install layout fix for the version-pinned lib path.
 
-(none currently active — open an issue or send a PR)
+---
 
-## v1.1.x — Cyrius 5.10+ modernization (pinned)
+## v1.0.x — Fast-follow chain (small, additive, non-breaking)
 
-The cyrius v5.10.x type-system arc closes consumer-pain shapes that
-agnostik works around today. Items below are pinned for v1.1.x; each
-lists its trigger and the surface it eliminates.
+Each slot is a small patch release: hygiene, hardening, or additive feature work
+that doesn't earn a minor bump. Order is roughly priority + dependency.
+
+### v1.0.4 — Doc + ergonomic small wins
+
+🧹 **Hygiene** — Add `docs/adr/` directory + ADR-001 (the v1.1.0 derive-revival
+decision: trigger conditions, golden-corpus plan, F-002/F-003/F-008 byte-equivalence
+requirement). CLAUDE.md and the Documentation Structure section both reference
+`docs/adr/` but the directory doesn't exist yet.
+
+🔧 **Optimization** — Pointer-to-struct dot syntax adoption (`s.data` / `s.len`
+in place of `str_data(s)` / `str_len(s)` where readability wins). Selective
+refactor — not wholesale; touch only call-sites already being edited for other
+reasons. v5.8.17 syntax + v5.10.4 inference make this clean.
+
+### v1.0.5 — Test + API hygiene
+
+🧹 **Hygiene** — Adopt `lib/test.cyr`'s `test_each` table-driven helper in the
+F-008/F-009/F-010 regression files. The current shape is hand-rolled `assert_eq`
+chains; collapse to one case-table per finding-cluster. Smaller files, easier to add
+new regression rows.
+
+🛡️ **Hardening** — API surface snapshot in CI. Cyrius ships `cyrius_api_surface`;
+generate the snapshot at release time, commit it as `docs/api/surface.snapshot`,
+add a CI gate that diffs against committed and fails on unexplained drift. Catches
+unintended public-API removals/renames between releases.
+
+### v1.0.6 — Performance observability
+
+🛡️ **Hardening** — Bench-regression CI gate. We already track
+`docs/benchmarks/history.csv`; add a small script that compares the current
+benchmark CSV row against the previous tagged release's row and fails CI on a
+regression beyond a per-bench threshold (e.g. >15% per-op slowdown). No
+auto-revert; requires human ack via a `[bench-regression-ack]` commit-message tag.
+
+🔧 **Optimization** — Compile-time profile pass. Run `CYRIUS_PROF=1 cyrius build`
+on agnostik and snapshot the per-phase distribution. Action only if a phase
+exceeds 30% of total compile time *and* the cause is something agnostik can fix
+(heavy include count, large gvar init block). Otherwise close the slot with a
+no-action note. (Was the v5.10.0 framing's "Future Considerations" item.)
+
+### v1.0.7 — Small additive features
+
+✨ **Feature** — JSON `\uXXXX` Unicode escape decoder (`src/types.cyr:_json_str`).
+Currently passes 6-byte literal through; consumers carrying non-ASCII text
+through serde get garbage. Additive: existing ASCII paths unchanged. Pinned here
+not because a consumer surfaced — but because if we're going to do it eventually,
+1.0.7 is the cheap slot and it removes a documented limitation that's tracked in
+the audit report's F-004 follow-up note.
+
+✨ **Feature** — New `PiiKind` variants for emerging regulatory-attention
+categories (proposal: `PII_GENETIC`, `PII_BIOMETRIC_TEMPLATE`,
+`PII_PRECISE_GEOLOCATION`). Additive enum extensions; existing consumers ignore
+unknown variants by falling through to `PII_CUSTOM`. Backed by GDPR Article 9 +
+CCPA "sensitive personal information" + state-level expansions (CO/CT/VA).
+Tracks ecosystem reality without requiring a consumer pin since the change is
+purely additive.
+
+### v1.0.8 — Post-1.0 security audit pass
+
+🛡️ **Hardening** — Run a fresh security audit per CLAUDE.md's "Security
+Hardening (before every release)" procedure. The 2026-04-26 audit was pre-1.0
+and closed F-001..F-011; the 1.0.x line has added `: Str` annotations and
+swapped `now_ns` to `clock_now_ns` (CLOCK_MONOTONIC) — neither is plausibly
+security-relevant, but the audit cadence shouldn't lapse for an entire minor
+line. New findings file at `docs/audit/<date>-audit.md`. **Established cadence:
+audit at every minor cut and on demand if a CVE/0-day pattern surfaces; not
+literally every patch.**
+
+---
+
+## v1.1.0 — Modernization + features bundle (the next minor)
+
+Larger scope than 1.0.x: bundles ~3 weeks of mixed work — optimizations that
+benefit from cyrius 5.10.x type-system maturity, new LLM domain types tracking
+ecosystem reality, and the fuzz hardening that should have predated 1.0 but
+didn't. Order inside this section reflects implementation dependency.
 
 ### Revive `#derive(Serialize)` — eliminates 18 hand-written serde fns
 
-- **Surface today**: 9 structs across `agent.cyr` (ResourceLimits,
-  ResourceUsage, AgentInfo, AgentStats), `config.cyr`
-  (EdgeResourceOverrides), `validation.cyr` (InjectionScores),
-  `telemetry.cyr` (TelemetryConfig), `llm.cyr` (TokenUsage),
-  `hardware.cyr` (AcceleratorFlags) carry hand-written
-  `<Struct>_to_json` + `<Struct>_from_json` pairs. ~18 functions of
-  rote field-by-field JSON wiring.
-- **Why removed pre-1.0**: F-011 (audit 2026-04-26) — old compiler
-  emitted dead-code derive stubs that shadowed the hand-written
-  impls but bloated the binary. cyrius v5.9.30/.31/.36 fixed the
-  typed-i64, narrow-int, and API-rename bugs; v5.9.39 closed the
-  Mach-O ARM64 fn-pointer ASLR cascade end-to-end. Str-field
-  positional-init landed at v5.10.7; the JSON escape fix (quote /
-  backslash / control chars) shipped at v5.10.8.
-- **Trigger**: **ready now** under opt-in `CYRIUS_TYPE_CHECK=1`
-  (which 1.0.3 wires into CI). The originally-pinned trigger of a
-  5.10.5 default-on flip got *attempted and reverted* upstream — a
-  separate generic-i64-param false-positive shape blocks the flip
-  indefinitely. That doesn't gate this work; the type-check that
-  matters (Str-field codegen + JSON escape) is solid since 5.10.8.
-- **Risk**: derive output must round-trip identically to current
-  hand-written form (`{"id":42,"name":"alice"}` exact bytes incl.
-  field order). Plan: capture a golden-corpus snapshot of every
-  `<Struct>_to_json` output against the current hand-written impls,
-  then swap to derive and diff. Hand-written impls retain F-002 /
-  F-003 / F-008 audit fixes; verify derive emits equivalent
-  bytes for the security-relevant cases (escaped quotes, negative
-  ints, max-int boundaries).
+🔧 **Optimization (centerpiece)**
 
-### Adopt `#derive(accessors)` — eliminates ~470 rote getters/setters
-
-- **Surface today**: every domain struct ships hand-written
-  `<prefix>_<field>(s)` getters and `<prefix>_set_<field>(s, v)`
-  setters. ~470 single-line `load64`/`store64` wrappers.
-- **Why now**: cyrius generates these correctly for typed fields
-  (8-byte default + i8/i16/i32 sub-byte widths). The agnostik
-  prefix convention (`amsg_*`, `aentry_*`, `secctx_*`) doesn't match
-  the derive default `<Struct>_<field>` shape — reviving requires
-  either a rename (breaking — every consumer depends on the prefix
-  names) or a derive variant that takes a custom prefix.
-- **Trigger**: upstream feature — derive-with-prefix support, OR a
-  consumer pin willing to absorb the rename cost. Hold until one
-  surfaces. *Park, don't promote yet.*
+- **Surface today**: 9 structs across `agent.cyr` (ResourceLimits, ResourceUsage,
+  AgentInfo, AgentStats), `config.cyr` (EdgeResourceOverrides), `validation.cyr`
+  (InjectionScores), `telemetry.cyr` (TelemetryConfig), `llm.cyr` (TokenUsage),
+  `hardware.cyr` (AcceleratorFlags) carry hand-written `<Struct>_to_json` +
+  `<Struct>_from_json` pairs — ~18 functions of rote field-by-field JSON
+  wiring.
+- **Why removed pre-1.0**: F-011 (audit 2026-04-26) — old compiler emitted
+  dead-code derive stubs that shadowed the hand-written impls. Cyrius v5.9.30/.31
+  /.36 fixed typed-i64, narrow-int, and API-rename bugs; v5.9.39 closed the
+  Mach-O ARM64 fn-pointer ASLR cascade; v5.10.7 closed Str-field positional-init;
+  v5.10.8 fixed JSON escape (quote / backslash / control chars); v5.10.14 added
+  multi-stack `#derive(...)` directive support.
+- **Plan**: capture a golden-corpus snapshot of every `<Struct>_to_json` output
+  against the current hand-written impls before swapping. Keep current tests;
+  add a roundtrip diff against the golden corpus. Hand-written impls retain
+  F-002 / F-003 / F-008 audit fixes; verify derive emits equivalent bytes for
+  the security-relevant cases (escaped quotes, negative ints, max-int boundaries,
+  truncated null).
+- **Risk**: if derive output drifts from hand-written form on any boundary case,
+  every consumer's parser breaks silently. The golden-corpus diff is the
+  must-have safety net.
 
 ### Sub-byte field widths — shrinks several hot structs
 
-- **Targets**: `InjectionScores` (5×i64 score fields, each 0..100 →
-  i8: 40 B → 5 B); `AcceleratorFlags` (9×i64 booleans → i8 each:
-  72 B → 9 B); `ResourceUsage`, `TokenUsage` similar opportunities
-  where a field's value range fits sub-i64.
-- **Trigger**: paired with the derive revival above (cyrius
-  generates width-correct emit for sub-byte fields per v5.9.36).
-  Independent of derive otherwise — current hand-written serde
-  fns can stay if widths are added directly to struct fields.
-- **Risk**: ABI break if any consumer reads these structs by raw
-  offset (none do today — every consumer goes through the public
-  accessor functions). Verify via consumer-build sweep.
+🔧 **Optimization (paired with derive)**
 
-### Pointer-to-struct dot syntax — `s.data` / `s.len`
+- **Targets**: `InjectionScores` (5×i64 score fields, each 0..100 → i8: 40 B
+  → 5 B); `AcceleratorFlags` (9×i64 booleans → i8 each: 72 B → 9 B);
+  `ResourceUsage`, `TokenUsage` similar opportunities where a field's value
+  range fits sub-i64. Cyrius v5.9.36 generates width-correct emit for sub-byte
+  fields. Pair with derive: the same derive-revival diff also touches the field
+  declarations, and golden-corpus testing covers the byte-level changes both
+  introduce.
+- **Risk**: ABI break if any consumer reads these structs by raw offset. None
+  do today (every consumer goes through public accessor functions). Verify via
+  consumer-build sweep before merging — see v1.2.0's automation, but for v1.1.0
+  this is a manual sweep across the 11 consumers in `state.md`.
 
-- **Surface today**: every parse / format function spells out
-  `str_data(s)` and `str_len(s)`. v5.8.17's pointer-to-struct dot
-  syntax (`s.data`, `s.len`) is now the idiomatic shape; v5.10.4
-  closed type inference through `var x = f(...)` so the chain
-  works without explicit annotation. Adopt selectively where
-  readability wins — not a wholesale rewrite.
-- **Trigger**: ready now (no upstream gate). Light-touch refactor;
-  bundle with the next slot that already touches the affected file.
+### New LLM capabilities tracking ecosystem reality
 
-  > Note: the previously-bundled `println(s)` overload item moved
-  > out of this section — the 1.0.2 boilerplate-drop already
-  > cleared the raw `syscall(1, 1, ...)` write sites, and the
-  > remaining `syscall(1, 2, ...)` calls in `types.cyr` /
-  > `error.cyr` are intentional stderr writes that `println`
-  > (stdout) wouldn't replace.
+✨ **Feature**
 
-### `_json_int` Result return signature — disambiguate missing-vs-zero
+- **Surface today**: `src/llm.cyr` ships `LlmProvider` (13 entries) and
+  `ModelCapabilities` (12 boolean flags). Provider list and capability flags
+  haven't tracked the 2026-Q1/Q2 wave (newer Anthropic / OpenAI / Google
+  releases with extended thinking, larger context windows, audio I/O variations,
+  output-token caps near 128K).
+- **Plan**: additive — new `mcap_supports_*` flags for any capability now in
+  production at ≥2 of the existing providers. Document each in
+  `docs/architecture/overview.md`. No removals, no renames; existing consumers
+  see unchanged behavior on the existing flags.
+- **Tracks ecosystem reality** — additive enum/flag extensions don't require
+  a consumer pin since the change is purely additive (existing consumers ignore
+  unknown flags via the `_json_int` fall-through-zero path).
 
-- **Surface today**: `_json_int(src: Str, key: Str)` returns 0 for
-  both "key missing" and "literal `0`". F-003 (audit 2026-04-26)
-  hardened the integer-overflow path but left the missing-key
-  ambiguity in place. Every consumer treats the int as load-bearing.
-- **Trigger**: a consumer surfacing the ambiguity as a real bug.
-  None today. Hold.
+### Fuzz harness for parsers
 
-### JSON `\uXXXX` Unicode escape decoder
+🛡️ **Hardening**
 
-- **Surface today**: `src/types.cyr:_json_str` documented as ASCII
-  + common escapes only (`\" \\ \/ \n \t \r \b \f`). `\uXXXX`
-  passes through as the literal 6 bytes.
-- **Trigger**: a consumer carrying non-ASCII text through serde.
-  None today (every AGNOS type is ASCII identifier / version /
-  enum / hash). Hold.
+- **Surface today**: 5 parser entry points handling untrusted input —
+  `_json_int`, `_json_str`, `_json_find_value` (all in `types.cyr`),
+  `version_from_str` (`types.cyr`), `agent_id_from_str` (`types.cyr`),
+  `tctx_from_traceparent` (`telemetry.cyr`), `trace_id_from_str` /
+  `span_id_from_str` (`telemetry.cyr`). The 2026-04-26 audit found 9
+  vulnerabilities in these paths via manual review (F-002..F-005, F-008..F-010);
+  no automated coverage prevents regressions or finds new ones.
+- **Plan**: harness at `tests/fuzz/<parser>.cyr` driving each parser with
+  randomized inputs (empty, truncated, oversized, malformed UTF-8, control
+  bytes, escape-sequence permutations, integer-boundary values). Run on every
+  PR for a fixed iteration budget; full corpus run nightly. Cyrius doesn't
+  ship a fuzz framework today — this slot includes a small fuzz utility
+  (`lib/random.cyr` for input generation; the harness itself is a `.tcyr`
+  loop).
+- **Tie-back to audit findings**: each F-XXX finding becomes a corpus seed in
+  the harness so the regression is forever automated, not just frozen in
+  `tests/tcyr/test_audit_*.tcyr`.
 
-## Future Considerations
+---
 
-(items above this line are pinned; below are forward-looking).
+## v1.2.0 — Ecosystem expansion
 
-- **Compile-time wins** — when cyrius 5.10.10+ ships its lex/fixup
-  optimizations, profile agnostik's build with `CYRIUS_PROF=1` and
-  see if any agnostik-side patterns (heavy include count, large
-  init block) disproportionately load specific phases. Action only
-  if a measurable bottleneck surfaces.
+### Cross-consumer build sweep automation
+
+✨ **Feature** — A CI workflow (or downstream-triggered job) that, for each of
+the 11 consumers in `state.md`, clones the consumer repo at its main HEAD,
+swaps `cyrius.cyml`'s agnostik dep to the in-flight commit, and runs the
+consumer's `cyrius build` + `cyrius test`. Reports per-consumer green/red.
+Catches accessor-ABI breaks, struct-layout drift, and serde-shape changes
+before they propagate. Pairs naturally with the v1.1.0 sub-byte-widths work
+(but pinned here because the infrastructure cost is high enough to not block
+v1.1.0).
+
+### OTLP wire primitives
+
+✨ **Feature** — Spans, metrics, and log records currently model the OpenTelemetry
+data plane shapes but don't ship wire-format encoders/decoders. Adding
+`Span_to_otlp_proto(s, sb)` etc. would let consumers like `stiva` skip a layer
+of plumbing. Pinned to v1.2.0 (not v1.1.0) because the wire format is non-
+trivial (protobuf-encoded; we'd take a dependency on `lib/proto.cyr` or
+similar) and no consumer has yet surfaced the pin.
+
+---
+
+## v2.0.0 — Breaking changes (next major)
+
+The two items here are the only breaking changes on the horizon. Pinning to a
+single major release lets every consumer absorb the migration cost in one cycle
+rather than chasing point-version churn.
+
+### `_json_int` Result return signature
+
+🔧 **Optimization (breaking)** — `_json_int(src: Str, key: Str)` currently
+returns `i64` and conflates "missing key" with "literal 0". F-003 hardened the
+overflow path but left the missing-key ambiguity. Switch the return to
+`Result<i64, Err>` so consumers can distinguish missing from zero. Every
+caller updates from `var n = _json_int(s, k);` to `var n = _json_int(s, k)?;`
+or pattern-match. Audit uses ride along.
+
+### `#derive(accessors)` migration with prefix rename
+
+🔧 **Optimization (breaking)** — Cyrius's `#derive(accessors)` generates
+`<Struct>_<field>(s)` getters/setters; agnostik's convention is
+`<prefix>_<field>(s)` (e.g. `amsg_*`, `aentry_*`, `secctx_*`). Today's ~470
+hand-written single-line accessors collapse to derive markers if we either
+(a) rename to match derive's default shape (consumer-visible break) or
+(b) wait for upstream to ship derive-with-prefix support. v2.0.0 absorbs the
+rename cost; it's the only consumer-visible API churn in the slot.
+
+---
+
+## Working agreement
+
+- **Default shape**: small fast-follows in v1.0.x; bundled minors at v1.1.x;
+  breaking changes batched at majors. Each minor cut runs the security
+  audit pass per CLAUDE.md.
+- **Adding new items**: open an ADR draft in `docs/proposals/` (to be created
+  alongside `docs/adr/` in v1.0.4); cite the trigger and the slot pin. New
+  items without a slot don't go on this roadmap — they go in proposals.
+- **Removing items**: when a slot's work ships, move the entry to
+  `## Shipped` (terse) and link to the CHANGELOG entry. When an item is
+  abandoned, delete it from the roadmap and record the rationale in an ADR.
