@@ -12,8 +12,8 @@ fn trace_id_to_str(id): Str {
     return str_new(buf, 32);
 }
 fn trace_id_from_str(s: Str) {
-    var data = str_data(s);
-    var slen = str_len(s);
+    var data = s.data;
+    var slen = s.len;
     if (slen != 32) { return err_invalid_argument(str_from("expected 32 hex digits")); }
     var id = alloc(16);
     var i = 0;
@@ -53,8 +53,8 @@ fn span_id_to_str(id): Str {
     return str_new(buf, 16);
 }
 fn span_id_from_str(s: Str) {
-    var data = str_data(s);
-    var slen = str_len(s);
+    var data = s.data;
+    var slen = s.len;
     if (slen != 16) { return err_invalid_argument(str_from("expected 16 hex digits")); }
     var id = alloc(8);
     var val = 0;
@@ -208,8 +208,8 @@ fn _hex_nibble(ch) {
 fn tctx_from_traceparent(s: Str) {
     # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"
     # Total: 55 chars
-    var data = str_data(s);
-    var slen = str_len(s);
+    var data = s.data;
+    var slen = s.len;
     if (slen != 55) { return err_invalid_argument(str_from("traceparent must be 55 chars")); }
     if (load8(data + 2) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
     if (load8(data + 35) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }

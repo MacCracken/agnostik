@@ -72,8 +72,8 @@ fn agent_id_to_str(id): Str {
     return str_new(buf, 36);
 }
 fn agent_id_from_str(s: Str) {
-    var data = str_data(s);
-    var slen = str_len(s);
+    var data = s.data;
+    var slen = s.len;
     if (slen != 36) { return err_invalid_argument(str_from("invalid agent id: expected UUID")); }
     var id = alloc(16);
     var si = 0;
@@ -115,10 +115,10 @@ fn _json_find_value(src: Str, key: Str) {
     str_builder_add(sb, key);
     str_builder_add_cstr(sb, "\":");
     var needle = str_builder_build(sb);
-    var nd = str_data(needle);
-    var nlen = str_len(needle);
-    var data = str_data(src);
-    var slen = str_len(src);
+    var nd = needle.data;
+    var nlen = needle.len;
+    var data = src.data;
+    var slen = src.len;
     var i = 0;
     var in_str = 0;
     while (i + nlen <= slen) {
@@ -160,8 +160,8 @@ fn _json_find_value(src: Str, key: Str) {
 fn _json_int(src: Str, key: Str) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
-    var data = str_data(src);
-    var slen = str_len(src);
+    var data = src.data;
+    var slen = src.len;
     var neg = 0;
     if (vi < slen && load8(data + vi) == 45) { neg = 1; vi = vi + 1; }
     var val = 0;
@@ -193,8 +193,8 @@ fn _json_int(src: Str, key: Str) {
 fn _json_str(src: Str, key: Str) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
-    var data = str_data(src);
-    var slen = str_len(src);
+    var data = src.data;
+    var slen = src.len;
     # F-009: gate the 4-byte memeq probe on remaining length so we
     # don't read past slen on truncated input like `{"x":nu}`.
     if (vi + 4 <= slen && memeq(data + vi, "null", 4) == 1) { return 0; }
@@ -279,8 +279,8 @@ fn version_to_str(v): Str {
     return str_new(buf, pos);
 }
 fn version_from_str(s: Str) {
-    var data = str_data(s);
-    var slen = str_len(s);
+    var data = s.data;
+    var slen = s.len;
     var v = alloc(40);
     store64(v, 0);
     store64(v + 8, 0);
