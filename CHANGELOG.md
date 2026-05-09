@@ -1,5 +1,62 @@
 # Changelog
 
+## [Unreleased]
+
+## [1.0.2] - 2026-05-09
+
+Cyrius 5.10.3 modernization pass on top of 1.0.1. No public API
+changes; the surface change is in *how* internals are written, not
+*what* they expose. All 653 assertions across 9 `.tcyr` files pass;
+`CYRIUS_TYPE_CHECK=1` clean (zero warnings from agnostik code; the
+two remaining warnings are stdlib `lib/str.cyr` self-flags upstream
+will close in 5.10.4's already-shipped param-side annotation pass);
+DCE binary `261 KB` → `273 KB` from the chrono dependency pulling
+in extra compile-only surface that DCE didn't fully eliminate.
+
+### Toolchain
+
+- **Test boilerplate dropped** across 9 `.tcyr` files + 1 `.bcyr`
+  + `src/main.cyr`. cyrius 5.10.x auto-injects the `main()` caller
+  in `cyrius build` / `test` / `bench` and lazy-inits the heap on
+  first `alloc()` (since v5.8.37). Removed `alloc_init();` and the
+  trailing `var r = main(); syscall(SYS_EXIT, r);` from every test
+  + harness. CLAUDE.md's matching durable rule was updated.
+- **`result` + `chrono` added to `[deps] stdlib`** in `cyrius.cyml`.
+  `chrono.cyr` provides `clock_now_ns()` (CLOCK_MONOTONIC, id 1);
+  the inlined `now_ns()` that 9 files previously carried (using
+  CLOCK_MONOTONIC_RAW, id 4) is removed. 10 call sites in
+  `audit.cyr`, `agent.cyr`, `secrets.cyr`, `telemetry.cyr` now
+  call `clock_now_ns()`. Functionally equivalent for elapsed-time
+  measurement; CLOCK_MONOTONIC is NTP-slewed where _RAW isn't —
+  acceptable for span/audit/secret timestamps.
+
+### Changed
+
+- **`?` operator adopted in `tctx_from_traceparent`**
+  (`src/telemetry.cyr`). The only parse function that was manually
+  propagating sub-parse errors via `is_ok(...) == 0 { return ... }`.
+  Now reads `var tid = trace_id_from_str(...)?;` —
+  cyrius v5.8.29's Result-propagation operator binds the Ok payload
+  on success, returns Err on failure.
+- **`: Str` annotation pass across 12 source files.** Every public
+  function whose param or return is unconditionally `Str`
+  (`str_data` / `str_len` consumers; `str_new` / `str_from` /
+  `str_builder_build` producers) now carries the type tag. ~120
+  annotations across `types.cyr`, `error.cyr`, `validation.cyr`,
+  `secrets.cyr`, `config.cyr`, `audit.cyr`, `agent.cyr`,
+  `security.cyr`, `telemetry.cyr`, `llm.cyr`, `hardware.cyr`,
+  `main.cyr`. Skips slots that may be `0` (unset prerelease /
+  build / metadata / message), `*_name()` fns that return cstr
+  literals, and raw byte buffers. Verified clean under
+  `CYRIUS_TYPE_CHECK=1` build.
+- **Single-char `str_builder_add_cstr` → `str_builder_putc`** at
+  15 call sites across `agent.cyr`, `config.cyr`, `hardware.cyr`,
+  `llm.cyr`, `validation.cyr`, `telemetry.cyr`, `types.cyr`. The
+  v5.10.x putc API takes a byte directly (via the char-literal
+  token `'X'`), avoiding the strlen() loop add_cstr does for every
+  cstr write. Touches `}`, `"`, and `-` byte emits in JSON
+  serialization and traceparent formatting.
+
 ## [1.0.1] - 2026-05-08
 
 Documentation cleanup + toolchain refresh on top of 1.0.0. Manifest
