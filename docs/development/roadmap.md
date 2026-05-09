@@ -36,15 +36,23 @@ lists its trigger and the surface it eliminates.
   emitted dead-code derive stubs that shadowed the hand-written
   impls but bloated the binary. cyrius v5.9.30/.31/.36 fixed the
   typed-i64, narrow-int, and API-rename bugs; v5.9.39 closed the
-  Mach-O ARM64 fn-pointer ASLR cascade end-to-end. Str-field +
-  nested-struct paths verified by the agnosys 1.1.12 cascade.
-- **Trigger**: cyrius 5.10.5 (default-on `CYRIUS_TYPE_CHECK`) —
-  removes the last false-positive class. Could land sooner under
-  opt-in `CYRIUS_TYPE_CHECK=1` if a consumer pin surfaces.
+  Mach-O ARM64 fn-pointer ASLR cascade end-to-end. Str-field
+  positional-init landed at v5.10.7; the JSON escape fix (quote /
+  backslash / control chars) shipped at v5.10.8.
+- **Trigger**: **ready now** under opt-in `CYRIUS_TYPE_CHECK=1`
+  (which 1.0.3 wires into CI). The originally-pinned trigger of a
+  5.10.5 default-on flip got *attempted and reverted* upstream — a
+  separate generic-i64-param false-positive shape blocks the flip
+  indefinitely. That doesn't gate this work; the type-check that
+  matters (Str-field codegen + JSON escape) is solid since 5.10.8.
 - **Risk**: derive output must round-trip identically to current
   hand-written form (`{"id":42,"name":"alice"}` exact bytes incl.
-  field order). Plan: keep current tests; add a roundtrip diff
-  against a frozen golden corpus before deleting hand-written impls.
+  field order). Plan: capture a golden-corpus snapshot of every
+  `<Struct>_to_json` output against the current hand-written impls,
+  then swap to derive and diff. Hand-written impls retain F-002 /
+  F-003 / F-008 audit fixes; verify derive emits equivalent
+  bytes for the security-relevant cases (escaped quotes, negative
+  ints, max-int boundaries).
 
 ### Adopt `#derive(accessors)` — eliminates ~470 rote getters/setters
 
@@ -75,29 +83,23 @@ lists its trigger and the surface it eliminates.
   offset (none do today — every consumer goes through the public
   accessor functions). Verify via consumer-build sweep.
 
-### `println(s)` overload + pointer-to-struct dot syntax
+### Pointer-to-struct dot syntax — `s.data` / `s.len`
 
-- **Surface today**: `src/main.cyr` test harness uses 3 raw
-  `syscall(1, 1, str_data(s), str_len(s))` calls. cyrius v5.10.3's
-  overload dispatch routes `println(s: Str)` to `println_str` —
-  cleaner, no manual byte plumbing.
 - **Surface today**: every parse / format function spells out
   `str_data(s)` and `str_len(s)`. v5.8.17's pointer-to-struct dot
-  syntax (`s.data`, `s.len`) is now the idiomatic shape. Adopt
-  selectively where readability wins.
+  syntax (`s.data`, `s.len`) is now the idiomatic shape; v5.10.4
+  closed type inference through `var x = f(...)` so the chain
+  works without explicit annotation. Adopt selectively where
+  readability wins — not a wholesale rewrite.
 - **Trigger**: ready now (no upstream gate). Light-touch refactor;
   bundle with the next slot that already touches the affected file.
 
-### `CYRIUS_TYPE_CHECK=1` in CI — verify annotations don't drift
-
-- **What it does**: opts agnostik's CI build into the v5.10.1
-  call-site type-checker. After the v1.0.2 `: Str` annotation pass,
-  CI should fail on any new param/return that breaks the contract.
-- **Trigger**: ready now. Becomes redundant when cyrius 5.10.5 flips
-  the default on; until then, opt-in keeps drift visible.
-- **Risk**: stdlib false-positives (lib/str.cyr line 268 / 276)
-  ride along — already documented as upstream issues in v5.10.4
-  changelog. Filter with `grep -v /lib/` in the CI step.
+  > Note: the previously-bundled `println(s)` overload item moved
+  > out of this section — the 1.0.2 boilerplate-drop already
+  > cleared the raw `syscall(1, 1, ...)` write sites, and the
+  > remaining `syscall(1, 2, ...)` calls in `types.cyr` /
+  > `error.cyr` are intentional stderr writes that `println`
+  > (stdout) wouldn't replace.
 
 ### `_json_int` Result return signature — disambiguate missing-vs-zero
 
