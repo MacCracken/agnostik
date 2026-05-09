@@ -2,9 +2,11 @@
 
 ## [Unreleased]
 
+## [1.0.3] - 2026-05-09
+
 ### Toolchain
 
-- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.3` → `5.10.10`.
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.3` → `5.10.14`.
   Picks up the v5.10.x type-system arc closures (5.10.5: agnosys
   1.1.12 verbatim repro CLOSE + extended overload dispatch +
   diagnostic hint catalog), the cyrfmt char-literal brace fix
@@ -12,9 +14,13 @@
   the `#derive(Serialize)` Str-field positional-init fix (5.10.7),
   the JSON escape fix for derive (5.10.8), the version-pinned
   lib path that kills cross-version snapshot contamination
-  (5.10.9), and the cyrlint char-literal brace fix (5.10.10 —
-  filed by agnostik's 5.10.9 refresh; closes the workaround that
-  was holding `125` at 8 putc sites). DCE binary `273 KB` → `274 KB`.
+  (5.10.9), the cyrlint char-literal brace fix (5.10.10 — filed
+  by agnostik's 5.10.9 refresh; closes the workaround that was
+  holding `125` at 8 putc sites), the `lib/net.cyr` non-blocking
+  connect primitive (5.10.11), the defensive `lib/fnptr.cyr`
+  rewrite (5.10.12), TLS surface tightening (5.10.13), and the
+  multi-stack `#derive(...)` directive support (5.10.14). DCE
+  binary `273 KB` → `274 KB`.
 - **`CYRIUS_TYPE_CHECK=1`** build is now warning-free including
   on stdlib — 5.10.4's param-side `: Str` annotation pass closed
   the two `lib/str.cyr:268/276` self-flags that 1.0.2 had to
@@ -27,6 +33,16 @@
   `telemetry.cyr`, `validation.cyr`. cyrlint 5.10.10 handles the
   char-literal brace token correctly; `str_builder_putc(sb, '}')`
   is the readable form again.
+
+### Added
+
+- **`CYRIUS_TYPE_CHECK=1` step in CI** (`.github/workflows/ci.yml`).
+  Opts the build into the v5.10.1 call-site type-checker so the
+  v1.0.2 `: Str` annotation pass doesn't drift. Filters `/lib/`
+  self-flags (currently none on 5.10.14, but the filter is durable
+  across stdlib churn). The originally-pinned upstream default-on
+  flip was attempted at 5.10.5 and reverted — opt-in CI is now the
+  durable form rather than a stopgap.
 
 ### Docs
 
