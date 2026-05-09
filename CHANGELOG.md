@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **API surface snapshot was not portable** between build environments.
+  The 1.0.5 snapshot included 146 stdlib platform-specific peer fns
+  (`alloc_macos`, `alloc_windows`, `syscalls_aarch64_linux`,
+  `syscalls_x86_64_linux`) that `cyrius_api_surface` picks up locally
+  whenever the install path holds those peers. CI on Linux x86_64
+  only resolves what the dispatcher needs, so the gate fired as
+  `BREAKING: 146 removed`. Filter the snapshot to **agnostik
+  namespaces only** (859 fns: `agent`, `audit`, `classification`,
+  `config`, `error`, `hardware`, `lib`, `llm`, `main`, `secrets`,
+  `security`, `telemetry`, `types`, `validation`) — that's the
+  actual API contract; stdlib churn is tracked by the toolchain pin,
+  not by the API gate.
+
+### Added
+
+- **`scripts/api-surface.sh`** wrapper for `cyrius_api_surface` —
+  `check` (CI gate: generate live → filter to agnostik → diff) and
+  `update` (regenerate the committed snapshot the same way).
+  Replaces the direct `cyrius_api_surface` call in CI; the agnostik
+  module list is the single source of truth and any new
+  `src/<name>.cyr` adds `<name>` to the regex.
+
 ## [1.0.5] - 2026-05-09
 
 ### Added

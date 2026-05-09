@@ -120,11 +120,13 @@ jobs:
         run: xxd -l 4 build/agnostik | grep -q "7f45 4c46"
 
       - name: Verify API surface snapshot
-        # Diffs `docs/api-surface.snapshot` against the current public-fn
-        # surface; fails on unexplained additions or removals. Intentional
-        # API bumps regenerate via `cyrius_api_surface --update` and commit
-        # the new snapshot in the same PR. v1.0.5+ gate.
-        run: cyrius_api_surface
+        # Diffs `docs/api-surface.snapshot` against the current agnostik-
+        # namespace public-fn surface (filtered via scripts/api-surface.sh
+        # to drop stdlib platform peers that vary by build environment).
+        # Fails on unexplained additions or removals.
+        # Intentional API bumps regenerate via `scripts/api-surface.sh
+        # update` and commit the new snapshot in the same PR. v1.0.5+ gate.
+        run: scripts/api-surface.sh check
 
       - name: Verify dist bundle is in sync with src/
         run: |
