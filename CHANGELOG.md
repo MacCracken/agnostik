@@ -2,6 +2,55 @@
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-10
+
+## [1.2.0] - 2026-05-10
+
+First v1.2.x minor — OTLP wire-format primitives.
+
+### Added
+
+- **`src/proto.cyr`** — minimal protobuf wire-format helpers
+  (~120 LoC). Foundation for OTLP encoders. Not a general-purpose
+  protobuf library; just what OTLP types need: `_proto_varint`,
+  `_proto_tag`, `_proto_int64`, `_proto_fixed64`, `_proto_string`,
+  `_proto_bytes`, `_proto_message`. Wire-type constants exposed for
+  callers building custom messages.
+- **`Span_to_otlp_proto(ptr, sb)`** in `src/telemetry.cyr` — maps
+  agnostik's `Span` struct to `opentelemetry.proto.trace.v1.Span`
+  on the wire. Covers all scalar fields:
+  - `trace_id` (bytes, 16) · `span_id` (bytes, 8)
+  - `parent_span_id` (bytes, 8 — only if non-zero)
+  - `name` (string)
+  - `kind` (varint, with SpanKind enum re-mapping; default
+    `INTERNAL` elided per canonical OTLP encoders)
+  - `start_time_unix_nano` (fixed64) · `end_time_unix_nano`
+    (fixed64; computed as `start + duration_ms × 1e6`)
+  - `dropped_attributes_count` / `dropped_events_count` /
+    `dropped_links_count` (varint; emitted only if non-zero)
+  - `status` (sub-message; emitted only if non-`UNSET`)
+- **66 byte-exact assertions** in `tests/tcyr/test_v120_otlp.tcyr`
+  covering both the primitives (varint, tag, fixed64 LE,
+  length-delimited string) and the Span encoder under
+  representative shapes (minimal / kind+status / parent / dropped
+  counts). Reference bytes hand-computed from the OTLP proto
+  definitions and the canonical wire spec.
+
+### Deferred
+
+- **Span repeated-field encoders** (attributes / events / links):
+  field 9 KeyValue, field 11 Event, field 13 Link. Nested
+  sub-message encoders are a substantial follow-on; pinned for
+  v1.2.2 when a consumer surfaces the pin.
+- **`LogRecord_to_otlp_proto`** + **`MetricDataPoint_to_otlp_proto`**:
+  pinned for v1.2.2 alongside the Span repeated fields.
+- **Cross-consumer build sweep automation**: re-pinned from v1.2.0
+  to v1.2.1 (OTLP took the v1.2.0 slot).
+
+Test count 785 → 851 (+66); api-surface 870 → 871 fns (intentional
+addition: `Span_to_otlp_proto`); `CYRIUS_TYPE_CHECK=1` clean;
+bench-regression no regressions.
+
 ## [1.1.2] - 2026-05-10
 
 ### Added (Hardening)
