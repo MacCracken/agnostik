@@ -4,9 +4,19 @@
 
 ## [1.2.0] - 2026-05-10
 
-## [1.2.0] - 2026-05-10
+First v1.2.x minor — OTLP wire-format primitives + toolchain refresh.
 
-First v1.2.x minor — OTLP wire-format primitives.
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.14` → `5.10.20`.
+  Picks up six upstream slots:
+  - 5.10.15 — shadow-lib compile note (held from v5.10.10)
+  - 5.10.16 — SIMD cross-arch close + api-surface brace-desync fix
+  - 5.10.17 — keystone SIMD primitives for hisab
+  - 5.10.18 — hotfix: lib/process.cyr O_WRONLY
+  - 5.10.19 — `cyrius deps` transitive include resolution
+  - 5.10.20 — P(-1) project-hardening sweep
+  - DCE binary nominal codegen drift (~307 KB → ~311 KB).
 
 ### Added
 
