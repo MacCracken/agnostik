@@ -5,6 +5,20 @@
 
 ## Version
 
+**1.1.1** — Sub-byte field widths on top of 1.1.0 (per the v1.1.1
+roadmap pin). `InjectionScores` (5 fields i64 → i8: 40 B → 5 B) and
+`AcceleratorFlags` (9 fields i64 → i8: 72 B → 9 B) shrunk 87.5%
+per-instance with no wire-format change (cyrius derive emits the
+same `{"k":N,"k":N}` shape regardless of width). 5 new `iscore_set_*`
+setters added since `InjectionScores` lacked them pre-1.1.1.
+**Breaking:** direct `store64(is + N, v)` writes to `InjectionScores`
+no longer safe — alloc shrank from 40 B to 5 B; callers must use
+`iscore_set_*`. Filed cyrius bug at
+[`docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md`](../development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md)
+— `#`-comments inside derive struct bodies corrupt cyrius 5.10.14's
+codegen; workaround applied (comments above the directive). 777/777
+tests pass (was 735; +42 from `test_v111_subbyte_widths.tcyr`).
+
 **1.1.0** — Modernization minor: `#derive(Serialize)` revived for
 7 of 9 trivial all-int structs (per ADR-002 superseding ADR-001 —
 cyrius 5.10.14's derive can't replicate AgentInfo/TelemetryConfig's
@@ -169,7 +183,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | ~3,200    | down from 7,121 LOC Rust; derive markers removed in F-011 |
 | Module count          | 12        |                                    |
 | Test files            | 9         | tests/tcyr/                        |
-| Test assertions       | 735       | 0 failed; +34 from v1.1.0 serde golden corpus + LLM additions |
+| Test assertions       | 777       | 0 failed; +42 from v1.1.1 sub-byte widths coverage |
 | Benchmarks            | 25        | tests/bcyr/                        |
 | Test binary (DCE)     | 274 KB    | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; 1.0.4 nominal +48 B from dot-syntax codegen) |
 | Build warnings        | 0         |                                    |
@@ -194,7 +208,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.0` (`#derive(Serialize)` revival for 7 of 9 structs + compact JSON byte format + 5 new LLM providers + 3 new model-capability flags).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.1` (sub-byte field widths for InjectionScores + AcceleratorFlags — 87.5% per-instance heap reduction with unchanged wire format).
 
 ## Verification hosts
 
