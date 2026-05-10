@@ -54,6 +54,55 @@ fn _hex_byte(buf, offset, byte) {
     store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
     return 0;
 }
+# Returns 0-15 on valid hex char, -1 on invalid. Used by _json_str
+# (\uXXXX decoder) and version_from_str.
+fn _json_hex_digit(ch) {
+    if (ch >= 48 && ch <= 57)  { return ch - 48; }   # '0'-'9'
+    if (ch >= 97 && ch <= 102) { return ch - 87; }   # 'a'-'f'
+    if (ch >= 65 && ch <= 70)  { return ch - 55; }   # 'A'-'F'
+    return 0 - 1;
+}
+# Parse 4 hex digits at data+offset; return codepoint (0..65535) or -1.
+# Caller is responsible for bounds-checking offset+4 <= slen.
+fn _json_parse_u4(data, offset) {
+    var h0 = _json_hex_digit(load8(data + offset));
+    var h1 = _json_hex_digit(load8(data + offset + 1));
+    var h2 = _json_hex_digit(load8(data + offset + 2));
+    var h3 = _json_hex_digit(load8(data + offset + 3));
+    if (h0 < 0) { return 0 - 1; }
+    if (h1 < 0) { return 0 - 1; }
+    if (h2 < 0) { return 0 - 1; }
+    if (h3 < 0) { return 0 - 1; }
+    return (h0 << 12) | (h1 << 8) | (h2 << 4) | h3;
+}
+# UTF-8 encode `cp` into `out` at offset `op`; return new op (1..4 bytes).
+# Caller guarantees enough output buffer space (max 4 bytes per cp).
+# RFC 3629; surrogate range U+D800..U+DFFF is invalid as a standalone
+# codepoint but this fn does not validate — surrogate handling lives
+# in _json_str so the caller can implement pair-merging.
+fn _utf8_encode(out, op, cp) {
+    if (cp < 128) {
+        store8(out + op, cp);
+        return op + 1;
+    }
+    if (cp < 2048) {
+        store8(out + op,     0xC0 | (cp >> 6));
+        store8(out + op + 1, 0x80 | (cp & 0x3F));
+        return op + 2;
+    }
+    if (cp < 65536) {
+        store8(out + op,     0xE0 | (cp >> 12));
+        store8(out + op + 1, 0x80 | ((cp >> 6) & 0x3F));
+        store8(out + op + 2, 0x80 | (cp & 0x3F));
+        return op + 3;
+    }
+    # 4-byte: U+10000..U+10FFFF
+    store8(out + op,     0xF0 | (cp >> 18));
+    store8(out + op + 1, 0x80 | ((cp >> 12) & 0x3F));
+    store8(out + op + 2, 0x80 | ((cp >> 6) & 0x3F));
+    store8(out + op + 3, 0x80 | (cp & 0x3F));
+    return op + 4;
+}
 fn agent_id_to_str(id): Str {
     # UUID format: 8-4-4-4-12 = 36 chars
     var buf = alloc(37);
@@ -186,10 +235,17 @@ fn _json_int(src: Str, key: Str) {
     return val;
 }
 # Audit 2026-04-26 F-002: respect '\' escape so `"abc\"xyz"` parses as
-# the full string, not just the prefix. We decode the common escapes
+# the full string, not just the prefix. Decode the common escapes
 # (\" \\ \/ \n \t \r \b \f) by writing into a fresh buffer; the buffer
 # is at most as long as the source so allocating slen bytes is safe.
-# `\uXXXX` is left as a known limitation — F-004 follow-up.
+# v1.0.7: \uXXXX (and \uD8XX\uDCXX surrogate pairs) decoded as UTF-8.
+# Output is at most as long as input — \uXXXX is 6 source bytes
+# producing ≤4 UTF-8 bytes, surrogate pair is 12 source bytes
+# producing 4 UTF-8 bytes. slen+1 buffer remains sufficient.
+# Malformed escapes (truncated, invalid hex, orphan surrogate) emit
+# U+FFFD REPLACEMENT CHARACTER (3 UTF-8 bytes) per common JSON
+# implementations.
+var _UTF8_REPLACEMENT_CP = 0xFFFD;
 fn _json_str(src: Str, key: Str) {
     var vi = _json_find_value(src, key);
     if (vi < 0) { return 0; }
@@ -209,16 +265,74 @@ fn _json_str(src: Str, key: Str) {
         if (ch == 34) { done = 1; }
         elif (ch == 92 && vi + 1 < slen) {
             var esc = load8(data + vi + 1);
-            if (esc == 34)      { store8(out + op, 34); op = op + 1; }
-            elif (esc == 92)    { store8(out + op, 92); op = op + 1; }
-            elif (esc == 47)    { store8(out + op, 47); op = op + 1; }
-            elif (esc == 110)   { store8(out + op, 10); op = op + 1; }
-            elif (esc == 116)   { store8(out + op, 9);  op = op + 1; }
-            elif (esc == 114)   { store8(out + op, 13); op = op + 1; }
-            elif (esc == 98)    { store8(out + op, 8);  op = op + 1; }
-            elif (esc == 102)   { store8(out + op, 12); op = op + 1; }
-            else { store8(out + op, 92); store8(out + op + 1, esc); op = op + 2; }
-            vi = vi + 2;
+            if (esc == 34)      { store8(out + op, 34); op = op + 1; vi = vi + 2; }
+            elif (esc == 92)    { store8(out + op, 92); op = op + 1; vi = vi + 2; }
+            elif (esc == 47)    { store8(out + op, 47); op = op + 1; vi = vi + 2; }
+            elif (esc == 110)   { store8(out + op, 10); op = op + 1; vi = vi + 2; }
+            elif (esc == 116)   { store8(out + op, 9);  op = op + 1; vi = vi + 2; }
+            elif (esc == 114)   { store8(out + op, 13); op = op + 1; vi = vi + 2; }
+            elif (esc == 98)    { store8(out + op, 8);  op = op + 1; vi = vi + 2; }
+            elif (esc == 102)   { store8(out + op, 12); op = op + 1; vi = vi + 2; }
+            elif (esc == 117) {
+                # \uXXXX — needs 6 source bytes (\, u, X, X, X, X).
+                if (vi + 6 > slen) {
+                    op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                    vi = slen;
+                } else {
+                    var cp = _json_parse_u4(data, vi + 2);
+                    if (cp < 0) {
+                        op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        vi = vi + 6;
+                    }
+                    elif (cp >= 0xD800 && cp <= 0xDBFF) {
+                        # High surrogate — expect \uYYYY low surrogate next.
+                        if (vi + 12 > slen) {
+                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            vi = vi + 6;
+                        }
+                        elif (load8(data + vi + 6) != 92) {
+                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            vi = vi + 6;
+                        }
+                        elif (load8(data + vi + 7) != 117) {
+                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            vi = vi + 6;
+                        }
+                        else {
+                            var lo = _json_parse_u4(data, vi + 8);
+                            if (lo < 0xDC00) {
+                                op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                vi = vi + 6;
+                            }
+                            elif (lo > 0xDFFF) {
+                                op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                vi = vi + 6;
+                            }
+                            else {
+                                # Combine surrogate pair → full codepoint.
+                                var combined = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                                op = _utf8_encode(out, op, combined);
+                                vi = vi + 12;
+                            }
+                        }
+                    }
+                    elif (cp >= 0xDC00 && cp <= 0xDFFF) {
+                        # Orphan low surrogate — invalid alone.
+                        op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        vi = vi + 6;
+                    }
+                    else {
+                        # Plain BMP codepoint.
+                        op = _utf8_encode(out, op, cp);
+                        vi = vi + 6;
+                    }
+                }
+            }
+            else {
+                # Unknown escape — preserve verbatim (existing behavior).
+                store8(out + op, 92); store8(out + op + 1, esc); op = op + 2;
+                vi = vi + 2;
+            }
         }
         else { store8(out + op, ch); op = op + 1; vi = vi + 1; }
     }
