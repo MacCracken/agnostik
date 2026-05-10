@@ -64,42 +64,47 @@ fn memory_type_name(t) {
     elif (t == MEM_DDR5)       { return "DDR5"; }
     return "Unknown";
 }
+# v1.1.1: widened to i8 (each field is a 0/1 boolean). 72 B → 9 B per
+# instance. Existing accessor + setter signatures preserved; the
+# type-tag and storage width are the only differences. Comments must
+# live OUTSIDE the struct body — cyrius 5.10.14 derive codegen parses
+# `#` inside the body as a field-name disruptor.
 #derive(Serialize)
 struct AcceleratorFlags {
-    cuda_available: i64;
-    rocm_available: i64;
-    metal_available: i64;
-    vulkan_available: i64;
-    oneapi_available: i64;
-    tpu_available: i64;
-    sycl_available: i64;
-    openvino_available: i64;
-    directml_available: i64;
+    cuda_available: i8;
+    rocm_available: i8;
+    metal_available: i8;
+    vulkan_available: i8;
+    oneapi_available: i8;
+    tpu_available: i8;
+    sycl_available: i8;
+    openvino_available: i8;
+    directml_available: i8;
 }
 fn accelerator_flags_new() {
-    var f = alloc(72);
+    var f = alloc(9);
     var i = 0;
-    while (i < 72) { store64(f + i, 0); i = i + 8; }
+    while (i < 9) { store8(f + i, 0); i = i + 1; }
     return f;
 }
-fn aflags_cuda(f)     { return load64(f); }
-fn aflags_rocm(f)     { return load64(f + 8); }
-fn aflags_metal(f)    { return load64(f + 16); }
-fn aflags_vulkan(f)   { return load64(f + 24); }
-fn aflags_oneapi(f)   { return load64(f + 32); }
-fn aflags_tpu(f)      { return load64(f + 40); }
-fn aflags_sycl(f)     { return load64(f + 48); }
-fn aflags_openvino(f) { return load64(f + 56); }
-fn aflags_directml(f) { return load64(f + 64); }
-fn aflags_set_cuda(f, v)     { store64(f, v); return 0; }
-fn aflags_set_rocm(f, v)     { store64(f + 8, v); return 0; }
-fn aflags_set_metal(f, v)    { store64(f + 16, v); return 0; }
-fn aflags_set_vulkan(f, v)   { store64(f + 24, v); return 0; }
-fn aflags_set_oneapi(f, v)   { store64(f + 32, v); return 0; }
-fn aflags_set_tpu(f, v)      { store64(f + 40, v); return 0; }
-fn aflags_set_sycl(f, v)     { store64(f + 48, v); return 0; }
-fn aflags_set_openvino(f, v) { store64(f + 56, v); return 0; }
-fn aflags_set_directml(f, v) { store64(f + 64, v); return 0; }
+fn aflags_cuda(f)     { return load8(f); }
+fn aflags_rocm(f)     { return load8(f + 1); }
+fn aflags_metal(f)    { return load8(f + 2); }
+fn aflags_vulkan(f)   { return load8(f + 3); }
+fn aflags_oneapi(f)   { return load8(f + 4); }
+fn aflags_tpu(f)      { return load8(f + 5); }
+fn aflags_sycl(f)     { return load8(f + 6); }
+fn aflags_openvino(f) { return load8(f + 7); }
+fn aflags_directml(f) { return load8(f + 8); }
+fn aflags_set_cuda(f, v)     { store8(f, v); return 0; }
+fn aflags_set_rocm(f, v)     { store8(f + 1, v); return 0; }
+fn aflags_set_metal(f, v)    { store8(f + 2, v); return 0; }
+fn aflags_set_vulkan(f, v)   { store8(f + 3, v); return 0; }
+fn aflags_set_oneapi(f, v)   { store8(f + 4, v); return 0; }
+fn aflags_set_tpu(f, v)      { store8(f + 5, v); return 0; }
+fn aflags_set_sycl(f, v)     { store8(f + 6, v); return 0; }
+fn aflags_set_openvino(f, v) { store8(f + 7, v); return 0; }
+fn aflags_set_directml(f, v) { store8(f + 8, v); return 0; }
 fn accelerator_device_new(index, dname: Str, vendor, family) {
     var d = alloc(120);
     store64(d, index);
