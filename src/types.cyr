@@ -24,7 +24,11 @@ fn _fill_random(buf, n) {
     # Both sources failed. Identifier generation is security-critical
     # (agent_id, session_id, trace_id back authorisation in aegis/sigil)
     # so we fail loudly rather than degrade to a deterministic seed.
-    syscall(1, 2, "agnostik: CSPRNG unavailable (getrandom + /dev/urandom both failed)\n", 67);
+    # F-012 (audit 2026-05-10): the byte-count was hardcoded 67 for a
+    # 68-byte literal; the trailing newline silently dropped. Use
+    # strlen() so the count tracks the literal.
+    var msg = "agnostik: CSPRNG unavailable (getrandom + /dev/urandom both failed)\n";
+    syscall(1, 2, msg, strlen(msg));
     syscall(60, 70);
     return 0 - 1;
 }
