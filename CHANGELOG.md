@@ -4,6 +4,34 @@
 
 ## [1.1.2] - 2026-05-10
 
+### Added (Hardening)
+
+- **Fuzz harness** for the 8 parser entry points handling untrusted
+  input: `_json_int`, `_json_str`, `_json_find_value`,
+  `version_from_str`, `agent_id_from_str`, `trace_id_from_str`,
+  `span_id_from_str`, `tctx_from_traceparent`. Per the v1.1.2
+  roadmap pin (deferred from v1.1.0).
+  - **Survival contract** — each parser must accept any byte
+    sequence and return without crashing, OOB-reading, or
+    OOB-writing. Doesn't assert correctness for random inputs;
+    only that the parser doesn't fault.
+  - **Per-parser**: 200 deterministic fuzz iterations + audit-
+    finding regression seeds (F-002 escape, F-003 negatives + i64
+    overflow, F-004 string-boundary, F-005 segment validation,
+    F-008 19-digit boundary, F-009 truncated null, F-010 RFC 7159
+    whitespace, v1.0.7 `\uXXXX` malformed-escape paths). ~1680
+    calls per run total.
+  - **Deterministic xorshift64 PRNG** seeded with a memorable fixed
+    constant per parser (CAFEBABE, DEADBEEF, etc.) — any failure
+    reproduces from the seed; no wall-clock or CSPRNG seeding.
+  - **Future-proofing**: when a fuzz seed surfaces a real bug, the
+    workflow is to add the offending input as an audit-finding
+    seed *before* fixing the parser, so the regression is locked
+    in forever (same pattern as F-NNN regression rows in the
+    audit test files).
+  - File: `tests/tcyr/test_v112_fuzz.tcyr` (~290 LoC). Test count
+    777 → 785 (+8 survival counters); ~milliseconds wall-clock.
+
 ## [1.1.1] - 2026-05-10
 
 ### Optimization
