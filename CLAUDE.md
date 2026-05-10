@@ -100,7 +100,7 @@ CYRIUS_DCE=1 cyrius build ...                   # dead-code-eliminated release b
 3. **Test + benchmark additions** for new code
 4. **Internal review** — performance, memory, correctness, edge cases
 5. **Security check** — any new syscall usage, user input handling, buffer allocation
-6. **Documentation** — update CHANGELOG, roadmap, `docs/development/state.md`, any ADR the change earned
+6. **Documentation** — update CHANGELOG, roadmap, `docs/development/state.md`, `docs/doc-health.md` (rewrite-in-place the rows for any docs touched this loop), any ADR the change earned
 7. **Version check** — `VERSION`, `cyrius.cyml`, CHANGELOG header in sync
 8. **Return to step 1**
 
@@ -129,7 +129,7 @@ Severity levels: **CRITICAL** (remote / privilege escalation), **HIGH** (moderat
 6. **Cleanup sweep** — stale comments, dead branches, unused includes, orphaned files
 7. **Security re-scan** — quick grep for new `sys_system`, unchecked writes, unsanitized input, buffer size mismatches
 8. **Downstream check** — every consumer in `state.md` still builds and passes tests against the new version
-9. **Doc sync** — CHANGELOG, roadmap, `docs/development/state.md`, CLAUDE.md (if durable content changed)
+9. **Doc sync** — CHANGELOG, roadmap, `docs/development/state.md`, `docs/doc-health.md` (re-bucket any rows touched this cycle and refresh the at-a-glance counts), CLAUDE.md (if durable content changed)
 10. **Version verify** — `VERSION`, `cyrius.cyml`, CHANGELOG header, intended git tag all match
 11. **Full build from clean** — `rm -rf build && cyrius deps && CYRIUS_DCE=1 cyrius build` passes clean
 
@@ -187,6 +187,7 @@ Severity levels: **CRITICAL** (remote / privilege escalation), **HIGH** (moderat
 - [`docs/development/roadmap.md`](docs/development/roadmap.md) — completed, backlog, future, v1.0 criteria.
 - [`docs/development/state.md`](docs/development/state.md) — **live state snapshot, refreshed every release**.
 - [`docs/audit/`](docs/audit/) — security audit reports (`YYYY-MM-DD-audit.md`).
+- [`docs/doc-health.md`](docs/doc-health.md) — **doc-currency ledger** (fresh / stale / archived per file). Refreshed in place whenever docs are touched.
 - [`CHANGELOG.md`](CHANGELOG.md) — source of truth for all changes.
 
 New quirks land in `docs/architecture/` as numbered items (`NNN-kebab-case.md`). New decisions land in `docs/adr/` using the template. **Never renumber either series.**
@@ -204,6 +205,7 @@ docs/ (minimum):
   architecture/ — non-obvious invariants
   guides/ — task-oriented how-tos
   examples/ — runnable examples
+  doc-health.md — doc-currency ledger (fresh/stale/archived per file)
   development/
     roadmap.md — completed, backlog, future
     state.md — live state snapshot (volatile; release-bumped)
