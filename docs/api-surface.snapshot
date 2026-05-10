@@ -673,6 +673,7 @@ security::token_payload_new/2
 security::token_permissions/1
 security::token_role/1
 security::token_sub/1
+telemetry::Span_to_otlp_proto/2
 telemetry::TelemetryConfig_from_json/1
 telemetry::TelemetryConfig_to_json/2
 telemetry::baggage_entries/1

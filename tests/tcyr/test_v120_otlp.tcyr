@@ -1,0 +1,271 @@
+# tests/tcyr/test_v120_otlp.tcyr
+#
+# Coverage for v1.2.0 OTLP wire-format primitives + Span_to_otlp_proto.
+#
+# Strategy: byte-exact assertions on protobuf output. Reference
+# bytes computed by hand from the OTLP proto definitions
+# (opentelemetry/proto/trace/v1/trace.proto) and the canonical
+# protobuf wire format spec.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/test.cyr"
+include "src/lib.cyr"
+
+# ─── proto primitive correctness ────
+
+fn test_proto_varint_small() {
+    # 0 → 0x00; 1 → 0x01; 127 → 0x7F (single byte, MSB clear).
+    var sb = str_builder_new();
+    _proto_varint(sb, 0);
+    _proto_varint(sb, 1);
+    _proto_varint(sb, 127);
+    var s = str_builder_build(sb);
+    var d = str_data(s);
+    assert_eq(str_len(s), 3, "varint small length");
+    assert_eq(load8(d + 0), 0,    "varint 0");
+    assert_eq(load8(d + 1), 1,    "varint 1");
+    assert_eq(load8(d + 2), 0x7F, "varint 127");
+    return 0;
+}
+
+fn test_proto_varint_two_bytes() {
+    # 128 → 0x80 0x01; 300 → 0xAC 0x02; 16383 → 0xFF 0x7F.
+    var sb = str_builder_new();
+    _proto_varint(sb, 128);
+    _proto_varint(sb, 300);
+    _proto_varint(sb, 16383);
+    var s = str_builder_build(sb);
+    var d = str_data(s);
+    assert_eq(str_len(s), 6, "varint 2-byte length");
+    assert_eq(load8(d + 0), 0x80, "128 b0");
+    assert_eq(load8(d + 1), 0x01, "128 b1");
+    assert_eq(load8(d + 2), 0xAC, "300 b0");
+    assert_eq(load8(d + 3), 0x02, "300 b1");
+    assert_eq(load8(d + 4), 0xFF, "16383 b0");
+    assert_eq(load8(d + 5), 0x7F, "16383 b1");
+    return 0;
+}
+
+fn test_proto_tag() {
+    # Tag = (field_no << 3) | wire_type. field 1 + varint(0) = 0x08.
+    # field 5 + length(2) = 0x2A. field 16 + fixed64(1) = 0x81 0x01.
+    var sb = str_builder_new();
+    _proto_tag(sb, 1, 0);
+    _proto_tag(sb, 5, 2);
+    _proto_tag(sb, 16, 1);
+    var s = str_builder_build(sb);
+    var d = str_data(s);
+    assert_eq(str_len(s), 4, "tag bytes total");
+    assert_eq(load8(d + 0), 0x08, "tag(1,0)");
+    assert_eq(load8(d + 1), 0x2A, "tag(5,2)");
+    assert_eq(load8(d + 2), 0x81, "tag(16,1) b0");
+    assert_eq(load8(d + 3), 0x01, "tag(16,1) b1");
+    return 0;
+}
+
+fn test_proto_fixed64_le() {
+    # 1 → 01 00 00 00 00 00 00 00; 0xFF → FF 00 00 00 00 00 00 00.
+    var sb = str_builder_new();
+    _proto_fixed64_raw(sb, 1);
+    _proto_fixed64_raw(sb, 0xFF);
+    var s = str_builder_build(sb);
+    var d = str_data(s);
+    assert_eq(str_len(s), 16, "fixed64 raw 2x8 bytes");
+    assert_eq(load8(d + 0), 0x01, "1 LE b0");
+    assert_eq(load8(d + 1), 0,    "1 LE b1");
+    assert_eq(load8(d + 7), 0,    "1 LE b7");
+    assert_eq(load8(d + 8), 0xFF, "0xFF LE b0");
+    return 0;
+}
+
+fn test_proto_string() {
+    # field 1 + length-delim "ab" → 0x0A 0x02 'a' 'b'.
+    var sb = str_builder_new();
+    _proto_string(sb, 1, str_from("ab"));
+    var s = str_builder_build(sb);
+    var d = str_data(s);
+    assert_eq(str_len(s), 4, "string total");
+    assert_eq(load8(d + 0), 0x0A, "string tag");
+    assert_eq(load8(d + 1), 0x02, "string len");
+    assert_eq(load8(d + 2), 97,   "string 'a'");
+    assert_eq(load8(d + 3), 98,   "string 'b'");
+    return 0;
+}
+
+# ─── Span_to_otlp_proto ────
+
+fn test_span_otlp_minimal() {
+    # Span with deterministic ids (allocate + fill explicit bytes) so
+    # the encoded output is reproducible.
+    var trace_id = alloc(16);
+    var i = 0;
+    while (i < 16) { store8(trace_id + i, i + 1); i = i + 1; }   # 01..10
+    var span_id = alloc(8);
+    i = 0;
+    while (i < 8) { store8(span_id + i, 0xA0 + i); i = i + 1; }   # A0..A7
+
+    var s = span_new(str_from("op"), trace_id, span_id);
+    # Force a deterministic start_time so the fixed64 bytes are stable.
+    store64(s + 48, 1234567890);   # start_time_unix_nano
+
+    var sb = str_builder_new();
+    Span_to_otlp_proto(s, sb);
+    var out = str_builder_build(sb);
+    var d = str_data(out);
+
+    # Expected wire bytes (hand-computed):
+    # field 1 trace_id  : 0x0A 0x10 [16 bytes 01..10]                      = 18 bytes
+    # field 2 span_id   : 0x12 0x08 [8 bytes A0..A7]                       = 10 bytes
+    # field 5 name      : 0x2A 0x02 'o' 'p'                                =  4 bytes
+    # field 6 kind      : skipped (SPAN_INTERNAL is the default)
+    # field 7 start     : 0x39 [8 bytes LE of 1234567890]                  =  9 bytes
+    # field 8 end       : 0x41 [8 bytes LE of start + 0*1e6 = 1234567890]  =  9 bytes
+    # status            : skipped (SPAN_UNSET)
+    # dropped_*         : skipped (all zero)
+    # Total: 18 + 10 + 4 + 9 + 9 = 50 bytes
+    assert_eq(str_len(out), 50, "minimal span total bytes");
+
+    # field 1: trace_id
+    assert_eq(load8(d + 0),  0x0A, "f1 tag");
+    assert_eq(load8(d + 1),  0x10, "f1 len=16");
+    assert_eq(load8(d + 2),  0x01, "trace_id[0]");
+    assert_eq(load8(d + 17), 0x10, "trace_id[15]");
+
+    # field 2: span_id starts at offset 18
+    assert_eq(load8(d + 18), 0x12, "f2 tag");
+    assert_eq(load8(d + 19), 0x08, "f2 len=8");
+    assert_eq(load8(d + 20), 0xA0, "span_id[0]");
+    assert_eq(load8(d + 27), 0xA7, "span_id[7]");
+
+    # field 5: name "op" starts at offset 28
+    assert_eq(load8(d + 28), 0x2A, "f5 tag");
+    assert_eq(load8(d + 29), 0x02, "f5 len=2");
+    assert_eq(load8(d + 30), 111,  "name 'o'");
+    assert_eq(load8(d + 31), 112,  "name 'p'");
+
+    # field 7: start_time_unix_nano (fixed64 LE of 1234567890)
+    # 1234567890 = 0x499602D2 → LE bytes: D2 02 96 49 00 00 00 00
+    assert_eq(load8(d + 32), 0x39, "f7 tag");
+    assert_eq(load8(d + 33), 0xD2, "start LE b0");
+    assert_eq(load8(d + 34), 0x02, "start LE b1");
+    assert_eq(load8(d + 35), 0x96, "start LE b2");
+    assert_eq(load8(d + 36), 0x49, "start LE b3");
+    assert_eq(load8(d + 37), 0,    "start LE b4");
+
+    # field 8: end_time = start (since duration_ms = 0)
+    assert_eq(load8(d + 41), 0x41, "f8 tag");
+    assert_eq(load8(d + 42), 0xD2, "end LE b0");
+    return 0;
+}
+
+fn test_span_otlp_kind_and_status() {
+    # Span with non-default kind + non-UNSET status emit additional
+    # fields. SPAN_SERVER (kind=1) maps to OTLP SPAN_KIND_SERVER (2).
+    var trace_id = alloc(16);
+    var span_id = alloc(8);
+    var s = span_new(str_from("x"), trace_id, span_id);
+    store64(s + 48, 0);                  # start_time = 0
+    span_set_kind(s, SPAN_SERVER);       # field 6 = varint(2)
+    span_set_status(s, SPAN_OK);         # field 15 = sub-message{ code:1 }
+
+    var sb = str_builder_new();
+    Span_to_otlp_proto(s, sb);
+    var out = str_builder_build(sb);
+    var d = str_data(out);
+
+    # Wire layout:
+    # f1 trace_id 18B + f2 span_id 10B + f5 name (1B) 3B
+    # = 31B header
+    # f6 kind: 0x30 0x02 = 2B at offset 31
+    # f7 start: 0x39 + 8 zeros = 9B at offset 33
+    # f8 end:   0x41 + 8 zeros = 9B at offset 42
+    # f15 status: 0x7A 0x02 0x08 0x01 = 4B at offset 51
+    # Total: 31 + 2 + 9 + 9 + 4 = 55
+    assert_eq(str_len(out), 55, "kind+status span total");
+    assert_eq(load8(d + 31), 0x30, "f6 kind tag");
+    assert_eq(load8(d + 32), 0x02, "f6 kind=SERVER(2)");
+    assert_eq(load8(d + 51), 0x7A, "f15 status tag");
+    assert_eq(load8(d + 52), 0x02, "f15 status len=2");
+    assert_eq(load8(d + 53), 0x08, "status.code tag");
+    assert_eq(load8(d + 54), 0x01, "status.code = OK(1)");
+    return 0;
+}
+
+fn test_span_otlp_parent_id() {
+    # parent_span_id only emitted when non-zero. With parent set,
+    # f4 appears between f2 and f5.
+    var trace_id = alloc(16);
+    var span_id = alloc(8);
+    var parent_id = alloc(8);
+    var i = 0;
+    while (i < 8) { store8(parent_id + i, 0xB0 + i); i = i + 1; }
+    var s = span_new(str_from("c"), trace_id, span_id);
+    span_set_parent(s, parent_id);
+    store64(s + 48, 0);
+
+    var sb = str_builder_new();
+    Span_to_otlp_proto(s, sb);
+    var out = str_builder_build(sb);
+    var d = str_data(out);
+
+    # f1 (18) + f2 (10) + f4 parent (10) + f5 name (3) + f7 (9) + f8 (9)
+    # = 59 bytes; f4 starts at offset 28.
+    assert_eq(str_len(out), 59, "parent span total");
+    assert_eq(load8(d + 28), 0x22, "f4 parent tag");
+    assert_eq(load8(d + 29), 0x08, "f4 parent len=8");
+    assert_eq(load8(d + 30), 0xB0, "parent[0]");
+    assert_eq(load8(d + 37), 0xB7, "parent[7]");
+    return 0;
+}
+
+fn test_span_otlp_dropped_counts() {
+    # dropped_*_count fields emit only when non-zero.
+    var trace_id = alloc(16);
+    var span_id = alloc(8);
+    var s = span_new(str_from("d"), trace_id, span_id);
+    store64(s + 48, 0);
+    store64(s + 88, 3);   # dropped_attributes_count
+    store64(s + 96, 5);   # dropped_events_count
+    store64(s + 104, 7);  # dropped_links_count
+
+    var sb = str_builder_new();
+    Span_to_otlp_proto(s, sb);
+    var out = str_builder_build(sb);
+    var d = str_data(out);
+
+    # Header (f1+f2+f5+f7+f8) is 49B for name "d"; then 6B of
+    # dropped fields (3 × tag+varint).
+    var dropped_offset = 49;
+    assert_eq(str_len(out), 55, "dropped counts total");
+    assert_eq(load8(d + dropped_offset + 0), 0x50, "f10 tag");
+    assert_eq(load8(d + dropped_offset + 1), 0x03, "dropped_attrs=3");
+    assert_eq(load8(d + dropped_offset + 2), 0x60, "f12 tag");
+    assert_eq(load8(d + dropped_offset + 3), 0x05, "dropped_events=5");
+    assert_eq(load8(d + dropped_offset + 4), 0x70, "f14 tag");
+    assert_eq(load8(d + dropped_offset + 5), 0x07, "dropped_links=7");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.2.0 OTLP wire-format primitives + Span ===");
+    test_proto_varint_small();
+    test_proto_varint_two_bytes();
+    test_proto_tag();
+    test_proto_fixed64_le();
+    test_proto_string();
+    test_span_otlp_minimal();
+    test_span_otlp_kind_and_status();
+    test_span_otlp_parent_id();
+    test_span_otlp_dropped_counts();
+    println("");
+    return assert_summary();
+}
