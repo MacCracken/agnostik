@@ -78,7 +78,7 @@ var _bench_af_json = 0;
 var _bench_is_json = 0;
 var _bench_as_json = 0;
 fn _b_rl_to_json() { _ser(resource_limits_new(), &ResourceLimits_to_json); return 0; }
-fn _b_rl_from_json() { ResourceLimits_from_json(_bench_rl_json); return 0; }
+fn _b_rl_from_json() { ResourceLimits_from_json_str(str_data(_bench_rl_json)); return 0; }
 fn _b_tu_to_json() {
     var u = token_usage_new();
     tusage_set_prompt(u, 100);
@@ -87,7 +87,7 @@ fn _b_tu_to_json() {
     _ser(u, &TokenUsage_to_json);
     return 0;
 }
-fn _b_tu_from_json() { TokenUsage_from_json(_bench_tu_json); return 0; }
+fn _b_tu_from_json() { TokenUsage_from_json_str(str_data(_bench_tu_json)); return 0; }
 fn _b_af_to_json() {
     var f = accelerator_flags_new();
     aflags_set_cuda(f, 1);
@@ -95,7 +95,7 @@ fn _b_af_to_json() {
     _ser(f, &AcceleratorFlags_to_json);
     return 0;
 }
-fn _b_af_from_json() { AcceleratorFlags_from_json(_bench_af_json); return 0; }
+fn _b_af_from_json() { AcceleratorFlags_from_json_str(str_data(_bench_af_json)); return 0; }
 fn _b_is_to_json() {
     var s = injection_scores_new();
     store64(s, 85);
@@ -104,7 +104,7 @@ fn _b_is_to_json() {
     _ser(s, &InjectionScores_to_json);
     return 0;
 }
-fn _b_is_from_json() { InjectionScores_from_json(_bench_is_json); return 0; }
+fn _b_is_from_json() { InjectionScores_from_json_str(str_data(_bench_is_json)); return 0; }
 fn _b_as_to_json() {
     var s = agent_stats_new();
     store64(s, 999);
@@ -113,7 +113,7 @@ fn _b_as_to_json() {
     _ser(s, &AgentStats_to_json);
     return 0;
 }
-fn _b_as_from_json() { AgentStats_from_json(_bench_as_json); return 0; }
+fn _b_as_from_json() { AgentStats_from_json_str(str_data(_bench_as_json)); return 0; }
 
 fn tier(label) {
     syscall(SYS_WRITE, 1, "\n", 1);
