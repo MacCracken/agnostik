@@ -1,0 +1,292 @@
+# tests/tcyr/test_v112_fuzz.tcyr
+#
+# Fuzz harness for the 8 parser entry points handling untrusted input
+# (per the v1.1.2 roadmap pin). Deterministic xorshift64 PRNG so any
+# failure reproduces from the seed — no CSPRNG or wall-clock seeding.
+#
+# Goal: SURVIVAL. Each parser must accept any byte sequence and return
+# without crashing, OOB-reading, or OOB-writing. We don't assert
+# correctness for random inputs (they're random) — only that the
+# parser doesn't fault.
+#
+# Audit-finding seeds: every F-002..F-005, F-008..F-010 input shape is
+# included as a deterministic regression row so fuzz iterations always
+# include the historically-vulnerable cases.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# xorshift64 PRNG state — heap slot for mutability across helper fns.
+var _RNG = 0;
+
+fn rng_init(seed) {
+    if (_RNG == 0) { _RNG = alloc(8); }
+    if (seed == 0) { seed = 1; }
+    store64(_RNG, seed);
+    return 0;
+}
+
+fn rng_next() {
+    var s = load64(_RNG);
+    s = s ^ (s << 13);
+    s = s ^ (s >> 7);
+    s = s ^ (s << 17);
+    store64(_RNG, s);
+    return s;
+}
+
+fn rng_byte() { return rng_next() & 0xFF; }
+
+fn rng_len(max) {
+    if (max == 0) { return 0; }
+    var n = rng_next();
+    if (n < 0) { n = 0 - n; }
+    return n % (max + 1);
+}
+
+fn fuzz_random_bytes(len) {
+    var buf = alloc(len + 1);
+    var i = 0;
+    while (i < len) {
+        store8(buf + i, rng_byte());
+        i = i + 1;
+    }
+    store8(buf + len, 0);
+    return str_new(buf, len);
+}
+
+fn fuzz_json_like(len) {
+    var buf = alloc(len + 1);
+    var i = 0;
+    while (i < len) {
+        var b = rng_byte();
+        var c = 0;
+        if (b < 16)       { c = 123; }
+        elif (b < 32)     { c = 125; }
+        elif (b < 48)     { c = 58; }
+        elif (b < 64)     { c = 44; }
+        elif (b < 80)     { c = 34; }
+        elif (b < 96)     { c = 92; }
+        elif (b < 144)    { c = 48 + (b & 9); }
+        elif (b < 224)    { c = 97 + (b & 25); }
+        else              { c = b; }
+        store8(buf + i, c);
+        i = i + 1;
+    }
+    store8(buf + len, 0);
+    return str_new(buf, len);
+}
+
+fn fuzz_hex_like(len) {
+    var buf = alloc(len + 1);
+    var i = 0;
+    while (i < len) {
+        var b = rng_byte();
+        var c = 0;
+        if (b < 96)        { c = 48 + (b & 9); }
+        elif (b < 176)     { c = 97 + (b & 5); }
+        elif (b < 240)     { c = 65 + (b & 5); }
+        else               { c = b; }
+        store8(buf + i, c);
+        i = i + 1;
+    }
+    store8(buf + len, 0);
+    return str_new(buf, len);
+}
+
+var _FUZZ_ITERS = 200;
+
+fn fuzz_json_int(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var src = fuzz_json_like(rng_len(150));
+        var key = fuzz_random_bytes(rng_len(20));
+        _json_int(src, key);
+        i = i + 1;
+    }
+    _json_int(str_from("{\"x\":-9999999999999999999}"), str_from("x"));
+    _json_int(str_from("{\"x\":1234567890123456789012}"), str_from("x"));
+    _json_int(str_from("{\"x\":99999999999999999999}"), str_from("x"));
+    return _FUZZ_ITERS + 3;
+}
+
+fn fuzz_json_str(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var src = fuzz_json_like(rng_len(150));
+        var key = fuzz_random_bytes(rng_len(20));
+        _json_str(src, key);
+        i = i + 1;
+    }
+    _json_str(str_from("{\"v\":\"abc\\\"xyz\"}"), str_from("v"));
+    _json_str(str_from("{\"v\":\"a\\\\b\\nc\\td\\re\\b\\f\\/\"}"), str_from("v"));
+    _json_str(str_from("{\"a\":nu}"), str_from("a"));
+    _json_str(str_from("{\"a\":n}"), str_from("a"));
+    _json_str(str_from("{\"note\":\"see \\\"max\\\":9 below\",\"max\":42}"), str_from("max"));
+    _json_str(str_from("{\"v\":\"\\uD83D\\uDE00\"}"), str_from("v"));
+    _json_str(str_from("{\"v\":\"\\uGHIJ\"}"), str_from("v"));
+    _json_str(str_from("{\"v\":\"\\uD800\"}"), str_from("v"));
+    _json_str(str_from("{\"v\":\"\\u\"}"), str_from("v"));
+    return _FUZZ_ITERS + 9;
+}
+
+fn fuzz_json_find_value(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var src = fuzz_json_like(rng_len(150));
+        var key = fuzz_random_bytes(rng_len(20));
+        _json_find_value(src, key);
+        i = i + 1;
+    }
+    _json_find_value(str_from("{\"a\":\"\\\"k\\\":7\",\"k\":3}"), str_from("k"));
+    _json_find_value(str_from("{\"x\":\t42}"), str_from("x"));
+    _json_find_value(str_from("{\"x\":\n42}"), str_from("x"));
+    _json_find_value(str_from("{\"x\":\r42}"), str_from("x"));
+    return _FUZZ_ITERS + 4;
+}
+
+fn fuzz_version_from_str(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        version_from_str(fuzz_random_bytes(rng_len(40)));
+        i = i + 1;
+    }
+    version_from_str(str_from("abc.1.2"));
+    version_from_str(str_from("1..2"));
+    version_from_str(str_from("1.2.3"));
+    version_from_str(str_from("1.0.0-beta.1"));
+    version_from_str(str_from(""));
+    version_from_str(str_from("1.2.3-pre+build.42"));
+    return _FUZZ_ITERS + 6;
+}
+
+fn fuzz_agent_id_from_str(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var len = 28 + rng_len(16);
+        agent_id_from_str(fuzz_hex_like(len));
+        i = i + 1;
+    }
+    agent_id_from_str(str_from(""));
+    agent_id_from_str(str_from("not-a-uuid"));
+    agent_id_from_str(str_from("00000000-0000-0000-0000-000000000000"));
+    agent_id_from_str(str_from("ffffffff-ffff-ffff-ffff-ffffffffffff"));
+    return _FUZZ_ITERS + 4;
+}
+
+fn fuzz_trace_id_from_str(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var len = 24 + rng_len(16);
+        trace_id_from_str(fuzz_hex_like(len));
+        i = i + 1;
+    }
+    trace_id_from_str(str_from(""));
+    trace_id_from_str(str_from("0123456789ABCDEF0123456789ABCDEF"));
+    trace_id_from_str(str_from("zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"));
+    return _FUZZ_ITERS + 3;
+}
+
+fn fuzz_span_id_from_str(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var len = 8 + rng_len(16);
+        span_id_from_str(fuzz_hex_like(len));
+        i = i + 1;
+    }
+    span_id_from_str(str_from(""));
+    span_id_from_str(str_from("0123456789ABCDEF"));
+    return _FUZZ_ITERS + 2;
+}
+
+fn fuzz_tctx_from_traceparent(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var len = 40 + rng_len(30);
+        tctx_from_traceparent(fuzz_hex_like(len));
+        i = i + 1;
+    }
+    tctx_from_traceparent(str_from(""));
+    tctx_from_traceparent(str_from("00-0123456789ABCDEF0123456789ABCDEF-0123456789ABCDEF-01"));
+    return _FUZZ_ITERS + 2;
+}
+
+fn test_fuzz_json_int() {
+    rng_init(0xCAFEBABE);
+    var n = fuzz_json_int(0);
+    assert_eq(n, _FUZZ_ITERS + 3, "_json_int survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_json_str() {
+    rng_init(0xDEADBEEF);
+    var n = fuzz_json_str(0);
+    assert_eq(n, _FUZZ_ITERS + 9, "_json_str survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_json_find_value() {
+    rng_init(0xFACEFEED);
+    var n = fuzz_json_find_value(0);
+    assert_eq(n, _FUZZ_ITERS + 4, "_json_find_value survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_version_from_str() {
+    rng_init(0xBADC0FFEE);
+    var n = fuzz_version_from_str(0);
+    assert_eq(n, _FUZZ_ITERS + 6, "version_from_str survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_agent_id_from_str() {
+    rng_init(0xDECAFBAD);
+    var n = fuzz_agent_id_from_str(0);
+    assert_eq(n, _FUZZ_ITERS + 4, "agent_id_from_str survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_trace_id_from_str() {
+    rng_init(0xFEEDFACE);
+    var n = fuzz_trace_id_from_str(0);
+    assert_eq(n, _FUZZ_ITERS + 3, "trace_id_from_str survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_span_id_from_str() {
+    rng_init(0xC0DEC0DE);
+    var n = fuzz_span_id_from_str(0);
+    assert_eq(n, _FUZZ_ITERS + 2, "span_id_from_str survived all iterations");
+    return 0;
+}
+
+fn test_fuzz_tctx_from_traceparent() {
+    rng_init(0x1337C0DE);
+    var n = fuzz_tctx_from_traceparent(0);
+    assert_eq(n, _FUZZ_ITERS + 2, "tctx_from_traceparent survived all iterations");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.1.2 fuzz harness (8 parsers, 200 iters each) ===");
+    test_fuzz_json_int();
+    test_fuzz_json_str();
+    test_fuzz_json_find_value();
+    test_fuzz_version_from_str();
+    test_fuzz_agent_id_from_str();
+    test_fuzz_trace_id_from_str();
+    test_fuzz_span_id_from_str();
+    test_fuzz_tctx_from_traceparent();
+    println("");
+    return assert_summary();
+}
