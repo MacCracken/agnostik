@@ -148,7 +148,7 @@ Severity levels: **CRITICAL** (remote / privilege escalation), **HIGH** (moderat
 
 ## Cyrius Conventions
 
-- All struct fields are 8 bytes (`i64`), accessed via `load64` / `store64` with offset
+- Struct fields default to 8 bytes (`i64`), accessed via `load64` / `store64` with offset. Sub-byte widths (`i8`/`i16`/`i32`) are allowed when the value range fits — see `InjectionScores` and `AcceleratorFlags` (v1.1.1 — both are 5- and 9-byte structs of i8 fields respectively). When narrowing a struct, every accessor + setter must use the matching `load8`/`store8` (etc.) and direct `store64(s + N, v)` callers must migrate before the alloc shrinks (otherwise OOB-write).
 - Heap allocation via `fl_alloc()` / `fl_free()` (freelist) for data with individual lifetimes
 - Bump allocation via `alloc()` for long-lived data (vec, str internals)
 - Lazy initialization pattern: `_lazy_vec(ptr)` / `_lazy_map(ptr)` for deferred collection creation

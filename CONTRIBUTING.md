@@ -32,23 +32,59 @@
    ```
 7. Lint (must be clean — CI fails on any warning):
    ```sh
-   for f in src/*.cyr tests/tcyr/*.tcyr tests/bcyr/*.bcyr; do cyrius lint "$f"; done
+   for f in src/*.cyr tests/tcyr/*.tcyr tests/bcyr/*.bcyr; do cyrlint "$f"; done
    ```
-8. Regenerate the dist bundle (CI verifies in-sync):
+8. Type-check (call-site `: Str` annotations):
    ```sh
-   cyrius distlib
+   CYRIUS_TYPE_CHECK=1 cyrius build src/main.cyr build/agnostik
    ```
-9. Submit PR.
+9. API surface gate (catches unintended public-fn drift):
+   ```sh
+   scripts/api-surface.sh check       # if intentional: scripts/api-surface.sh update
+   ```
+10. Bench-regression gate (catches catastrophic perf regressions):
+    ```sh
+    scripts/bench-regression.sh        # ack via [bench-regression-ack] in commit message
+    ```
+11. Regenerate the dist bundle (CI verifies in-sync):
+    ```sh
+    cyrius distlib
+    ```
+12. Submit PR.
 
 ## Code Standards
 
 - Zero panic in library code — use `Result` (`Ok` / `Err`) for fallible operations.
-- All public enums must have `*_name(t)` (string representation) and `*_parse(s)` (roundtrip) functions.
-- All serializable structs must have hand-written `<Type>_to_json(ptr, sb)` and `<Type>_from_json(src)` adapters. Do **not** add `#derive(Serialize)` alongside hand-written adapters — last-define-wins makes the derive output silent dead code (see audit F-011).
+- All public enums must have `*_name(t)` (string representation). Roundtrip
+  (`*_parse(s)`) where the value is parsed from external input.
+- **Serde split** (per [ADR-002](docs/adr/002-derive-serialize-7-of-9.md)):
+  - Trivial all-int structs use `#derive(Serialize)` — cyrius emits
+    `<Struct>_to_json` + `<Struct>_from_json_str`. Add `: i64` (or narrower)
+    annotations to every field.
+  - Structs with custom shape (UUID stringification, enum-name lookup,
+    null-Str handling) keep hand-written `_to_json`/`_from_json` impls — the
+    cyrius derive codegen can't replicate those today.
+  - Either way, JSON output is **compact** (`{"k":v,"k":v}` no spaces) for
+    library uniformity.
 - All parse functions must return `Result` and have roundtrip tests.
-- Performance claims must include benchmark numbers (before/after) — see `docs/benchmarks/history.csv`.
-- All struct fields are 8 bytes (`i64`), accessed via `load64` / `store64` with offset.
-- Heap allocation: `alloc()` (bump) for long-lived data, `fl_alloc()` / `fl_free()` (freelist) for individual lifetimes.
+- Every parser added under `src/` must also be wired into the fuzz harness at
+  `tests/tcyr/test_v112_fuzz.tcyr` (deterministic xorshift64; survival
+  contract: no crash on any byte sequence).
+- Performance claims must include benchmark numbers (before/after) — see
+  `docs/benchmarks/history.csv`.
+- Struct fields default to 8 bytes (`i64`), accessed via `load64` / `store64`
+  with offset. **Sub-byte widths** (`i8`/`i16`/`i32`) are allowed when the
+  value range fits — see `InjectionScores` and `AcceleratorFlags` for the
+  pattern. When you switch a struct from `i64` to a narrow width, update
+  every accessor + setter to use `load8`/`store8` (or the matching width)
+  and search the codebase for direct `store64(s + N, v)` callers — those
+  OOB-write the now-smaller alloc.
+- Heap allocation: `alloc()` (bump) for long-lived data, `fl_alloc()` /
+  `fl_free()` (freelist) for individual lifetimes.
+- Comments inside `#derive(Serialize)` struct bodies break cyrius 5.10.x's
+  codegen (see
+  [`docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md`](docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md)).
+  Keep comments above the directive until upstream ships the fix.
 
 ## Adding New Types
 
