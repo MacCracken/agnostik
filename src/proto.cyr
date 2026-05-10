@@ -1,0 +1,103 @@
+# proto.cyr — minimal protobuf wire-format helpers (OTLP encoder support)
+#
+# Implements just the primitives agnostik's OTLP encoders need —
+# varint, tag, length-delimited string/bytes, fixed64, nested message.
+# Not a general-purpose protobuf library (no parsing, no field-set
+# tracking, no repeated-message machinery beyond byte concatenation
+# at the call site).
+#
+# Wire-type constants per https://protobuf.dev/programming-guides/encoding/
+var PROTO_WT_VARINT  = 0;
+var PROTO_WT_FIXED64 = 1;
+var PROTO_WT_LENGTH  = 2;
+var PROTO_WT_FIXED32 = 5;
+
+# Encode an unsigned int as a base-128 varint, low 7 bits per byte,
+# MSB set on continuation. 1 byte for n < 128, up to 10 bytes for
+# the full i64 range. Caller passes positive values; negatives would
+# sign-extend through the right-shift and emit 10 bytes.
+fn _proto_varint(sb, n) {
+    while ((n & 0xFFFFFFFFFFFFFF80) != 0) {
+        str_builder_putc(sb, ((n & 0x7F) | 0x80) & 0xFF);
+        n = (n >> 7) & 0x01FFFFFFFFFFFFFF;
+    }
+    str_builder_putc(sb, n & 0x7F);
+    return 0;
+}
+
+# Field tag = (field_number << 3) | wire_type, encoded as varint.
+fn _proto_tag(sb, field_no, wire_type) {
+    _proto_varint(sb, (field_no << 3) | wire_type);
+    return 0;
+}
+
+# Encode 8 bytes little-endian (fixed64 wire type).
+fn _proto_fixed64_raw(sb, n) {
+    str_builder_putc(sb, n & 0xFF);
+    str_builder_putc(sb, (n >> 8)  & 0xFF);
+    str_builder_putc(sb, (n >> 16) & 0xFF);
+    str_builder_putc(sb, (n >> 24) & 0xFF);
+    str_builder_putc(sb, (n >> 32) & 0xFF);
+    str_builder_putc(sb, (n >> 40) & 0xFF);
+    str_builder_putc(sb, (n >> 48) & 0xFF);
+    str_builder_putc(sb, (n >> 56) & 0xFF);
+    return 0;
+}
+
+# uint64 / int64 / sint64 (assumed-positive) field — tag + varint.
+fn _proto_int64(sb, field_no, n) {
+    _proto_tag(sb, field_no, PROTO_WT_VARINT);
+    _proto_varint(sb, n);
+    return 0;
+}
+
+# fixed64 field — tag + 8 LE bytes. OTLP uses this for *_unix_nano.
+fn _proto_fixed64(sb, field_no, n) {
+    _proto_tag(sb, field_no, PROTO_WT_FIXED64);
+    _proto_fixed64_raw(sb, n);
+    return 0;
+}
+
+# string field — tag + varint(len) + utf8 bytes.
+fn _proto_string(sb, field_no, s: Str) {
+    _proto_tag(sb, field_no, PROTO_WT_LENGTH);
+    var n = str_len(s);
+    _proto_varint(sb, n);
+    var d = str_data(s);
+    var i = 0;
+    while (i < n) {
+        str_builder_putc(sb, load8(d + i));
+        i = i + 1;
+    }
+    return 0;
+}
+
+# bytes field — tag + varint(len) + raw bytes from `ptr`.
+# Used by OTLP for trace_id (16 bytes), span_id (8 bytes), etc.
+fn _proto_bytes(sb, field_no, ptr, len) {
+    _proto_tag(sb, field_no, PROTO_WT_LENGTH);
+    _proto_varint(sb, len);
+    var i = 0;
+    while (i < len) {
+        str_builder_putc(sb, load8(ptr + i));
+        i = i + 1;
+    }
+    return 0;
+}
+
+# Nested message field — tag + varint(len) + raw bytes from a
+# pre-built sub-message buffer. Caller builds the sub-message in a
+# child str_builder, calls str_builder_build to get a Str, passes
+# it through this fn to wrap with field_no + length prefix.
+fn _proto_message(sb, field_no, sub: Str) {
+    _proto_tag(sb, field_no, PROTO_WT_LENGTH);
+    var n = str_len(sub);
+    _proto_varint(sb, n);
+    var d = str_data(sub);
+    var i = 0;
+    while (i < n) {
+        str_builder_putc(sb, load8(d + i));
+        i = i + 1;
+    }
+    return 0;
+}

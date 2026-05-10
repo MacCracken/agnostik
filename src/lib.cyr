@@ -1,5 +1,6 @@
 include "src/error.cyr"
 include "src/types.cyr"
+include "src/proto.cyr"
 include "src/agent.cyr"
 include "src/security.cyr"
 include "src/telemetry.cyr"

@@ -20,6 +20,7 @@ output = "build/agnostik"
 modules = [
     "src/error.cyr",
     "src/types.cyr",
+    "src/proto.cyr",
     "src/agent.cyr",
     "src/security.cyr",
     "src/telemetry.cyr",
