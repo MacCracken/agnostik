@@ -2,10 +2,10 @@
 
 ## Status
 
-**v1.2.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), 851 test assertions across 12 `.tcyr` files (incl. byte-exact
+**v1.2.1** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), 851 test assertions across 14 `.tcyr` files (incl. byte-exact
 serde golden + 8-parser fuzz harness + OTLP coverage), 25 benchmarks,
-zero external dependencies, Cyrius `5.10.20`. See
+zero external dependencies, Cyrius `5.10.34`. See
 [`state.md`](state.md) for the live snapshot,
 [`../audit/2026-05-10-audit.md`](../audit/2026-05-10-audit.md) for the
 most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
@@ -19,7 +19,7 @@ doing, it has a slot; if it has shipped, it isn't on the roadmap any more.
 
 ## v1.2.x — Ecosystem expansion
 
-### v1.2.1 — Cross-consumer build sweep automation
+### v1.2.2 — Cross-consumer build sweep automation
 
 ✨ **Feature** — A CI workflow (or downstream-triggered job) that, for each
 of the 11 consumers in `state.md`, clones the consumer repo at its main
@@ -29,10 +29,12 @@ green/red. Catches accessor-ABI breaks, struct-layout drift, and serde-
 shape changes before they propagate.
 
 Originally bundled with v1.2.0 OTLP work; pushed because OTLP took the
-slot. Infrastructure cost (orchestrating 11 repos, caching toolchain,
-surfacing per-consumer output) is high enough to be its own slot anyway.
+slot. Re-pinned to v1.2.1, then re-pinned again when v1.2.1 absorbed the
+`5.10.20 → 5.10.34` toolchain refresh. Infrastructure cost (orchestrating
+11 repos, caching toolchain, surfacing per-consumer output) is high
+enough to be its own slot anyway.
 
-### v1.2.2 — OTLP wire-format completion
+### v1.2.3 — OTLP wire-format completion
 
 ✨ **Feature** — extends the v1.2.0 `Span_to_otlp_proto` foundation to the
 remaining OpenTelemetry data-plane shapes:
@@ -50,7 +52,7 @@ remaining OpenTelemetry data-plane shapes:
   span_id + attributes). The `KeyValue` / `AnyValue` cluster is the
   largest sub-suite — about half the slot's effort.
 
-  Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.1's
+  Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.2's
   cross-consumer sweep flags consumers that already work around the gap.
 
 ---

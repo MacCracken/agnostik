@@ -11,9 +11,9 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.2.0
-- **Toolchain**: Cyrius `5.10.20` (pinned in `cyrius.cyml`)
-- **Tests**: 851 assertions across 12 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
+- **Current**: 1.2.1
+- **Toolchain**: Cyrius `5.10.34` (pinned in `cyrius.cyml`)
+- **Tests**: 851 assertions across 14 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
   clean; api-surface gate locked at 871 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed) +
   2026-05-10 (1.0.x line, 1 INFO finding fixed). Cadence: every minor cut.
