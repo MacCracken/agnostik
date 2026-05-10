@@ -23,6 +23,13 @@ enum PiiKind {
     PII_MEDICAL_RECORD;
     PII_BIOMETRIC_DATA;
     PII_CUSTOM;
+    # v1.0.7 additions — emerging regulatory categories. Appended
+    # after PII_CUSTOM to preserve wire-format tag values for
+    # existing consumers. PII_CUSTOM stays in its original position
+    # as the catch-all returned by pii_kind_name's fall-through.
+    PII_GENETIC;             # GDPR Art 9 §1 "genetic data"; CCPA "sensitive PI"
+    PII_BIOMETRIC_TEMPLATE;  # algorithmic representation (distinct from raw PII_BIOMETRIC_DATA)
+    PII_PRECISE_GEOLOCATION; # CCPA / CO / CT / VA precise-location category
 }
 fn pii_kind_name(k) {
     if (k == PII_EMAIL)                 { return "Email"; }
@@ -40,6 +47,9 @@ fn pii_kind_name(k) {
     elif (k == PII_NATIONAL_ID)         { return "NationalId"; }
     elif (k == PII_MEDICAL_RECORD)      { return "MedicalRecord"; }
     elif (k == PII_BIOMETRIC_DATA)      { return "BiometricData"; }
+    elif (k == PII_GENETIC)             { return "Genetic"; }
+    elif (k == PII_BIOMETRIC_TEMPLATE)  { return "BiometricTemplate"; }
+    elif (k == PII_PRECISE_GEOLOCATION) { return "PreciseGeolocation"; }
     return "Custom";
 }
 fn classification_result_new(level) {
