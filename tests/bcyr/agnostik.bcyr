@@ -98,9 +98,9 @@ fn _b_af_to_json() {
 fn _b_af_from_json() { AcceleratorFlags_from_json_str(str_data(_bench_af_json)); return 0; }
 fn _b_is_to_json() {
     var s = injection_scores_new();
-    store64(s, 85);
-    store64(s + 8, 10);
-    store64(s + 32, 95);
+    iscore_set_sql(s, 85);
+    iscore_set_xss(s, 10);
+    iscore_set_prompt_injection(s, 95);
     _ser(s, &InjectionScores_to_json);
     return 0;
 }
@@ -158,7 +158,7 @@ fn main() {
     aflags_set_cuda(_af, 1); aflags_set_vulkan(_af, 1);
     _bench_af_json = _ser(_af, &AcceleratorFlags_to_json);
     var _is = injection_scores_new();
-    store64(_is, 85); store64(_is + 8, 10); store64(_is + 32, 95);
+    iscore_set_sql(_is, 85); iscore_set_xss(_is, 10); iscore_set_prompt_injection(_is, 95);
     _bench_is_json = _ser(_is, &InjectionScores_to_json);
     var _as = agent_stats_new();
     store64(_as, 999); store64(_as + 8, 50000); store64(_as + 16, 86400);
