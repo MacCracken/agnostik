@@ -1,0 +1,191 @@
+# tests/tcyr/test_v107_unicode_pii.tcyr
+#
+# Coverage for the v1.0.7 additive features:
+# - JSON \uXXXX Unicode escape decoder in `_json_str`
+#   (single BMP, surrogate-pair, malformed-fallback paths)
+# - New `PiiKind` variants (PII_GENETIC, PII_BIOMETRIC_TEMPLATE,
+#   PII_PRECISE_GEOLOCATION)
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# ─── \uXXXX decoder — single BMP codepoint paths ──────────────────
+
+fn test_unicode_ascii_via_u_escape() {
+    # A = 'A' (0x41) — falls in 1-byte UTF-8 range.
+    var src = str_from("{\"v\": \"\\u0041\"}");
+    var s = _json_str(src, str_from("v"));
+    assert_eq(str_len(s), 1, "u: ASCII length");
+    assert_eq(load8(str_data(s)), 65, "u: ASCII byte 'A'");
+    return 0;
+}
+
+fn test_unicode_2byte_utf8() {
+    # é = 'é' (U+00E9) — 2-byte UTF-8: 0xC3 0xA9.
+    var src = str_from("{\"v\": \"\\u00E9\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 2, "u: 2-byte length");
+    assert_eq(load8(d + 0), 0xC3, "u: 2-byte b0");
+    assert_eq(load8(d + 1), 0xA9, "u: 2-byte b1");
+    return 0;
+}
+
+fn test_unicode_3byte_utf8() {
+    # 中 = '中' (U+4E2D) — 3-byte UTF-8: 0xE4 0xB8 0xAD.
+    var src = str_from("{\"v\": \"\\u4E2D\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 3, "u: 3-byte length");
+    assert_eq(load8(d + 0), 0xE4, "u: 3-byte b0");
+    assert_eq(load8(d + 1), 0xB8, "u: 3-byte b1");
+    assert_eq(load8(d + 2), 0xAD, "u: 3-byte b2");
+    return 0;
+}
+
+fn test_unicode_surrogate_pair() {
+    # 😀 = '😀' (U+1F600) — 4-byte UTF-8: 0xF0 0x9F 0x98 0x80.
+    var src = str_from("{\"v\": \"\\uD83D\\uDE00\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 4, "u: surrogate pair length");
+    assert_eq(load8(d + 0), 0xF0, "u: surrogate b0");
+    assert_eq(load8(d + 1), 0x9F, "u: surrogate b1");
+    assert_eq(load8(d + 2), 0x98, "u: surrogate b2");
+    assert_eq(load8(d + 3), 0x80, "u: surrogate b3");
+    return 0;
+}
+
+# ─── \uXXXX decoder — malformed-fallback paths (U+FFFD = 0xEF 0xBF 0xBD) ──
+
+fn _assert_replacement_3bytes(s, label) {
+    var d = str_data(s);
+    assert_eq(load8(d + 0), 0xEF, label);
+    assert_eq(load8(d + 1), 0xBF, label);
+    assert_eq(load8(d + 2), 0xBD, label);
+    return 0;
+}
+
+fn test_unicode_invalid_hex() {
+    # \uGHIJ — invalid hex digits → U+FFFD.
+    var src = str_from("{\"v\": \"\\uGHIJ\"}");
+    var s = _json_str(src, str_from("v"));
+    assert_eq(str_len(s), 3, "u: invalid hex length");
+    _assert_replacement_3bytes(s, "u: invalid hex → U+FFFD");
+    return 0;
+}
+
+fn test_unicode_orphan_high_surrogate() {
+    # \uD800 with no low surrogate following → U+FFFD.
+    var src = str_from("{\"v\": \"\\uD800\"}");
+    var s = _json_str(src, str_from("v"));
+    assert_eq(str_len(s), 3, "u: orphan high length");
+    _assert_replacement_3bytes(s, "u: orphan high → U+FFFD");
+    return 0;
+}
+
+fn test_unicode_orphan_low_surrogate() {
+    # \uDC00 alone (low without preceding high) → U+FFFD.
+    var src = str_from("{\"v\": \"\\uDC00\"}");
+    var s = _json_str(src, str_from("v"));
+    assert_eq(str_len(s), 3, "u: orphan low length");
+    _assert_replacement_3bytes(s, "u: orphan low → U+FFFD");
+    return 0;
+}
+
+fn test_unicode_high_then_non_low() {
+    # \uD83D followed by non-surrogate A — the high surrogate
+    # is invalid alone → U+FFFD; then the 'A' decodes normally.
+    var src = str_from("{\"v\": \"\\uD83D\\u0041\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 4, "u: high+non-low length");
+    # bytes 0..2 = U+FFFD; byte 3 = 'A'.
+    assert_eq(load8(d + 0), 0xEF, "u: high+non-low b0");
+    assert_eq(load8(d + 1), 0xBF, "u: high+non-low b1");
+    assert_eq(load8(d + 2), 0xBD, "u: high+non-low b2");
+    assert_eq(load8(d + 3), 65,   "u: high+non-low 'A'");
+    return 0;
+}
+
+# ─── \uXXXX mixed with ASCII + other escapes ──────────────────────
+
+fn test_unicode_mixed_with_ascii() {
+    # ASCII + A + ASCII roundtrip.
+    var src = str_from("{\"v\": \"hi\\u0041yo\"}");
+    var s = _json_str(src, str_from("v"));
+    assert_eq(str_eq(s, str_from("hiAyo")), 1, "u: mixed ASCII");
+    return 0;
+}
+
+fn test_unicode_mixed_with_other_escapes() {
+    # \" + A + \n in same string.
+    var src = str_from("{\"v\": \"\\\"\\u0041\\n\"}");
+    var s = _json_str(src, str_from("v"));
+    var d = str_data(s);
+    assert_eq(str_len(s), 3, "u: mixed escapes length");
+    assert_eq(load8(d + 0), 34, "u: mixed b0 quote");
+    assert_eq(load8(d + 1), 65, "u: mixed b1 'A'");
+    assert_eq(load8(d + 2), 10, "u: mixed b2 newline");
+    return 0;
+}
+
+# ─── PiiKind v1.0.7 additions ──────────────────
+
+fn test_pii_new_variant_names() {
+    assert_eq(streq(pii_kind_name(PII_GENETIC),             "Genetic"),            1, "pii: Genetic");
+    assert_eq(streq(pii_kind_name(PII_BIOMETRIC_TEMPLATE),  "BiometricTemplate"),  1, "pii: BiometricTemplate");
+    assert_eq(streq(pii_kind_name(PII_PRECISE_GEOLOCATION), "PreciseGeolocation"), 1, "pii: PreciseGeolocation");
+    return 0;
+}
+
+fn test_pii_existing_variants_unchanged() {
+    # Sanity — the new appendings shouldn't perturb existing names.
+    assert_eq(streq(pii_kind_name(PII_EMAIL),          "Email"),         1, "pii: Email unchanged");
+    assert_eq(streq(pii_kind_name(PII_BIOMETRIC_DATA), "BiometricData"), 1, "pii: BiometricData unchanged");
+    assert_eq(streq(pii_kind_name(PII_CUSTOM),         "Custom"),        1, "pii: Custom unchanged");
+    return 0;
+}
+
+fn test_pii_new_variants_distinct_tags() {
+    # The 3 new variants must have tag values distinct from existing
+    # ones (otherwise wire-format collision). Existing range is 0..15
+    # (PII_EMAIL..PII_CUSTOM); new range starts at 16.
+    assert_eq(PII_GENETIC > PII_CUSTOM,            1, "pii: GENETIC tag > CUSTOM");
+    assert_eq(PII_BIOMETRIC_TEMPLATE > PII_CUSTOM, 1, "pii: BIOMETRIC_TEMPLATE tag > CUSTOM");
+    assert_eq(PII_PRECISE_GEOLOCATION > PII_CUSTOM, 1, "pii: PRECISE_GEOLOCATION tag > CUSTOM");
+    # Mutually distinct.
+    assert_eq(PII_GENETIC == PII_BIOMETRIC_TEMPLATE, 0, "pii: GENETIC != BIOMETRIC_TEMPLATE");
+    assert_eq(PII_GENETIC == PII_PRECISE_GEOLOCATION, 0, "pii: GENETIC != PRECISE_GEOLOCATION");
+    assert_eq(PII_BIOMETRIC_TEMPLATE == PII_PRECISE_GEOLOCATION, 0, "pii: BIOMETRIC_TEMPLATE != PRECISE_GEOLOCATION");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.0.7: \\uXXXX decoder + PiiKind additions ===");
+    test_unicode_ascii_via_u_escape();
+    test_unicode_2byte_utf8();
+    test_unicode_3byte_utf8();
+    test_unicode_surrogate_pair();
+    test_unicode_invalid_hex();
+    test_unicode_orphan_high_surrogate();
+    test_unicode_orphan_low_surrogate();
+    test_unicode_high_then_non_low();
+    test_unicode_mixed_with_ascii();
+    test_unicode_mixed_with_other_escapes();
+    test_pii_new_variant_names();
+    test_pii_existing_variants_unchanged();
+    test_pii_new_variants_distinct_tags();
+    println("");
+    return assert_summary();
+}
