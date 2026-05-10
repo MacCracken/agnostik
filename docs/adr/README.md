@@ -62,4 +62,5 @@ consumer sweeps green.
 
 ## Index
 
-- [ADR-001 — Revive `#derive(Serialize)` (post-F-011 cyrius maturity)](001-revive-derive-serialize.md)
+- [ADR-001 — Revive `#derive(Serialize)` (post-F-011 cyrius maturity)](001-revive-derive-serialize.md) — *superseded by ADR-002*
+- [ADR-002 — Apply `#derive(Serialize)` to 7 of 9 structs; AgentInfo + TelemetryConfig retain hand-written impls](002-derive-serialize-7-of-9.md)

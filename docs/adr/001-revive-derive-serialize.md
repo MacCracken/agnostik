@@ -1,6 +1,6 @@
 # ADR-001: Revive `#derive(Serialize)` for the 9 hand-written serde structs
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-002](002-derive-serialize-7-of-9.md) (2026-05-10) — discovered cyrius 5.10.14 derive can't replicate AgentInfo or TelemetryConfig's custom semantics (UUID stringification, enum-name export, null-Str handling). 7 of 9 structs proceed; the other 2 retain hand-written impls but adopt derive's compact byte format for uniformity.
 **Date:** 2026-05-09
 **Slot:** v1.1.0
 
