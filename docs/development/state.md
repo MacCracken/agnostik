@@ -5,6 +5,15 @@
 
 ## Version
 
+**1.1.2** — Fuzz harness on top of 1.1.1 (per the v1.1.2 roadmap
+pin). 8 parser entry points exercised with 200 deterministic
+xorshift64-driven inputs each plus all F-002..F-010 audit-finding
+regression seeds. Survival contract: parsers must accept any byte
+sequence without crashing or OOB access. ~1680 calls per run;
+milliseconds wall-clock. File: `tests/tcyr/test_v112_fuzz.tcyr`
+(~290 LoC). 785/785 tests pass (+8 survival counters); no public
+API surface change.
+
 **1.1.1** — Sub-byte field widths on top of 1.1.0 (per the v1.1.1
 roadmap pin). `InjectionScores` (5 fields i64 → i8: 40 B → 5 B) and
 `AcceleratorFlags` (9 fields i64 → i8: 72 B → 9 B) shrunk 87.5%
@@ -183,7 +192,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | ~3,200    | down from 7,121 LOC Rust; derive markers removed in F-011 |
 | Module count          | 12        |                                    |
 | Test files            | 9         | tests/tcyr/                        |
-| Test assertions       | 777       | 0 failed; +42 from v1.1.1 sub-byte widths coverage |
+| Test assertions       | 785       | 0 failed; +8 fuzz survival counters in v1.1.2 (each runs ~210 parser calls) |
 | Benchmarks            | 25        | tests/bcyr/                        |
 | Test binary (DCE)     | 274 KB    | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; 1.0.4 nominal +48 B from dot-syntax codegen) |
 | Build warnings        | 0         |                                    |
@@ -208,7 +217,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.1` (sub-byte field widths for InjectionScores + AcceleratorFlags — 87.5% per-instance heap reduction with unchanged wire format).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.2` (fuzz harness for the 8 parser entry points — survival-only contract; deterministic xorshift64 seeded with fixed constants for reproducibility).
 
 ## Verification hosts
 
