@@ -5,6 +5,17 @@
 
 ## Version
 
+**1.0.8** — Security audit pass + 1 INFO finding fixed. First audit
+since 2026-04-26 (cumulative 1.0.1..1.0.7 diff scope). Findings in
+[`docs/audit/2026-05-10-audit.md`](../audit/2026-05-10-audit.md):
+**F-012 (INFO)** — `_fill_random` fatal-message stderr write
+off-by-one (passed 67 bytes for a 68-byte literal); cosmetic, fixed
+via `strlen()`-based length computation. F-001..F-011 re-verified
+closed. v1.0.7's `\uXXXX` decoder verified clean across input
+validation, buffer safety, syscall review, and pointer validation.
+Established cadence: audit at every minor cut. No public API
+changes; 701/701 tests pass.
+
 **1.0.7** — Two additive features on top of 1.0.6. JSON `\uXXXX`
 Unicode escape decoder lands in `_json_str`, closing the
 F-002/F-004 follow-up note: BMP single + surrogate-pair paths +
@@ -168,7 +179,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.7` (`\uXXXX` Unicode decoder + 3 new `PiiKind` variants).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.8` (post-1.0 security audit pass + F-012 INFO finding fixed).
 
 ## Verification hosts
 
