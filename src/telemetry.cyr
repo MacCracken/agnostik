@@ -268,6 +268,89 @@ fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
 fn span_dropped_attrs(s)  { return load64(s + 88); }
 fn span_dropped_events(s) { return load64(s + 96); }
 fn span_dropped_links(s)  { return load64(s + 104); }
+# v1.2.0 — OTLP wire-format encoder for Span. Maps to
+# opentelemetry.proto.trace.v1.Span. Covers scalar fields:
+# trace_id, span_id, parent_span_id, name, kind, start/end times,
+# status, dropped-counts. Repeated nested-message fields
+# (attributes, events, links) are skipped in this slot — they
+# require nested KeyValue/Event/Link encoders pinned for v1.2.x
+# when a consumer surfaces the need.
+#
+# OTLP field-number reference (proto/trace/v1/trace.proto §Span):
+#   1: trace_id (bytes, 16)
+#   2: span_id (bytes, 8)
+#   3: trace_state (string)        — skipped (caller-set, often empty)
+#   4: parent_span_id (bytes, 8)   — only emitted if non-zero
+#   5: name (string)
+#   6: kind (varint, SpanKind enum)
+#   7: start_time_unix_nano (fixed64)
+#   8: end_time_unix_nano (fixed64) — start + duration_ms*1e6
+#   9: attributes (repeated KeyValue) — DEFERRED v1.2.x
+#  10: dropped_attributes_count (varint)
+#  11: events (repeated Event)        — DEFERRED v1.2.x
+#  12: dropped_events_count (varint)
+#  13: links (repeated Link)          — DEFERRED v1.2.x
+#  14: dropped_links_count (varint)
+#  15: status (Status sub-message: code, message)
+#  16: flags (fixed32)              — skipped (rarely set)
+#
+# SpanKind enum values map agnostik → OTLP:
+#   SPAN_INTERNAL=0 → SPAN_KIND_INTERNAL=1
+#   SPAN_SERVER=1   → SPAN_KIND_SERVER=2
+#   SPAN_CLIENT=2   → SPAN_KIND_CLIENT=3
+#   SPAN_PRODUCER=3 → SPAN_KIND_PRODUCER=4
+#   SPAN_CONSUMER=4 → SPAN_KIND_CONSUMER=5
+fn _span_kind_to_otlp(k) {
+    if (k == SPAN_INTERNAL) { return 1; }
+    if (k == SPAN_SERVER)   { return 2; }
+    if (k == SPAN_CLIENT)   { return 3; }
+    if (k == SPAN_PRODUCER) { return 4; }
+    if (k == SPAN_CONSUMER) { return 5; }
+    return 0;
+}
+# SpanStatus.code: SPAN_UNSET=0 (default OTLP), SPAN_OK=1 → 1, SPAN_ERROR=2 → 2.
+# Maps directly since both enums use the same numeric values.
+fn Span_to_otlp_proto(ptr, sb) {
+    var trace_id = load64(ptr + 8);
+    var span_id  = load64(ptr + 16);
+    var parent   = load64(ptr + 24);
+    var name     = load64(ptr);
+    var kind     = load64(ptr + 40);
+    var start_ns = load64(ptr + 48);
+    var dur_ms   = load64(ptr + 56);
+    # field 1: trace_id (16 raw bytes — agent_id_new returns alloc(16))
+    _proto_bytes(sb, 1, trace_id, 16);
+    # field 2: span_id (8 raw bytes — span_id_new returns alloc(8))
+    _proto_bytes(sb, 2, span_id, 8);
+    # field 4: parent_span_id (only if set)
+    if (parent != 0) { _proto_bytes(sb, 4, parent, 8); }
+    # field 5: name
+    _proto_string(sb, 5, name);
+    # field 6: kind (default SPAN_INTERNAL → 1; emit only if non-default
+    # to match canonical OTLP encoders that elide default-value scalars).
+    if (kind != SPAN_INTERNAL) { _proto_int64(sb, 6, _span_kind_to_otlp(kind)); }
+    # field 7: start_time_unix_nano
+    _proto_fixed64(sb, 7, start_ns);
+    # field 8: end_time_unix_nano = start + duration_ms × 1_000_000
+    _proto_fixed64(sb, 8, start_ns + dur_ms * 1000000);
+    # field 10: dropped_attributes_count (only if non-zero)
+    var da = load64(ptr + 88);
+    if (da != 0) { _proto_int64(sb, 10, da); }
+    # field 12: dropped_events_count
+    var de = load64(ptr + 96);
+    if (de != 0) { _proto_int64(sb, 12, de); }
+    # field 14: dropped_links_count
+    var dl = load64(ptr + 104);
+    if (dl != 0) { _proto_int64(sb, 14, dl); }
+    # field 15: status — only emit if status code is set (non-UNSET)
+    var status = load64(ptr + 32);
+    if (status != SPAN_UNSET) {
+        var status_sb = str_builder_new();
+        _proto_int64(status_sb, 1, status);   # Status.code
+        _proto_message(sb, 15, str_builder_build(status_sb));
+    }
+    return 0;
+}
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
 fn TelemetryConfig_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. The Str
