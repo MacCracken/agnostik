@@ -845,6 +845,11 @@ validation::injection_scores_new/0
 validation::iscore_command/1
 validation::iscore_path_traversal/1
 validation::iscore_prompt_injection/1
+validation::iscore_set_command/2
+validation::iscore_set_path_traversal/2
+validation::iscore_set_prompt_injection/2
+validation::iscore_set_sql/2
+validation::iscore_set_xss/2
 validation::iscore_sql/1
 validation::iscore_xss/1
 validation::validation_result_new/2
