@@ -2,6 +2,45 @@
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-05-10
+
+### Optimization
+
+- **Sub-byte field widths** for the two highest-payoff structs
+  (per v1.1.1 roadmap pin, deferred from v1.1.0):
+  - **`InjectionScores`** — 5 fields `i64` → `i8`. Per-instance
+    heap 40 B → 5 B (87.5% reduction). Range 0..100 fits in i7.
+  - **`AcceleratorFlags`** — 9 fields `i64` → `i8`. Per-instance
+    heap 72 B → 9 B (87.5% reduction). Each field is a 0/1 boolean.
+  - Wire format unchanged — cyrius derive emits the same
+    `{"k":N,"k":N}` shape regardless of underlying width.
+  - 5 new explicit `iscore_set_*` setters added (InjectionScores
+    didn't have them pre-v1.1.1; only direct memory access).
+  - 42 new test assertions in `tests/tcyr/test_v111_subbyte_widths.tcyr`
+    exercising setters, field-independence, i8 boundaries, and
+    derive roundtrip at i8 widths.
+
+### Removed (breaking)
+
+- **Direct memory writes via `store64(is + N, v)` no longer safe**
+  for `InjectionScores` instances — the alloc shrank from 40 B to
+  5 B, so an 8-byte store at offset 8/16/24/32 OOB-writes adjacent
+  heap bytes. Callers must use the new `iscore_set_*` setters
+  (5 fns: sql, xss, command, path_traversal, prompt_injection).
+  AcceleratorFlags's existing `aflags_set_*` setters preserve the
+  same signature; only the storage width shrank, transparently
+  to callers using the setters.
+
+### Issues
+
+- **Filed**: `docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md`
+  — cyrius 5.10.14's `#derive(Serialize)` codegen treats `#`
+  inside the struct body as a field-name disruptor, producing
+  silent-garbage JSON output. Workaround: keep all comments
+  ABOVE the `#derive(Serialize)` directive, never inside the
+  struct's `{ ... }` block. Applied to InjectionScores and
+  AcceleratorFlags definitions.
+
 ## [1.1.0] - 2026-05-10
 
 First minor release on top of the 1.0.x line. Modernization + features
