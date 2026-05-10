@@ -37,8 +37,8 @@ fn test_resource_limits_golden() {
     var rl = resource_limits_new();
     var got = _ser(rl, &ResourceLimits_to_json);
     var want = str_cat(
-        str_from("{\"max_memory\":268435456,\"max_cpu_time\":3600,\"max_fds\":256,"),
-        str_from("\"max_procs\":64,\"max_disk\":0,\"net_bw\":0}"));
+    str_from("{\"max_memory\":268435456,\"max_cpu_time\":3600,\"max_fds\":256,"),
+    str_from("\"max_procs\":64,\"max_disk\":0,\"net_bw\":0}"));
     assert_eq(str_eq(got, want), 1, "ResourceLimits compact bytes (defaults)");
     return 0;
 }
@@ -88,8 +88,8 @@ fn test_token_usage_golden() {
     tusage_set_cache_read(tu, 800);
     var got = _ser(tu, &TokenUsage_to_json);
     var want = str_cat(
-        str_from("{\"prompt_tok\":1000,\"completion_tok\":500,\"total_tok\":1500,"),
-        str_from("\"cache_create_tok\":200,\"cache_read_tok\":800}"));
+    str_from("{\"prompt_tok\":1000,\"completion_tok\":500,\"total_tok\":1500,"),
+    str_from("\"cache_create_tok\":200,\"cache_read_tok\":800}"));
     assert_eq(str_eq(got, want), 1, "TokenUsage compact bytes");
     return 0;
 }
@@ -100,10 +100,10 @@ fn test_accelerator_flags_golden() {
     aflags_set_vulkan(af, 1);
     var got = _ser(af, &AcceleratorFlags_to_json);
     var want = str_cat(
-        str_cat(
-            str_from("{\"cuda_available\":1,\"rocm_available\":0,\"metal_available\":0,"),
-            str_from("\"vulkan_available\":1,\"oneapi_available\":0,\"tpu_available\":0,")),
-        str_from("\"sycl_available\":0,\"openvino_available\":0,\"directml_available\":0}"));
+    str_cat(
+    str_from("{\"cuda_available\":1,\"rocm_available\":0,\"metal_available\":0,"),
+    str_from("\"vulkan_available\":1,\"oneapi_available\":0,\"tpu_available\":0,")),
+    str_from("\"sycl_available\":0,\"openvino_available\":0,\"directml_available\":0}"));
     assert_eq(str_eq(got, want), 1, "AcceleratorFlags compact bytes");
     return 0;
 }
