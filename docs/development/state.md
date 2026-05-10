@@ -5,6 +5,21 @@
 
 ## Version
 
+**1.1.0** — Modernization minor: `#derive(Serialize)` revived for
+7 of 9 trivial all-int structs (per ADR-002 superseding ADR-001 —
+cyrius 5.10.14's derive can't replicate AgentInfo/TelemetryConfig's
+custom shapes); 14 hand-written serde fns deleted (~280 LoC). The 2
+custom-shape structs retain hand-written impls but adopt derive's
+compact byte format for library uniformity. Public API change:
+`<Struct>_from_json(s: Str)` removed for the 7 derive structs;
+consumers use `<Struct>_from_json_str(str_data(j))` (cyrius-emitted
+shape). Wire format change: JSON output is compact across all 9
+structs (RFC-permissive; consumer parsers handle either form).
+5 new `LlmProvider` variants (Together/Fireworks/Bedrock/Vertex/
+Cohere) + 3 new `ModelCapabilities` flags (video_input/caching/
+parallel_tool_calls). 735/735 tests pass (was 701; +34 from new
+golden corpus).
+
 **1.0.8** — Security audit pass + 1 INFO finding fixed. First audit
 since 2026-04-26 (cumulative 1.0.1..1.0.7 diff scope). Findings in
 [`docs/audit/2026-05-10-audit.md`](../audit/2026-05-10-audit.md):
@@ -154,7 +169,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | ~3,200    | down from 7,121 LOC Rust; derive markers removed in F-011 |
 | Module count          | 12        |                                    |
 | Test files            | 9         | tests/tcyr/                        |
-| Test assertions       | 701       | 0 failed; +48 from v1.0.7 unicode/PII coverage |
+| Test assertions       | 735       | 0 failed; +34 from v1.1.0 serde golden corpus + LLM additions |
 | Benchmarks            | 25        | tests/bcyr/                        |
 | Test binary (DCE)     | 274 KB    | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; 1.0.4 nominal +48 B from dot-syntax codegen) |
 | Build warnings        | 0         |                                    |
@@ -179,7 +194,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.8` (post-1.0 security audit pass + F-012 INFO finding fixed).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.0` (`#derive(Serialize)` revival for 7 of 9 structs + compact JSON byte format + 5 new LLM providers + 3 new model-capability flags).
 
 ## Verification hosts
 
