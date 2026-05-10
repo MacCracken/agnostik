@@ -133,21 +133,16 @@ didn't. Order inside this section reflects implementation dependency.
   every consumer's parser breaks silently. The golden-corpus diff is the
   must-have safety net.
 
-### Sub-byte field widths — shrinks several hot structs
+### Sub-byte field widths — shrinks several hot structs (deferred)
 
-🔧 **Optimization (paired with derive)**
-
-- **Targets**: `InjectionScores` (5×i64 score fields, each 0..100 → i8: 40 B
-  → 5 B); `AcceleratorFlags` (9×i64 booleans → i8 each: 72 B → 9 B);
-  `ResourceUsage`, `TokenUsage` similar opportunities where a field's value
-  range fits sub-i64. Cyrius v5.9.36 generates width-correct emit for sub-byte
-  fields. Pair with derive: the same derive-revival diff also touches the field
-  declarations, and golden-corpus testing covers the byte-level changes both
-  introduce.
-- **Risk**: ABI break if any consumer reads these structs by raw offset. None
-  do today (every consumer goes through public accessor functions). Verify via
-  consumer-build sweep before merging — see v1.2.0's automation, but for v1.1.0
-  this is a manual sweep across the 11 consumers in `state.md`.
+🔧 **Optimization** — *deferred from v1.1.0 to v1.1.1.* The v1.1.0
+derive-revival landed on a smaller scope than ADR-001 envisioned (7 of
+9 structs, per ADR-002 — AgentInfo + TelemetryConfig retained
+hand-written). Sub-byte widths apply cleanly to derive-driven structs
+only; tackling them as a separate slot keeps v1.1.0 focused on the
+derive transition. Targets unchanged: `InjectionScores` (5×i64 → i8:
+40 B → 5 B); `AcceleratorFlags` (9×i64 → i8: 72 B → 9 B). ABI
+verification still required.
 
 ### New LLM capabilities tracking ecosystem reality
 
@@ -166,27 +161,13 @@ didn't. Order inside this section reflects implementation dependency.
   a consumer pin since the change is purely additive (existing consumers ignore
   unknown flags via the `_json_int` fall-through-zero path).
 
-### Fuzz harness for parsers
+### Fuzz harness for parsers (deferred)
 
-🛡️ **Hardening**
-
-- **Surface today**: 5 parser entry points handling untrusted input —
-  `_json_int`, `_json_str`, `_json_find_value` (all in `types.cyr`),
-  `version_from_str` (`types.cyr`), `agent_id_from_str` (`types.cyr`),
-  `tctx_from_traceparent` (`telemetry.cyr`), `trace_id_from_str` /
-  `span_id_from_str` (`telemetry.cyr`). The 2026-04-26 audit found 9
-  vulnerabilities in these paths via manual review (F-002..F-005, F-008..F-010);
-  no automated coverage prevents regressions or finds new ones.
-- **Plan**: harness at `tests/fuzz/<parser>.cyr` driving each parser with
-  randomized inputs (empty, truncated, oversized, malformed UTF-8, control
-  bytes, escape-sequence permutations, integer-boundary values). Run on every
-  PR for a fixed iteration budget; full corpus run nightly. Cyrius doesn't
-  ship a fuzz framework today — this slot includes a small fuzz utility
-  (`lib/random.cyr` for input generation; the harness itself is a `.tcyr`
-  loop).
-- **Tie-back to audit findings**: each F-XXX finding becomes a corpus seed in
-  the harness so the regression is forever automated, not just frozen in
-  `tests/tcyr/test_audit_*.tcyr`.
+🛡️ **Hardening** — *deferred from v1.1.0 to v1.1.2.* Same scoping
+rationale as sub-byte widths: keep v1.1.0 focused on the derive
+transition. Surface (8 parsers) and plan unchanged from the
+original v1.1.0 framing. Audit-finding seeds (F-002..F-005,
+F-008..F-010) become regression rows in the harness corpus.
 
 ---
 
