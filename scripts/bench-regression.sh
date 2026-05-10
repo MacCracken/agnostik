@@ -6,15 +6,22 @@
 #
 # Threshold strategy: tuned for CI noise + cyrius's whole-µs rounding.
 # Single-run bench output bounces ±20-30% on github-runners load; the
-# gate catches catastrophic regressions (functions slowing by 50%+ on
-# sub-µs ops, 80%+ on µs+ ops), not subtle drift. Subtle perf work
-# wants manual benches with multiple runs.
-#   - baseline >= 1000ns (us-bracketed, rounding-noisy): 80% threshold
-#   - baseline <  1000ns (ns-precision):                 50% threshold
+# gate catches catastrophic regressions, not subtle drift. Subtle perf
+# work wants manual benches with multiple runs.
+#
+#   - baseline <  1000ns (ns-precision):
+#       fires on delta% > NS_THRESHOLD (default 50%)
+#   - baseline >= 1000ns (us-bracketed, rounding-noisy):
+#       fires on delta% > US_THRESHOLD (default 80%) AND
+#               absolute delta >= 2000ns (≥2 us-buckets)
+#       The 2-bucket floor exists because cyrius rounds avg to whole µs
+#       — `1us → 2us` is a single-bucket transition and could be just
+#       1.999µs → 2.0µs (0.05% real slowdown reported as 100%). Real
+#       regressions on µs-bracket ops shift ≥2 buckets reliably.
 #
 # Usage:
-#   scripts/bench-regression.sh        # default: 50/80% thresholds
-#   scripts/bench-regression.sh 30 50  # tighter: caller absorbs noise
+#   scripts/bench-regression.sh        # default: 50/80% + 2us-bucket
+#   scripts/bench-regression.sh 30 50  # tighter percent thresholds
 
 set -euo pipefail
 
@@ -23,6 +30,7 @@ HISTORY="$REPO_ROOT/docs/benchmarks/history.csv"
 
 NS_THRESHOLD="${1:-50}"
 US_THRESHOLD="${2:-80}"
+US_BUCKET_FLOOR_NS=2000   # ≥2 µs absolute change required for us-bracket fire
 
 # Skip the gate if the HEAD commit message carries the ack tag.
 COMMIT_MSG=$(git log -1 --format=%B 2>/dev/null || echo "")
@@ -82,12 +90,16 @@ for name in "${!CURRENT[@]}"; do
         continue
     fi
     delta=$(awk -v c="$cur" -v b="$base" 'BEGIN { printf "%.1f", (c - b) * 100.0 / b }')
+    abs_delta=$((cur - base))
     if [ "$base" -ge 1000 ]; then
         thresh="$US_THRESHOLD"
+        # us-bracket: require percent AND ≥2 µs-bucket absolute change.
+        is_regression=$(awk -v d="$delta" -v t="$thresh" -v ad="$abs_delta" -v floor="$US_BUCKET_FLOOR_NS" \
+            'BEGIN { print (d > t && ad >= floor) ? 1 : 0 }')
     else
         thresh="$NS_THRESHOLD"
+        is_regression=$(awk -v d="$delta" -v t="$thresh" 'BEGIN { print (d > t) ? 1 : 0 }')
     fi
-    is_regression=$(awk -v d="$delta" -v t="$thresh" 'BEGIN { print (d > t) ? 1 : 0 }')
     if [ "$is_regression" = "1" ]; then
         printf "%-32s %10s %10s %8s%% %7s%% **FAIL**\n" "$name" "$base" "$cur" "$delta" "$thresh" >> "$TABLE"
         fail=$((fail + 1))
