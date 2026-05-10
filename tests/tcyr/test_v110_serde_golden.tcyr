@@ -1,0 +1,213 @@
+# tests/tcyr/test_v110_serde_golden.tcyr
+#
+# Byte-exact golden-corpus assertions for all 9 derive-eligible
+# struct serializers, locking in the v1.1.0 compact JSON format
+# (no spaces). 7 of 9 use `#derive(Serialize)` (cyrius-emitted);
+# 2 (AgentInfo, TelemetryConfig) retain hand-written impls
+# rewritten to compact format for uniformity. See ADR-002.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/test.cyr"
+include "src/lib.cyr"
+
+fn _ser(ptr, fp) {
+    var sb = str_builder_new();
+    fncall2(fp, ptr, sb);
+    return str_builder_build(sb);
+}
+
+fn _has(json, key) {
+    var k = str_from(key);
+    if (str_contains(json, k) == 1) { return 1; }
+    return 0;
+}
+
+# ─── 7 derive-driven structs ─────────────
+
+fn test_resource_limits_golden() {
+    var rl = resource_limits_new();
+    var got = _ser(rl, &ResourceLimits_to_json);
+    var want = str_cat(
+        str_from("{\"max_memory\":268435456,\"max_cpu_time\":3600,\"max_fds\":256,"),
+        str_from("\"max_procs\":64,\"max_disk\":0,\"net_bw\":0}"));
+    assert_eq(str_eq(got, want), 1, "ResourceLimits compact bytes (defaults)");
+    return 0;
+}
+
+fn test_resource_usage_golden() {
+    var ru = resource_usage_new();
+    var got = _ser(ru, &ResourceUsage_to_json);
+    var want = str_from("{\"mem_used\":0,\"cpu_used\":0,\"fds_used\":0,\"procs_used\":0}");
+    assert_eq(str_eq(got, want), 1, "ResourceUsage compact bytes (zeroed)");
+    return 0;
+}
+
+fn test_agent_stats_golden() {
+    var as = agent_stats_new();
+    store64(as, 999); store64(as + 8, 50000); store64(as + 16, 86400);
+    var got = _ser(as, &AgentStats_to_json);
+    var want = str_from("{\"total_requests\":999,\"total_tokens\":50000,\"uptime_seconds\":86400}");
+    assert_eq(str_eq(got, want), 1, "AgentStats compact bytes");
+    return 0;
+}
+
+fn test_edge_overrides_golden() {
+    var eo = edge_overrides_new();
+    store64(eo, 1024); store64(eo + 8, 60); store64(eo + 16, 5);
+    var got = _ser(eo, &EdgeResourceOverrides_to_json);
+    var want = str_from("{\"max_memory\":1024,\"max_cpu_time\":60,\"max_agents\":5}");
+    assert_eq(str_eq(got, want), 1, "EdgeResourceOverrides compact bytes");
+    return 0;
+}
+
+fn test_injection_scores_golden() {
+    var is = injection_scores_new();
+    store64(is, 85); store64(is + 8, 10); store64(is + 16, 5);
+    store64(is + 24, 0); store64(is + 32, 95);
+    var got = _ser(is, &InjectionScores_to_json);
+    var want = str_from("{\"sql\":85,\"xss\":10,\"command\":5,\"path_traversal\":0,\"prompt_injection\":95}");
+    assert_eq(str_eq(got, want), 1, "InjectionScores compact bytes");
+    return 0;
+}
+
+fn test_token_usage_golden() {
+    var tu = token_usage_new();
+    tusage_set_prompt(tu, 1000);
+    tusage_set_completion(tu, 500);
+    tusage_set_total(tu, 1500);
+    tusage_set_cache_create(tu, 200);
+    tusage_set_cache_read(tu, 800);
+    var got = _ser(tu, &TokenUsage_to_json);
+    var want = str_cat(
+        str_from("{\"prompt_tok\":1000,\"completion_tok\":500,\"total_tok\":1500,"),
+        str_from("\"cache_create_tok\":200,\"cache_read_tok\":800}"));
+    assert_eq(str_eq(got, want), 1, "TokenUsage compact bytes");
+    return 0;
+}
+
+fn test_accelerator_flags_golden() {
+    var af = accelerator_flags_new();
+    aflags_set_cuda(af, 1);
+    aflags_set_vulkan(af, 1);
+    var got = _ser(af, &AcceleratorFlags_to_json);
+    var want = str_cat(
+        str_cat(
+            str_from("{\"cuda_available\":1,\"rocm_available\":0,\"metal_available\":0,"),
+            str_from("\"vulkan_available\":1,\"oneapi_available\":0,\"tpu_available\":0,")),
+        str_from("\"sycl_available\":0,\"openvino_available\":0,\"directml_available\":0}"));
+    assert_eq(str_eq(got, want), 1, "AcceleratorFlags compact bytes");
+    return 0;
+}
+
+# ─── 2 hand-written structs (compact per ADR-002) ──
+
+fn test_agent_info_golden_with_name() {
+    var id = agent_id_new();
+    var ai = agent_info_new(id, str_from("alpha"), 1, 3);
+    var got = _ser(ai, &AgentInfo_to_json);
+    # Length = 98:
+    # `{` (1) + `"id":"` (6) + UUID (36) + `","name":"alpha"` (16)
+    #  + `,"agent_type":"User"` (20) + `,"status":"Paused"` (18) + `}` (1) = 98
+    assert_eq(str_len(got), 98, "AgentInfo length with name");
+    assert_eq(_has(got, "\"id\":\""),                1, "AI: compact id");
+    assert_eq(_has(got, "\"name\":\"alpha\""),       1, "AI: compact name");
+    assert_eq(_has(got, "\"agent_type\":\"User\""),  1, "AI: agent_type as enum-name");
+    assert_eq(_has(got, "\"status\":\"Paused\""),    1, "AI: status as enum-name");
+    return 0;
+}
+
+fn test_agent_info_golden_null_name() {
+    var id = agent_id_new();
+    var ai = agent_info_new(id, 0, 1, 0);
+    var got = _ser(ai, &AgentInfo_to_json);
+    assert_eq(_has(got, "\"name\":null"),         1, "AI: null name compact");
+    assert_eq(_has(got, "\"status\":\"Pending\""), 1, "AI: status Pending");
+    return 0;
+}
+
+fn test_telemetry_config_golden_with_endpoint() {
+    var tc = telemetry_config_new();
+    store64(tc + 16, str_from("https://otlp.example/v1/traces"));
+    var got = _ser(tc, &TelemetryConfig_to_json);
+    var want = str_from("{\"enabled\":1,\"sample_rate\":1000,\"export_endpoint\":\"https://otlp.example/v1/traces\"}");
+    assert_eq(str_eq(got, want), 1, "TelemetryConfig compact (with endpoint)");
+    return 0;
+}
+
+fn test_telemetry_config_golden_null_endpoint() {
+    var tc = telemetry_config_new();
+    var got = _ser(tc, &TelemetryConfig_to_json);
+    var want = str_from("{\"enabled\":1,\"sample_rate\":1000,\"export_endpoint\":null}");
+    assert_eq(str_eq(got, want), 1, "TelemetryConfig compact (null endpoint)");
+    return 0;
+}
+
+# ─── v1.1.0 LLM additions ─────────────────────
+
+fn test_v110_new_llm_providers() {
+    assert_eq(streq(llm_provider_name(LLM_TOGETHER),  "Together"),  1, "llm: Together");
+    assert_eq(streq(llm_provider_name(LLM_FIREWORKS), "Fireworks"), 1, "llm: Fireworks");
+    assert_eq(streq(llm_provider_name(LLM_BEDROCK),   "Bedrock"),   1, "llm: Bedrock");
+    assert_eq(streq(llm_provider_name(LLM_VERTEX),    "Vertex"),    1, "llm: Vertex");
+    assert_eq(streq(llm_provider_name(LLM_COHERE),    "Cohere"),    1, "llm: Cohere");
+    return 0;
+}
+
+fn test_v110_llm_provider_tags_distinct() {
+    # New providers must have tag values > LLM_CUSTOM to preserve
+    # wire-format tags 0..12 for existing consumers.
+    assert_eq(LLM_TOGETHER  > LLM_CUSTOM, 1, "llm: TOGETHER  > CUSTOM");
+    assert_eq(LLM_FIREWORKS > LLM_CUSTOM, 1, "llm: FIREWORKS > CUSTOM");
+    assert_eq(LLM_BEDROCK   > LLM_CUSTOM, 1, "llm: BEDROCK   > CUSTOM");
+    assert_eq(LLM_VERTEX    > LLM_CUSTOM, 1, "llm: VERTEX    > CUSTOM");
+    assert_eq(LLM_COHERE    > LLM_CUSTOM, 1, "llm: COHERE    > CUSTOM");
+    return 0;
+}
+
+fn test_v110_new_mcap_flags() {
+    var mc = model_capabilities_new(str_from("test-model"), LLM_ANTHROPIC);
+    # New v1.1.0 flags default to 0
+    assert_eq(mcap_supports_video_input(mc),         0, "mcap: video_input default 0");
+    assert_eq(mcap_supports_caching(mc),             0, "mcap: caching default 0");
+    assert_eq(mcap_supports_parallel_tool_calls(mc), 0, "mcap: parallel default 0");
+    # Setters
+    mcap_set_supports_video_input(mc, 1);
+    mcap_set_supports_caching(mc, 1);
+    mcap_set_supports_parallel_tool_calls(mc, 1);
+    assert_eq(mcap_supports_video_input(mc),         1, "mcap: video_input set");
+    assert_eq(mcap_supports_caching(mc),             1, "mcap: caching set");
+    assert_eq(mcap_supports_parallel_tool_calls(mc), 1, "mcap: parallel set");
+    # Existing flags unaffected
+    assert_eq(mcap_supports_vision(mc),   0, "mcap: vision default unchanged");
+    assert_eq(mcap_supports_thinking(mc), 0, "mcap: thinking default unchanged");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.1.0 serde golden + LLM additions ===");
+    test_resource_limits_golden();
+    test_resource_usage_golden();
+    test_agent_stats_golden();
+    test_edge_overrides_golden();
+    test_injection_scores_golden();
+    test_token_usage_golden();
+    test_accelerator_flags_golden();
+    test_agent_info_golden_with_name();
+    test_agent_info_golden_null_name();
+    test_telemetry_config_golden_with_endpoint();
+    test_telemetry_config_golden_null_endpoint();
+    test_v110_new_llm_providers();
+    test_v110_llm_provider_tags_distinct();
+    test_v110_new_mcap_flags();
+    println("");
+    return assert_summary();
+}
