@@ -71,8 +71,11 @@ fn test_edge_overrides_golden() {
 
 fn test_injection_scores_golden() {
     var is = injection_scores_new();
-    store64(is, 85); store64(is + 8, 10); store64(is + 16, 5);
-    store64(is + 24, 0); store64(is + 32, 95);
+    iscore_set_sql(is, 85);
+    iscore_set_xss(is, 10);
+    iscore_set_command(is, 5);
+    iscore_set_path_traversal(is, 0);
+    iscore_set_prompt_injection(is, 95);
     var got = _ser(is, &InjectionScores_to_json);
     var want = str_from("{\"sql\":85,\"xss\":10,\"command\":5,\"path_traversal\":0,\"prompt_injection\":95}");
     assert_eq(str_eq(got, want), 1, "InjectionScores compact bytes");

@@ -126,11 +126,11 @@ fn test_telemetry_config_roundtrip() {
 
 fn test_injection_scores_roundtrip() {
     var sc = injection_scores_new();
-    store64(sc, 85);
-    store64(sc + 8, 10);
-    store64(sc + 16, 5);
-    store64(sc + 24, 0);
-    store64(sc + 32, 95);
+    iscore_set_sql(sc, 85);
+    iscore_set_xss(sc, 10);
+    iscore_set_command(sc, 5);
+    iscore_set_path_traversal(sc, 0);
+    iscore_set_prompt_injection(sc, 95);
     var j = _ser(sc, &InjectionScores_to_json);
     var sc2 = InjectionScores_from_json_str(str_data(j));
     assert_eq(iscore_sql(sc2), 85, "is sql rt");

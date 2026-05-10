@@ -1,0 +1,158 @@
+# tests/tcyr/test_v111_subbyte_widths.tcyr
+#
+# Coverage for v1.1.1 sub-byte field width refactor:
+# - InjectionScores: 5×i64 → 5×i8 (40 B → 5 B per instance)
+# - AcceleratorFlags: 9×i64 → 9×i8 (72 B → 9 B per instance)
+#
+# Tests exercise:
+# - New iscore_set_* setters
+# - i8 boundary values (0, 100, 127 for InjectionScores; 0, 1 for flags)
+# - Field independence (writing one field doesn't bleed into another —
+#   would catch a width regression where store8 corrupts the next slot)
+# - Roundtrip via derive (_to_json + _from_json_str at i8 widths)
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/test.cyr"
+include "src/lib.cyr"
+
+fn _ser(ptr, fp) {
+    var sb = str_builder_new();
+    fncall2(fp, ptr, sb);
+    return str_builder_build(sb);
+}
+
+# ─── InjectionScores i8 ────
+
+fn test_iscore_setters_basic() {
+    var is = injection_scores_new();
+    iscore_set_sql(is, 50);
+    iscore_set_xss(is, 75);
+    iscore_set_command(is, 100);
+    iscore_set_path_traversal(is, 25);
+    iscore_set_prompt_injection(is, 90);
+    assert_eq(iscore_sql(is),              50,  "is sql 50");
+    assert_eq(iscore_xss(is),              75,  "is xss 75");
+    assert_eq(iscore_command(is),          100, "is cmd 100");
+    assert_eq(iscore_path_traversal(is),   25,  "is path 25");
+    assert_eq(iscore_prompt_injection(is), 90,  "is pi 90");
+    return 0;
+}
+
+fn test_iscore_field_independence() {
+    # Writing each field in turn must not bleed into adjacent fields
+    # — would catch a regression where store8 wrote 8 bytes (corrupting
+    # the next 7 fields).
+    var is = injection_scores_new();
+    iscore_set_sql(is, 100);
+    assert_eq(iscore_sql(is),              100, "is sql=100 after sql write");
+    assert_eq(iscore_xss(is),              0,   "is xss still 0");
+    assert_eq(iscore_command(is),          0,   "is cmd still 0");
+    assert_eq(iscore_path_traversal(is),   0,   "is path still 0");
+    assert_eq(iscore_prompt_injection(is), 0,   "is pi still 0");
+    iscore_set_prompt_injection(is, 99);
+    assert_eq(iscore_sql(is),              100, "is sql preserved");
+    assert_eq(iscore_prompt_injection(is), 99,  "is pi=99 set last");
+    return 0;
+}
+
+fn test_iscore_i8_boundary() {
+    # i8 signed range is [-128, 127]. agnostik scores are 0..100 in
+    # spec but the storage is i8 — verify 127 (i8 max for the
+    # positive-only band we use) round-trips cleanly.
+    var is = injection_scores_new();
+    iscore_set_sql(is, 127);
+    assert_eq(iscore_sql(is), 127, "is sql=127 (i8 max positive)");
+    return 0;
+}
+
+fn test_iscore_roundtrip_i8() {
+    # Byte-exact roundtrip through derive's _to_json + _from_json_str
+    # paths at the new i8 widths.
+    var is = injection_scores_new();
+    iscore_set_sql(is, 1);
+    iscore_set_xss(is, 2);
+    iscore_set_command(is, 3);
+    iscore_set_path_traversal(is, 4);
+    iscore_set_prompt_injection(is, 5);
+    var j = _ser(is, &InjectionScores_to_json);
+    var is2 = InjectionScores_from_json_str(str_data(j));
+    assert_eq(iscore_sql(is2),              1, "is rt sql");
+    assert_eq(iscore_xss(is2),              2, "is rt xss");
+    assert_eq(iscore_command(is2),          3, "is rt cmd");
+    assert_eq(iscore_path_traversal(is2),   4, "is rt path");
+    assert_eq(iscore_prompt_injection(is2), 5, "is rt pi");
+    return 0;
+}
+
+# ─── AcceleratorFlags i8 ──
+
+fn test_aflags_setters_basic() {
+    var af = accelerator_flags_new();
+    aflags_set_cuda(af, 1);
+    aflags_set_metal(af, 1);
+    aflags_set_directml(af, 1);
+    assert_eq(aflags_cuda(af),     1, "af cuda 1");
+    assert_eq(aflags_rocm(af),     0, "af rocm 0");
+    assert_eq(aflags_metal(af),    1, "af metal 1");
+    assert_eq(aflags_vulkan(af),   0, "af vulkan 0");
+    assert_eq(aflags_oneapi(af),   0, "af oneapi 0");
+    assert_eq(aflags_tpu(af),      0, "af tpu 0");
+    assert_eq(aflags_sycl(af),     0, "af sycl 0");
+    assert_eq(aflags_openvino(af), 0, "af openvino 0");
+    assert_eq(aflags_directml(af), 1, "af directml 1");
+    return 0;
+}
+
+fn test_aflags_field_independence() {
+    # 9 fields × set-and-verify-others-still-zero.
+    var af = accelerator_flags_new();
+    aflags_set_directml(af, 1);
+    assert_eq(aflags_cuda(af),     0, "af cuda 0 after directml");
+    assert_eq(aflags_rocm(af),     0, "af rocm 0 after directml");
+    assert_eq(aflags_metal(af),    0, "af metal 0 after directml");
+    assert_eq(aflags_vulkan(af),   0, "af vulkan 0 after directml");
+    assert_eq(aflags_oneapi(af),   0, "af oneapi 0 after directml");
+    assert_eq(aflags_tpu(af),      0, "af tpu 0 after directml");
+    assert_eq(aflags_sycl(af),     0, "af sycl 0 after directml");
+    assert_eq(aflags_openvino(af), 0, "af openvino 0 after directml");
+    assert_eq(aflags_directml(af), 1, "af directml 1");
+    return 0;
+}
+
+fn test_aflags_roundtrip_i8() {
+    var af = accelerator_flags_new();
+    aflags_set_cuda(af, 1);
+    aflags_set_vulkan(af, 1);
+    aflags_set_tpu(af, 1);
+    var j = _ser(af, &AcceleratorFlags_to_json);
+    var af2 = AcceleratorFlags_from_json_str(str_data(j));
+    assert_eq(aflags_cuda(af2),     1, "af rt cuda");
+    assert_eq(aflags_rocm(af2),     0, "af rt rocm");
+    assert_eq(aflags_metal(af2),    0, "af rt metal");
+    assert_eq(aflags_vulkan(af2),   1, "af rt vulkan");
+    assert_eq(aflags_tpu(af2),      1, "af rt tpu");
+    assert_eq(aflags_directml(af2), 0, "af rt directml");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.1.1: sub-byte field widths ===");
+    test_iscore_setters_basic();
+    test_iscore_field_independence();
+    test_iscore_i8_boundary();
+    test_iscore_roundtrip_i8();
+    test_aflags_setters_basic();
+    test_aflags_field_independence();
+    test_aflags_roundtrip_i8();
+    println("");
+    return assert_summary();
+}

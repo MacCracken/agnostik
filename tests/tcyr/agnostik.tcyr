@@ -266,8 +266,8 @@ fn test_serde_resource_usage() {
 }
 fn test_serde_injection_scores() {
     var sc = injection_scores_new();
-    store64(sc, 85);
-    store64(sc + 8, 10);
+    iscore_set_sql(sc, 85);
+    iscore_set_xss(sc, 10);
     var j = _to_json(sc, &InjectionScores_to_json);
     assert(_json_has(j, "sql"), "is: has sql");
     assert(_json_has(j, "xss"), "is: has xss");
