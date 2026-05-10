@@ -64,51 +64,17 @@ fn memory_type_name(t) {
     elif (t == MEM_DDR5)       { return "DDR5"; }
     return "Unknown";
 }
+#derive(Serialize)
 struct AcceleratorFlags {
-    cuda_available;
-    rocm_available;
-    metal_available;
-    vulkan_available;
-    oneapi_available;
-    tpu_available;
-    sycl_available;
-    openvino_available;
-    directml_available;
-}
-fn AcceleratorFlags_to_json(ptr, sb) {
-    str_builder_add_cstr(sb, "{\"cuda_available\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"rocm_available\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"metal_available\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"vulkan_available\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"oneapi_available\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_add_cstr(sb, ", \"tpu_available\": ");
-    str_builder_add_int(sb, load64(ptr + 40));
-    str_builder_add_cstr(sb, ", \"sycl_available\": ");
-    str_builder_add_int(sb, load64(ptr + 48));
-    str_builder_add_cstr(sb, ", \"openvino_available\": ");
-    str_builder_add_int(sb, load64(ptr + 56));
-    str_builder_add_cstr(sb, ", \"directml_available\": ");
-    str_builder_add_int(sb, load64(ptr + 64));
-    str_builder_putc(sb, '}');
-    return 0;
-}
-fn AcceleratorFlags_from_json(src: Str) {
-    var f = alloc(72);
-    store64(f, _json_int(src, str_from("cuda_available")));
-    store64(f + 8, _json_int(src, str_from("rocm_available")));
-    store64(f + 16, _json_int(src, str_from("metal_available")));
-    store64(f + 24, _json_int(src, str_from("vulkan_available")));
-    store64(f + 32, _json_int(src, str_from("oneapi_available")));
-    store64(f + 40, _json_int(src, str_from("tpu_available")));
-    store64(f + 48, _json_int(src, str_from("sycl_available")));
-    store64(f + 56, _json_int(src, str_from("openvino_available")));
-    store64(f + 64, _json_int(src, str_from("directml_available")));
-    return f;
+    cuda_available: i64;
+    rocm_available: i64;
+    metal_available: i64;
+    vulkan_available: i64;
+    oneapi_available: i64;
+    tpu_available: i64;
+    sycl_available: i64;
+    openvino_available: i64;
+    directml_available: i64;
 }
 fn accelerator_flags_new() {
     var f = alloc(72);

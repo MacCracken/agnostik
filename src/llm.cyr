@@ -12,9 +12,17 @@ enum LlmProvider {
     LLM_LMSTUDIO;
     LLM_LOCALAI;
     LLM_CUSTOM;
+    # v1.1.0 additions — 2026-Q1/Q2 ecosystem wave. Appended after
+    # LLM_CUSTOM to preserve wire-format tag values 0..12 for
+    # existing consumers.
+    LLM_TOGETHER;     # Together AI
+    LLM_FIREWORKS;    # Fireworks AI
+    LLM_BEDROCK;      # AWS Bedrock (multi-vendor model hosting)
+    LLM_VERTEX;       # Google Vertex AI
+    LLM_COHERE;       # Cohere
 }
 fn llm_provider_name(p) {
-    if (p == LLM_OLLAMA)     { return "Ollama"; }
+    if (p == LLM_OLLAMA)       { return "Ollama"; }
     elif (p == LLM_LLAMA_CPP)  { return "LlamaCpp"; }
     elif (p == LLM_OPENAI)     { return "OpenAI"; }
     elif (p == LLM_ANTHROPIC)  { return "Anthropic"; }
@@ -26,6 +34,11 @@ fn llm_provider_name(p) {
     elif (p == LLM_OPENROUTER) { return "OpenRouter"; }
     elif (p == LLM_LMSTUDIO)   { return "LMStudio"; }
     elif (p == LLM_LOCALAI)    { return "LocalAI"; }
+    elif (p == LLM_TOGETHER)   { return "Together"; }
+    elif (p == LLM_FIREWORKS)  { return "Fireworks"; }
+    elif (p == LLM_BEDROCK)    { return "Bedrock"; }
+    elif (p == LLM_VERTEX)     { return "Vertex"; }
+    elif (p == LLM_COHERE)     { return "Cohere"; }
     return "Custom";
 }
 enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; }
@@ -176,29 +189,10 @@ fn samp_set_temperature(s, v) { store64(s, v); return 0; }
 fn samp_set_top_p(s, v)       { store64(s + 8, v); return 0; }
 fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
 fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
-struct TokenUsage { prompt_tok; completion_tok; total_tok; cache_create_tok; cache_read_tok; }
-fn TokenUsage_to_json(ptr, sb) {
-    str_builder_add_cstr(sb, "{\"prompt_tok\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"completion_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"total_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_add_cstr(sb, ", \"cache_create_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 24));
-    str_builder_add_cstr(sb, ", \"cache_read_tok\": ");
-    str_builder_add_int(sb, load64(ptr + 32));
-    str_builder_putc(sb, '}');
-    return 0;
-}
-fn TokenUsage_from_json(src: Str) {
-    var u = alloc(40);
-    store64(u, _json_int(src, str_from("prompt_tok")));
-    store64(u + 8, _json_int(src, str_from("completion_tok")));
-    store64(u + 16, _json_int(src, str_from("total_tok")));
-    store64(u + 24, _json_int(src, str_from("cache_create_tok")));
-    store64(u + 32, _json_int(src, str_from("cache_read_tok")));
-    return u;
+#derive(Serialize)
+struct TokenUsage {
+    prompt_tok: i64; completion_tok: i64; total_tok: i64;
+    cache_create_tok: i64; cache_read_tok: i64;
 }
 fn token_usage_new() {
     var u = alloc(40);
@@ -282,12 +276,14 @@ fn stream_error(errmsg: Str) { return tagged_new(STREAM_ERROR, errmsg); }
 fn stream_usage(usage_ptr) { return tagged_new(STREAM_USAGE, usage_ptr); }
 fn stream_ping() { return tagged_new(STREAM_PING, 0); }
 fn model_capabilities_new(model_id: Str, provider) {
-    var m = alloc(96);
+    # 96 → 120 bytes at v1.1.0: 3 new flags appended (video_input,
+    # caching, parallel_tool_calls). Existing offsets 0..88 unchanged.
+    var m = alloc(120);
     store64(m, model_id);
     store64(m + 8, model_id);  # display_name defaults to model_id
     store64(m + 16, provider);
     var i = 24;
-    while (i < 96) { store64(m + i, 0); i = i + 8; }
+    while (i < 120) { store64(m + i, 0); i = i + 8; }
     return m;
 }
 fn mcap_model_id(m)        { return load64(m); }
@@ -302,9 +298,16 @@ fn mcap_supports_streaming(m)  { return load64(m + 64); }
 fn mcap_supports_thinking(m)   { return load64(m + 72); }
 fn mcap_supports_audio(m)      { return load64(m + 80); }
 fn mcap_supports_citations(m)  { return load64(m + 88); }
+# v1.1.0 — 2026-Q1/Q2 ecosystem wave additions.
+fn mcap_supports_video_input(m)         { return load64(m + 96); }
+fn mcap_supports_caching(m)             { return load64(m + 104); }  # prompt/context caching
+fn mcap_supports_parallel_tool_calls(m) { return load64(m + 112); }
 fn mcap_set_display_name(m, v: Str) { store64(m + 8, v); return 0; }
-fn mcap_set_context_window(m, v)  { store64(m + 24, v); return 0; }
-fn mcap_set_max_output(m, v)      { store64(m + 32, v); return 0; }
+fn mcap_set_context_window(m, v)    { store64(m + 24, v); return 0; }
+fn mcap_set_max_output(m, v)        { store64(m + 32, v); return 0; }
+fn mcap_set_supports_video_input(m, v)         { store64(m + 96, v);  return 0; }
+fn mcap_set_supports_caching(m, v)             { store64(m + 104, v); return 0; }
+fn mcap_set_supports_parallel_tool_calls(m, v) { store64(m + 112, v); return 0; }
 fn rate_limit_info_new() {
     var r = alloc(40);
     var i = 0;

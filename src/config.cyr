@@ -31,23 +31,9 @@ fn acfg_generation(c)   { return load64(c + 24); }
 fn acfg_content_hash(c) { return load64(c + 32); }
 fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
 fn acfg_set_hostname(c, v: Str) { store64(c + 8, v); return 0; }
-struct EdgeResourceOverrides { max_memory; max_cpu_time; max_agents; }
-fn EdgeResourceOverrides_to_json(ptr, sb) {
-    str_builder_add_cstr(sb, "{\"max_memory\": ");
-    str_builder_add_int(sb, load64(ptr));
-    str_builder_add_cstr(sb, ", \"max_cpu_time\": ");
-    str_builder_add_int(sb, load64(ptr + 8));
-    str_builder_add_cstr(sb, ", \"max_agents\": ");
-    str_builder_add_int(sb, load64(ptr + 16));
-    str_builder_putc(sb, '}');
-    return 0;
-}
-fn EdgeResourceOverrides_from_json(src: Str) {
-    var e = alloc(24);
-    store64(e, _json_int(src, str_from("max_memory")));
-    store64(e + 8, _json_int(src, str_from("max_cpu_time")));
-    store64(e + 16, _json_int(src, str_from("max_agents")));
-    return e;
+#derive(Serialize)
+struct EdgeResourceOverrides {
+    max_memory: i64; max_cpu_time: i64; max_agents: i64;
 }
 fn edge_overrides_new() {
     var e = alloc(24);
