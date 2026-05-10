@@ -2,6 +2,44 @@
 
 ## [Unreleased]
 
+## [1.0.7] - 2026-05-10
+
+### Added
+
+- **JSON `\uXXXX` Unicode escape decoder** in `src/types.cyr:_json_str`
+  closes the F-002/F-004 follow-up note ("`\uXXXX` is left as a known
+  limitation"). Consumers carrying non-ASCII text through serde now
+  get correct UTF-8 output instead of the literal 6-byte passthrough.
+  - BMP codepoints (`A` → `A`, `é` → `é`, `中` → `中`)
+    encode to 1/2/3 UTF-8 bytes per RFC 3629.
+  - Surrogate pairs (`😀` → `😀`) combine to U+10000+ and
+    encode to 4 UTF-8 bytes.
+  - Malformed escapes (truncated, invalid hex, orphan high or low
+    surrogate, high+non-low) emit U+FFFD REPLACEMENT CHARACTER —
+    common JSON-parser convention; never crashes.
+  - New private helpers in `types.cyr`: `_json_hex_digit`,
+    `_json_parse_u4`, `_utf8_encode`. All bounds-checked (same
+    discipline as F-009).
+  - 38 new test assertions in `tests/tcyr/test_v107_unicode_pii.tcyr`.
+
+- **3 new `PiiKind` variants** for emerging regulatory-attention
+  categories. Appended after `PII_CUSTOM` to preserve wire-format
+  tag values for existing consumers (tags 0..15 unchanged; new
+  variants take 16..18; `PII_CUSTOM` stays at tag 15 as the
+  fall-through catch-all).
+  - `PII_GENETIC` — GDPR Art 9 §1 "genetic data"; CCPA SPI category.
+  - `PII_BIOMETRIC_TEMPLATE` — algorithmic representation, distinct
+    from raw `PII_BIOMETRIC_DATA`. Different threat model:
+    templates are typically irreversible by design.
+  - `PII_PRECISE_GEOLOCATION` — CCPA / CO / CT / VA precise-location
+    category (typically <1850 ft / radius-based definition).
+  - `pii_kind_name` extended with explicit cases returning the
+    PascalCase form ("Genetic", "BiometricTemplate",
+    "PreciseGeolocation").
+  - 10 new test assertions in `tests/tcyr/test_v107_unicode_pii.tcyr`.
+
+Test counts: 701 total (was 653; +48 from the v1.0.7 features file).
+
 ## [1.0.6] - 2026-05-09
 
 ### Added
