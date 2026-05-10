@@ -2,6 +2,29 @@
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-05-10
+
+### Security
+
+- **2026-05-10 audit pass.** First audit since the pre-1.0.0
+  pass at 2026-04-26 — covers the cumulative 1.0.1 through 1.0.7
+  diff (7 patch releases). Findings recorded in
+  [`docs/audit/2026-05-10-audit.md`](docs/audit/2026-05-10-audit.md):
+  - **F-012** (INFO): `_fill_random` fatal-message stderr write
+    off-by-one. The literal at `src/types.cyr:27` is 68 bytes; the
+    syscall passed 67 — trailing `\n` silently dropped. Cosmetic;
+    no memory-safety issue, no info leak. Fixed in this slot
+    via `strlen()`-based length computation so the byte count
+    tracks the literal automatically.
+  - All previously-closed findings (F-001..F-011) re-verified
+    closed across the 1.0.x line.
+  - The v1.0.7 `\uXXXX` decoder was the only meaningful new
+    parser surface; verified clean across input validation, buffer
+    safety, syscall review, and pointer validation.
+
+  **Established cadence:** audit at every minor cut + on demand
+  for CVE/0-day surfaces. Next pinned audit: v1.1.0.
+
 ## [1.0.7] - 2026-05-10
 
 ### Added
