@@ -5,6 +5,17 @@
 
 ## Version
 
+**1.0.7** — Two additive features on top of 1.0.6. JSON `\uXXXX`
+Unicode escape decoder lands in `_json_str`, closing the
+F-002/F-004 follow-up note: BMP single + surrogate-pair paths +
+U+FFFD fallback for malformed escapes; 3 new private helpers
+(`_json_hex_digit`, `_json_parse_u4`, `_utf8_encode`). Three new
+`PiiKind` variants — `PII_GENETIC`, `PII_BIOMETRIC_TEMPLATE`,
+`PII_PRECISE_GEOLOCATION` — appended after `PII_CUSTOM` to
+preserve wire-format tag values. Both additions purely additive;
+no public API removals. Test count grew 653 → 701 (+48 from
+`test_v107_unicode_pii.tcyr`).
+
 **1.0.6** — Performance observability on top of 1.0.5. Adds a
 **bench-regression CI gate** (`scripts/bench-regression.sh`) that
 compares per-op averages against the most recent committed baseline
@@ -132,7 +143,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | ~3,200    | down from 7,121 LOC Rust; derive markers removed in F-011 |
 | Module count          | 12        |                                    |
 | Test files            | 9         | tests/tcyr/                        |
-| Test assertions       | 653       | 0 failed; +40 audit regressions vs pre-1.0 |
+| Test assertions       | 701       | 0 failed; +48 from v1.0.7 unicode/PII coverage |
 | Benchmarks            | 25        | tests/bcyr/                        |
 | Test binary (DCE)     | 274 KB    | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; 1.0.4 nominal +48 B from dot-syntax codegen) |
 | Build warnings        | 0         |                                    |
@@ -157,7 +168,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.6` (bench-regression CI gate + compile-time profile snapshot + 1.0.5 stabilization tail-fixes).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.0.7` (`\uXXXX` Unicode decoder + 3 new `PiiKind` variants).
 
 ## Verification hosts
 
