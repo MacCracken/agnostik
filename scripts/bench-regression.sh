@@ -10,18 +10,26 @@
 # work wants manual benches with multiple runs.
 #
 #   - baseline <  1000ns (ns-precision):
-#       fires on delta% > NS_THRESHOLD (default 50%)
+#       fires on delta% > NS_THRESHOLD (default 50%) AND
+#               absolute delta > NS_FLOOR_NS (default 50)
+#       The absolute floor exists because tiny baselines (e.g. 42 ns
+#       for `token_usage_update`) amplify CPU jitter into percent-
+#       impressive movements: +24 ns of noise reads as 57% slowdown
+#       even though other benches in the same run show ±15% drift.
+#       Real regressions on sub-100ns ops shift more than 50 ns
+#       absolute (≈10 cycles on modern hardware).
 #   - baseline >= 1000ns (us-bracketed, rounding-noisy):
 #       fires on delta% > US_THRESHOLD (default 80%) AND
-#               absolute delta >= 2000ns (≥2 us-buckets)
-#       The 2-bucket floor exists because cyrius rounds avg to whole µs
-#       — `1us → 2us` is a single-bucket transition and could be just
-#       1.999µs → 2.0µs (0.05% real slowdown reported as 100%). Real
-#       regressions on µs-bracket ops shift ≥2 buckets reliably.
+#               absolute delta >= US_BUCKET_FLOOR_NS (default 2000;
+#               ≥2 us-buckets)
+#       cyrius bench rounds avg to whole µs — `1us → 2us` is a
+#       single-bucket transition that could be just 1.999µs → 2.0µs
+#       (0.05% real slowdown reported as 100%). Real regressions on
+#       µs-bracket ops shift ≥2 buckets reliably.
 #
 # Usage:
-#   scripts/bench-regression.sh        # default: 50/80% + 2us-bucket
-#   scripts/bench-regression.sh 30 50  # tighter percent thresholds
+#   scripts/bench-regression.sh         # default: 50/80% + 50ns/2us floors
+#   scripts/bench-regression.sh 30 50   # tighter percent thresholds
 
 set -euo pipefail
 
@@ -30,6 +38,7 @@ HISTORY="$REPO_ROOT/docs/benchmarks/history.csv"
 
 NS_THRESHOLD="${1:-50}"
 US_THRESHOLD="${2:-80}"
+NS_FLOOR_NS=50            # ≥50 ns absolute change required for ns-bracket fire
 US_BUCKET_FLOOR_NS=2000   # ≥2 µs absolute change required for us-bracket fire
 
 # Skip the gate if the HEAD commit message carries the ack tag.
@@ -98,7 +107,10 @@ for name in "${!CURRENT[@]}"; do
             'BEGIN { print (d > t && ad >= floor) ? 1 : 0 }')
     else
         thresh="$NS_THRESHOLD"
-        is_regression=$(awk -v d="$delta" -v t="$thresh" 'BEGIN { print (d > t) ? 1 : 0 }')
+        # ns-bracket: require percent AND >50 ns absolute change.
+        # Tiny baselines amplify CPU jitter into percent movements.
+        is_regression=$(awk -v d="$delta" -v t="$thresh" -v ad="$abs_delta" -v floor="$NS_FLOOR_NS" \
+            'BEGIN { print (d > t && ad > floor) ? 1 : 0 }')
     fi
     if [ "$is_regression" = "1" ]; then
         printf "%-32s %10s %10s %8s%% %7s%% **FAIL**\n" "$name" "$base" "$cur" "$delta" "$thresh" >> "$TABLE"
