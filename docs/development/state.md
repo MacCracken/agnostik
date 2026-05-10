@@ -5,6 +5,18 @@
 
 ## Version
 
+**1.2.0** — First v1.2.x minor: OTLP wire-format primitives. New
+`src/proto.cyr` ships protobuf wire helpers (varint, tag,
+length-delimited string/bytes, fixed64, nested message); new
+`Span_to_otlp_proto(ptr, sb)` in `src/telemetry.cyr` encodes
+agnostik's `Span` to `opentelemetry.proto.trace.v1.Span` on the
+wire across all scalar fields (trace_id, span_id, parent_span_id,
+name, kind, start/end times, status, dropped-counts). 66 byte-exact
+test assertions in `tests/tcyr/test_v120_otlp.tcyr`. Repeated nested-
+message fields (attributes/events/links) + LogRecord/MetricDataPoint
+encoders deferred to v1.2.2 when a consumer surfaces the pin.
+Cross-consumer build sweep re-pinned v1.2.0 → v1.2.1.
+
 **1.1.2** — Fuzz harness on top of 1.1.1 (per the v1.1.2 roadmap
 pin). 8 parser entry points exercised with 200 deterministic
 xorshift64-driven inputs each plus all F-002..F-010 audit-finding
@@ -192,7 +204,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | ~3,200    | down from 7,121 LOC Rust; derive markers removed in F-011 |
 | Module count          | 12        |                                    |
 | Test files            | 9         | tests/tcyr/                        |
-| Test assertions       | 785       | 0 failed; +8 fuzz survival counters in v1.1.2 (each runs ~210 parser calls) |
+| Test assertions       | 851       | 0 failed; +66 byte-exact OTLP coverage in v1.2.0 |
 | Benchmarks            | 25        | tests/bcyr/                        |
 | Test binary (DCE)     | 274 KB    | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; 1.0.4 nominal +48 B from dot-syntax codegen) |
 | Build warnings        | 0         |                                    |
@@ -217,7 +229,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.1.2` (fuzz harness for the 8 parser entry points — survival-only contract; deterministic xorshift64 seeded with fixed constants for reproducibility).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.2.0` (OTLP wire-format primitives — `src/proto.cyr` + `Span_to_otlp_proto` covering all scalar Span fields).
 
 ## Verification hosts
 
