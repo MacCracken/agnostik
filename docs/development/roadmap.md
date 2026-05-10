@@ -173,25 +173,35 @@ F-008..F-010) become regression rows in the harness corpus.
 
 ## v1.2.0 — Ecosystem expansion
 
-### Cross-consumer build sweep automation
+### OTLP wire primitives — **v1.2.0 partial; rest pinned to v1.2.2**
+
+✨ **Feature** — Spans, metrics, and log records model the OpenTelemetry data
+plane shapes and now ship wire-format encoders. v1.2.0 delivered:
+
+- `src/proto.cyr` — minimal protobuf wire helpers (varint, tag,
+  length-delimited string/bytes, fixed64, nested message). Not a
+  general-purpose proto library; just what OTLP types need.
+- `Span_to_otlp_proto(ptr, sb)` covering scalar fields (trace_id,
+  span_id, parent_span_id, name, kind, start/end times, status,
+  dropped-counts).
+
+**Deferred to v1.2.2:**
+- `LogRecord_to_otlp_proto` + `MetricDataPoint_to_otlp_proto`.
+- Repeated nested-message fields on Span (attributes, events, links)
+  — require nested KeyValue/Event/Link encoders. Pin when a consumer
+  surfaces the need.
+
+### Cross-consumer build sweep automation — **re-pinned v1.2.0 → v1.2.1**
 
 ✨ **Feature** — A CI workflow (or downstream-triggered job) that, for each of
 the 11 consumers in `state.md`, clones the consumer repo at its main HEAD,
 swaps `cyrius.cyml`'s agnostik dep to the in-flight commit, and runs the
 consumer's `cyrius build` + `cyrius test`. Reports per-consumer green/red.
 Catches accessor-ABI breaks, struct-layout drift, and serde-shape changes
-before they propagate. Pairs naturally with the v1.1.0 sub-byte-widths work
-(but pinned here because the infrastructure cost is high enough to not block
-v1.1.0).
-
-### OTLP wire primitives
-
-✨ **Feature** — Spans, metrics, and log records currently model the OpenTelemetry
-data plane shapes but don't ship wire-format encoders/decoders. Adding
-`Span_to_otlp_proto(s, sb)` etc. would let consumers like `stiva` skip a layer
-of plumbing. Pinned to v1.2.0 (not v1.1.0) because the wire format is non-
-trivial (protobuf-encoded; we'd take a dependency on `lib/proto.cyr` or
-similar) and no consumer has yet surfaced the pin.
+before they propagate. Pinned to v1.2.1 (originally v1.2.0; pushed when OTLP
+took the v1.2.0 slot per user direction). Pairs naturally with the v1.1.0
+sub-byte-widths work but the infrastructure cost is high enough to be its
+own slot.
 
 ---
 
