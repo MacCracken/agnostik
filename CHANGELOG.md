@@ -4,6 +4,75 @@
 
 ## [1.1.0] - 2026-05-10
 
+First minor release on top of the 1.0.x line. Modernization + features
+bundle.
+
+### Modernization
+
+- **Revived `#derive(Serialize)`** for the 7 trivial all-int structs:
+  `ResourceLimits`, `ResourceUsage`, `AgentStats`, `EdgeResourceOverrides`,
+  `InjectionScores`, `TokenUsage`, `AcceleratorFlags`. Cyrius 5.10.14
+  emits byte-equivalent (modulo compact format) JSON output and
+  roundtrip parses correctly through `<Struct>_from_json_str`.
+  **14 hand-written serde fns deleted (~280 LoC).** Each derive
+  struct gained explicit `: i64` field type annotations so the
+  prim-int codegen path emits correctly.
+- **`AgentInfo` + `TelemetryConfig` retain hand-written impls** —
+  custom serialization shape (UUID stringification, enum-name lookup,
+  null-Str fallback) that cyrius 5.10.14 derive can't replicate. See
+  [`docs/adr/002-derive-serialize-7-of-9.md`](docs/adr/002-derive-serialize-7-of-9.md)
+  for the upstream gap analysis. Both rewritten to compact byte
+  format so library output is uniform across all 9 structs.
+- **ADR-001 superseded by ADR-002.** ADR-001's "replace all 9"
+  decision proved infeasible against actual cyrius 5.10.14
+  capabilities; ADR-002 documents the discovered gaps and the
+  7-of-9 split.
+
+### Added
+
+- **5 new `LlmProvider` variants** for the 2026-Q1/Q2 ecosystem
+  wave. Appended after `LLM_CUSTOM` to preserve wire-format tag
+  values 0..12 for existing consumers: `LLM_TOGETHER`,
+  `LLM_FIREWORKS`, `LLM_BEDROCK`, `LLM_VERTEX`, `LLM_COHERE`.
+- **3 new `ModelCapabilities` flags** (`mcap_supports_video_input`,
+  `mcap_supports_caching`, `mcap_supports_parallel_tool_calls`)
+  with matching setters. Struct grew 96 → 120 bytes; existing
+  offsets 0..88 unchanged.
+- **`tests/tcyr/test_v110_serde_golden.tcyr`** — byte-exact golden
+  corpus (34 assertions) locking in the v1.1.0 compact JSON format
+  across all 9 struct serializers + tests for the new LLM additions.
+
+### Changed
+
+- **JSON serialization byte format** is now compact
+  (`{"k":v,"k":v}`, no spaces) for all 9 struct serializers. Prior
+  format was `{"k": v, "k": v}` (spaces). RFC 7159 makes inter-token
+  whitespace optional; consumer parsers (incl. agnostik's own
+  `_json_*` family) handle both forms unchanged.
+
+### Removed (breaking)
+
+- **`<Struct>_from_json(s: Str)` helpers removed** for the 7 derive
+  structs. Cyrius derive emits `<Struct>_from_json_str(s: cstr)`
+  natively; consumers should call `<Struct>_from_json_str(str_data(j))`
+  directly. Affected: `ResourceLimits`, `ResourceUsage`, `AgentStats`,
+  `EdgeResourceOverrides`, `InjectionScores`, `TokenUsage`,
+  `AcceleratorFlags`. `AgentInfo_from_json` and
+  `TelemetryConfig_from_json` retain the original `(s: Str)`
+  signature (hand-written).
+
+### Roadmap
+
+- Sub-byte field widths **deferred to v1.1.1** (originally bundled
+  with v1.1.0's derive revival; landed on a narrower scope than
+  ADR-001 envisioned, so a separate slot is appropriate).
+- Fuzz harness for parsers **deferred to v1.1.2** — keeps v1.1.0
+  focused on the derive transition.
+
+735/735 tests pass (was 701; +34 from the new golden corpus);
+`CYRIUS_TYPE_CHECK=1` clean; api-surface gate matches (859 → 865
+fns, intentional); bench-regression no regressions.
+
 ## [1.0.8] - 2026-05-10
 
 ### Security
