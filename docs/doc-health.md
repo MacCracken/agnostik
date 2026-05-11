@@ -6,7 +6,7 @@ type: state
 
 # Documentation Health — agnostik
 
-> **Last refresh**: 2026-05-10 (rows refreshed for the v1.2.1 toolchain-refresh cut) | **Refresh cadence**: when docs are touched, update the affected row.
+> **Last refresh**: 2026-05-11 (rows refreshed for the v1.2.2 toolchain-refresh cut) | **Refresh cadence**: when docs are touched, update the affected row.
 > **Scope**: This repo only (`agnostik`) — root-level files (README, CHANGELOG, CLAUDE.md, etc.) plus the entire `docs/` tree. Cross-repo Cyrius pin/version drift lives in [`development/state.md`](development/state.md), not here.
 
 This is a **ledger**, not a one-time audit. Rewrite-in-place as docs change. The doc surface is small (~22 files) but every file is load-bearing — agnostik is the type vocabulary every AGNOS component depends on, and stale type docs propagate downstream.
@@ -42,13 +42,13 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `README.md` | 2026-05-10 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.2.1 (toolchain `5.10.34`, 14 .tcyr files). |
-| `CHANGELOG.md` | 2026-05-10 | ✅ Fresh | Source of truth for shipped work. Updated through 1.2.1 (toolchain refresh patch). |
+| `README.md` | 2026-05-11 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.2.2 (toolchain `5.10.44`). |
+| `CHANGELOG.md` | 2026-05-11 | ✅ Fresh | Source of truth for shipped work. Updated through 1.2.2 (toolchain refresh patch `5.10.34 → 5.10.44`). |
 | `CLAUDE.md` | 2026-05-09 | ✅ Fresh | Durable rules. Sub-byte-field rule softened. State pointer to `docs/development/state.md` intact. |
 | `CONTRIBUTING.md` | 2026-05-09 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + new gate-script steps. |
 | `SECURITY.md` | 2026-05-09 | ✅ Fresh | Supported lines (1.0/1.1/1.2), scope by attack surface, audits table. |
 | `CODE_OF_CONDUCT.md` | 2026-05-03 | 🔵 Evergreen | Standard. |
-| `VERSION` | 2026-05-10 | ✅ Fresh | `1.2.1` — source of truth, matches `cyrius.cyml`. |
+| `VERSION` | 2026-05-11 | ✅ Fresh | `1.2.2` — source of truth, matches `cyrius.cyml`. |
 
 ---
 
@@ -56,8 +56,8 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `state.md` | 2026-05-10 | ✅ Fresh | Live volatile state (version, sizes, test count, consumers, verification hosts). Refreshed at v1.2.1 (toolchain `5.10.34`, DCE ~304 KB, test files 9→14). |
-| `roadmap.md` | 2026-05-10 | ✅ Fresh | Status block bumped to v1.2.1; cross-consumer sweep re-pinned v1.2.1→v1.2.2; OTLP completion re-pinned v1.2.2→v1.2.3. |
+| `state.md` | 2026-05-11 | ✅ Fresh | Live volatile state (version, sizes, test count, consumers, verification hosts). Refreshed at v1.2.2 (toolchain `5.10.44`, DCE ~305 KB). |
+| `roadmap.md` | 2026-05-11 | ✅ Fresh | Status block bumped to v1.2.2; cross-consumer sweep re-pinned v1.2.2→v1.2.3; OTLP completion re-pinned v1.2.3→v1.2.4. |
 
 ---
 

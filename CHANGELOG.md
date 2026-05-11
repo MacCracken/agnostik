@@ -2,6 +2,50 @@
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-05-11
+
+Toolchain-refresh patch on top of 1.2.1. No agnostik-side source
+changes; pure upstream codegen pin bump.
+
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.34` → `5.10.44`
+  (10 upstream slots picked up). All 851 test assertions across 14
+  `.tcyr` files pass under the new pin; lint clean across 15 source
+  files (0 warnings); `dist/agnostik.cyr` re-bundled for the version
+  banner only.
+
+### Performance
+
+- Bench-regression gate clean: 25/25 checked, **0 regressions**
+  against the most recent committed baseline (`docs/benchmarks/history.csv`,
+  v1.2.0 commit `8479082`). The v1.2.1 hot-path codegen wins held
+  through the new pin (`resource_limits_from_json` 493ns,
+  `token_usage_from_json` 476ns, `accel_flags_from_json` 754ns —
+  all still well below the v1.2.0 baselines).
+- One notable additional improvement vs the v1.2.1 numbers:
+  `accelerator_device_full` `177ns → 155ns` (**−12.4%**) — this was
+  the bench that needed a `[bench-regression-ack]` at v1.2.1 cut
+  due to CI jitter; the new pin pulls it cleanly clear of the noise
+  band.
+
+### Stats
+
+- DCE binary `~304 KB` → `~305 KB` (+1 KB nominal codegen drift).
+- Test count unchanged: 851 → 851 (toolchain refresh, no test
+  additions).
+- Public API unchanged: 871 → 871 fns; no breaking changes.
+
+### Deferred
+
+- **Cross-consumer build sweep automation**: re-pinned v1.2.2 →
+  v1.2.3. Originally bundled with v1.2.0 (OTLP took the slot), then
+  re-pinned across v1.2.1 (toolchain) and v1.2.2 (toolchain again).
+  Still the next ecosystem pin once a slot opens.
+- **Span repeated-field encoders + LogRecord/MetricDataPoint**:
+  re-pinned v1.2.3 → v1.2.4. Trigger unchanged: a consumer (likely
+  `stiva`) surfaces the need.
+
 ## [1.2.1] - 2026-05-10
 
 Toolchain-refresh patch on top of 1.2.0. No agnostik-side source
