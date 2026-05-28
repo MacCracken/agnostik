@@ -2,10 +2,11 @@
 
 ## Status
 
-**v1.2.2** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+**v1.2.3** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
 helpers), 851 test assertions across 14 `.tcyr` files (incl. byte-exact
 serde golden + 8-parser fuzz harness + OTLP coverage), 25 benchmarks,
-zero external dependencies, Cyrius `5.10.44`. See
+zero external dependencies, Cyrius `6.0.14` (first 6.x pin; stdlib
+workflow moved `cyrius deps` → `cyrius lib sync`). See
 [`state.md`](state.md) for the live snapshot,
 [`../audit/2026-05-10-audit.md`](../audit/2026-05-10-audit.md) for the
 most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
@@ -19,7 +20,7 @@ doing, it has a slot; if it has shipped, it isn't on the roadmap any more.
 
 ## v1.2.x — Ecosystem expansion
 
-### v1.2.3 — Cross-consumer build sweep automation
+### v1.2.4 — Cross-consumer build sweep automation
 
 ✨ **Feature** — A CI workflow (or downstream-triggered job) that, for each
 of the 11 consumers in `state.md`, clones the consumer repo at its main
@@ -29,12 +30,13 @@ green/red. Catches accessor-ABI breaks, struct-layout drift, and serde-
 shape changes before they propagate.
 
 Originally bundled with v1.2.0 OTLP work; pushed because OTLP took the
-slot. Re-pinned across v1.2.1 (toolchain refresh `5.10.20 → 5.10.34`)
-and v1.2.2 (toolchain refresh `5.10.34 → 5.10.44`). Infrastructure cost
+slot. Re-pinned across v1.2.1 (toolchain refresh `5.10.20 → 5.10.34`),
+v1.2.2 (toolchain refresh `5.10.34 → 5.10.44`), and v1.2.3 (major
+toolchain refresh `5.10.44 → 6.0.14`). Infrastructure cost
 (orchestrating 11 repos, caching toolchain, surfacing per-consumer
 output) is high enough to be its own slot anyway.
 
-### v1.2.4 — OTLP wire-format completion
+### v1.2.5 — OTLP wire-format completion
 
 ✨ **Feature** — extends the v1.2.0 `Span_to_otlp_proto` foundation to the
 remaining OpenTelemetry data-plane shapes:
@@ -52,7 +54,7 @@ remaining OpenTelemetry data-plane shapes:
   span_id + attributes). The `KeyValue` / `AnyValue` cluster is the
   largest sub-suite — about half the slot's effort.
 
-  Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.3's
+  Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.4's
   cross-consumer sweep flags consumers that already work around the gap.
 
 ---

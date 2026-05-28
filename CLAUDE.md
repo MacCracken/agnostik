@@ -37,7 +37,8 @@ Project was ported from a Rust crate. **Do not manually create project structure
 ## Quick Start
 
 ```bash
-cyrius deps                                     # resolve stdlib + git deps into lib/
+cyrius lib sync                                 # copy version-pinned stdlib snapshot into lib/ (6.0.x)
+cyrius deps                                     # resolve git deps into lib/ (stdlib comes from lib sync)
 cyrius build src/main.cyr build/agnostik        # build the test harness binary
 cyrius test tests/tcyr/agnostik.tcyr            # run the unit-test harness
 cyrius bench tests/bcyr/agnostik.bcyr           # benchmarks

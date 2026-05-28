@@ -2,6 +2,71 @@
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-05-28
+
+Major-toolchain-refresh patch on top of 1.2.2. No agnostik-side
+source changes; the cyrius pin crosses the 5.x → 6.x boundary. The
+only project-visible change is the stdlib resolution workflow (see
+Toolchain) — the type vocabulary, wire formats, and public API are
+byte-for-byte unchanged.
+
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `5.10.44` → `6.0.14`
+  (first 6.x pin). All 851 test assertions across 14 `.tcyr` files
+  pass under the new pin; lint clean across 15 source files (0
+  warnings); fmt clean (no drift); `cyrius vet` clean (24 deps, 0
+  untrusted, 0 missing); `dist/agnostik.cyr` re-bundled for the
+  version banner only.
+- **Stdlib resolution moved `cyrius deps` → `cyrius lib sync`.** Under
+  5.x, `cyrius deps` copied the version-pinned stdlib snapshot into
+  `./lib/`. Under 6.0.x that job belongs to the new `cyrius lib sync`
+  command; `cyrius deps` now resolves only `[deps.NAME]` git deps and
+  treats the `[deps] stdlib` array as a presence-check against `./lib/`.
+  A fresh checkout must run `cyrius lib sync` before `cyrius deps`.
+  `cyrius build`/`test`/`bench` still resolve stdlib directly from the
+  snapshot, so they work with no `./lib/` at all; the sync exists for
+  the `deps` presence-check, lock-hash reproducibility, and offline
+  builds. The `[deps] stdlib` list itself is retained unchanged —
+  `cyrius distlib` confirms consumers still rely on it to supply stdlib
+  to the bundle.
+
+### CI / Docs
+
+- **`ci.yml` / `release.yml`** gained a `cyrius lib sync` step before
+  `cyrius deps` so fresh runners populate `./lib/` under 6.0.x.
+- **`CLAUDE.md`** Quick Start updated: `cyrius lib sync` now precedes
+  `cyrius deps`.
+
+### Performance
+
+- Bench-regression gate clean: 25/25 checked, **0 regressions**
+  against the most recent committed baseline (`docs/benchmarks/history.csv`,
+  v1.2.0 commit `8479082`). The v1.2.1/1.2.2 hot-path codegen wins
+  held through the major-version pin (`resource_limits_from_json`
+  457ns, `token_usage_from_json` 403ns, `accel_flags_from_json` 699ns,
+  `injection_scores_from_json` 291ns — all still well below the v1.2.0
+  baselines).
+- `accelerator_device_full` continued to drift down: `155ns → 133ns`
+  vs the v1.2.2 figure.
+
+### Stats
+
+- DCE binary `~305 KB` → `~306 KB` (313,344 bytes; +1 KB nominal
+  codegen drift across the major-version boundary).
+- Test count unchanged: 851 → 851 (toolchain refresh, no test
+  additions).
+- Public API unchanged: 871 → 871 fns; no breaking changes.
+
+### Deferred
+
+- **Cross-consumer build sweep automation**: re-pinned v1.2.3 →
+  v1.2.4. Re-pinned across every patch since v1.2.0; still the next
+  ecosystem pin once a slot opens.
+- **Span repeated-field encoders + LogRecord/MetricDataPoint**:
+  re-pinned v1.2.4 → v1.2.5. Trigger unchanged: a consumer (likely
+  `stiva`) surfaces the need.
+
 ## [1.2.2] - 2026-05-11
 
 Toolchain-refresh patch on top of 1.2.1. No agnostik-side source

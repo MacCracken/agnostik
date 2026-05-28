@@ -6,7 +6,8 @@
 2. Ensure `cc5`, `cyrlint`, and `cyrfmt` are on your PATH (`$HOME/.cyrius/bin/`).
 3. Clone the repo and verify:
    ```sh
-   cyrius deps                                  # resolve stdlib + git deps into lib/
+   cyrius lib sync                              # copy version-pinned stdlib snapshot into lib/ (6.0.x)
+   cyrius deps                                  # resolve git deps into lib/ (stdlib comes from lib sync)
    cyrius build src/main.cyr build/agnostik     # build the test harness
    ```
 

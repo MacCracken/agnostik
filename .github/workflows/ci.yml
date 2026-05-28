@@ -41,6 +41,13 @@ jobs:
           echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
           echo "CYRIUS_HOME=$HOME/.cyrius" >> $GITHUB_ENV
 
+      - name: Sync stdlib snapshot
+        # cyrius 6.0.x serves stdlib from the version-pinned snapshot;
+        # `cyrius lib sync` copies it into ./lib so the `[deps] stdlib`
+        # presence-check in `cyrius deps` resolves. (Pre-6.0, `cyrius
+        # deps` copied stdlib itself; that job moved to `lib sync`.)
+        run: cyrius lib sync
+
       - name: Resolve dependencies
         run: cyrius deps
 
