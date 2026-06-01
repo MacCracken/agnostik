@@ -2,13 +2,15 @@
 
 ## Status
 
-**v1.2.3** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), 851 test assertions across 14 `.tcyr` files (incl. byte-exact
-serde golden + 8-parser fuzz harness + OTLP coverage), 25 benchmarks,
-zero external dependencies, Cyrius `6.0.14` (first 6.x pin; stdlib
-workflow moved `cyrius deps` → `cyrius lib sync`). See
-[`state.md`](state.md) for the live snapshot,
-[`../audit/2026-05-10-audit.md`](../audit/2026-05-10-audit.md) for the
+**v1.3.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), 858 test assertions across 15 `.tcyr` files (incl. byte-exact
+serde golden + 8-parser fuzz harness + OTLP coverage + slice-safety
+regression), 25 benchmarks, zero external dependencies, Cyrius `6.0.26`.
+v1.3.0 was a toolchain refresh + refactoring/optimization closeout
+(proto OTLP-encode memcpy, audit genesis-hash caching, hex-decode
+consolidation, F-013 buffer-safety fix) with no public API or wire
+change. See [`state.md`](state.md) for the live snapshot,
+[`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) for the
 most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
 release history.
 
@@ -56,6 +58,40 @@ remaining OpenTelemetry data-plane shapes:
 
   Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.4's
   cross-consumer sweep flags consumers that already work around the gap.
+
+---
+
+## Backlog — v1.3.0 review deferrals (unpinned)
+
+The v1.3.0 refactoring/optimization review surfaced cleanups that were
+**not** applied because they touch public API surface (removal/rename is
+breaking → needs a major) or are low-value layout changes. Recorded so
+they aren't re-discovered each cycle. Full context in
+[`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) §Deferred.
+
+- **Dead/vestigial public helpers** — `seccomp_errno`/`seccomp_trace`,
+  the `SeccompArg` cluster, `id_mapping_*`, `network_policy_*`
+  (`security.cyr`); `stream_usage` (`llm.cyr`); `AgentInfo_from_json`
+  (`agent.cyr`). The last one also **cannot round-trip its own
+  `_to_json`** (emits `agent_type`/`status` name strings, reads
+  `agent_type_id`/`status_id` ints) and has no test — fold its fix or
+  removal into the v2.0.0 break, or fix-and-test it sooner if a consumer
+  needs it. All are in `docs/api-surface.snapshot`; gate any
+  removal/rename on the v1.2.4 cross-consumer sweep confirming no
+  external dependency.
+- **Setter-less `mcap_supports_*` getters** (`llm.cyr`) — seven flag
+  getters with no matching setter (can only read 0). Decide: add setters
+  (complete the API) or drop (decorative). Additive (setters) is
+  non-breaking; pin to a minor when a consumer needs to *set* them.
+- **`secret_metadata_new` over-alloc** (`secrets.cyr`) — 72 B / 9 slots,
+  3 unreachable (offsets 24/56/64). Shrink to 56 B is a layout change;
+  no in-repo raw writers, but external consumers may. Confirm via the
+  cross-consumer sweep before trimming.
+
+These are not security exposures — F-013 (the one real finding) shipped
+in v1.3.0. Trigger for action: the v1.2.4 cross-consumer sweep landing
+(gives the ABI-safety signal removal needs), or a consumer surfacing a
+concrete need.
 
 ---
 

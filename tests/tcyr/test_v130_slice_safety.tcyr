@@ -1,0 +1,81 @@
+# tests/tcyr/test_v130_slice_safety.tcyr
+#
+# v1.3.0 closeout finding (see docs/audit/2026-06-01-audit.md, F-013):
+# version_from_str located the prerelease/build separator with strchr,
+# which walks to a NUL terminator with no slen bound. On a Str that is
+# a slice of a larger buffer (str_new over heap, no NUL at slen), that
+# over-reads past the logical end and can pick up a '-'/'+' belonging
+# to adjacent memory — corrupting the patch segment length.
+#
+# The fuzz harness never caught it: fuzz_random_bytes always writes a
+# NUL at buf+len, masking the over-read. These tests construct genuine
+# non-NUL-terminated slices to exercise the bound directly.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# A "1.2.3" version embedded in a larger buffer whose trailing bytes are
+# all-digit filler followed by a stray '-' far past slen, with NO NUL in
+# between. Pre-fix, strchr from the patch start would scan the filler,
+# find the stray '-' at offset 20, set patch_end=20, and parse a 16-digit
+# patch ("3999...9") instead of "3". The bounded scan stops at slen=5.
+fn test_f013_version_slice_no_separator() {
+    var buf = alloc(32);
+    store8(buf + 0, 49);   # '1'
+    store8(buf + 1, 46);   # '.'
+    store8(buf + 2, 50);   # '2'
+    store8(buf + 3, 46);   # '.'
+    store8(buf + 4, 51);   # '3'
+    var k = 5;
+    while (k < 20) { store8(buf + k, 57); k = k + 1; }  # '9' filler, no NUL
+    store8(buf + 20, 45);  # stray '-' well past the logical end
+    store8(buf + 21, 0);
+    var r = version_from_str(str_new(buf, 5));   # logical "1.2.3"
+    assert_eq(is_ok(r), 1, "F-013: sliced 1.2.3 parses Ok");
+    var v = payload(r);
+    assert_eq(version_major(v), 1, "F-013: major 1");
+    assert_eq(version_minor(v), 2, "F-013: minor 2");
+    assert_eq(version_patch(v), 3, "F-013: patch 3 (not over-read filler)");
+    return 0;
+}
+
+# A separator that legitimately falls inside the slice must still be
+# honored (the bound must not truncate real prerelease handling).
+fn test_f013_in_slice_separator_honored() {
+    var buf = alloc(32);
+    # "1.2.3-9" inside the slice, then '9' filler past slen with no NUL.
+    store8(buf + 0, 49);   # '1'
+    store8(buf + 1, 46);   # '.'
+    store8(buf + 2, 50);   # '2'
+    store8(buf + 3, 46);   # '.'
+    store8(buf + 4, 51);   # '3'
+    store8(buf + 5, 45);   # '-'
+    store8(buf + 6, 57);   # '9'
+    var k = 7;
+    while (k < 24) { store8(buf + k, 57); k = k + 1; }  # filler past slen
+    store8(buf + 24, 0);
+    var r = version_from_str(str_new(buf, 7));   # logical "1.2.3-9"
+    assert_eq(is_ok(r), 1, "F-013: sliced prerelease parses Ok");
+    var v = payload(r);
+    assert_eq(version_patch(v), 3, "F-013: patch 3 with in-slice separator");
+    assert(version_prerelease(v) != 0, "F-013: prerelease captured");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.3.0 slice-safety regression ===");
+    test_f013_version_slice_no_separator();
+    test_f013_in_slice_separator_honored();
+    println("");
+    return assert_summary();
+}

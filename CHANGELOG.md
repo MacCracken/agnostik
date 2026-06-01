@@ -2,6 +2,92 @@
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-06-01
+
+Minor release on top of 1.2.3: a toolchain refresh paired with a
+refactoring / optimization closeout review. The cyrius pin advances
+within 6.x; the public API and all wire formats are unchanged (no
+breaking changes). The review applied four internal improvements
+(OTLP encode hot path, audit hot path, a hex-decode consolidation,
+and a buffer-safety hardening) plus one new regression test. The
+type vocabulary consumers depend on is byte-for-byte compatible.
+
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `6.0.14` → `6.0.26`. All
+  858 test assertions across 15 `.tcyr` files pass under the new pin;
+  lint clean across 15 source files (0 warnings); fmt clean; `cyrius
+  vet` clean (24 deps, 0 untrusted, 0 missing); `dist/agnostik.cyr`
+  re-bundled.
+
+### Changed
+
+- **`src/proto.cyr`** — `_proto_string`, `_proto_bytes`, and
+  `_proto_message` replaced their per-byte `str_builder_putc` copy
+  loops (one `_sb_grow` bounds-check per byte) with a single
+  `str_builder_add` (one grow + one `memcpy`). This is the OTLP encode
+  hot path — every attribute string, trace_id/span_id, and nested
+  message on the wire. Byte-exact OTLP output unchanged (66 byte-exact
+  assertions in `test_v120_otlp.tcyr` still pass).
+- **`src/audit.cyr`** — the 64-char `GENESIS_HASH` Str is now built
+  once and cached (`_genesis_hash_cached`) instead of being re-wrapped
+  via `str_from` on every `audit_entry_new` and every
+  `integrity_is_genesis`. Removes a per-audit-event `strlen` + 16-byte
+  alloc on the per-event hot path.
+
+### Refactored
+
+- **Hex-nibble decoding consolidated.** `src/telemetry.cyr`'s
+  `_hex_nibble` and `src/types.cyr`'s byte-identical `_json_hex_digit`
+  were merged into a single `_hex_nibble` (in `types.cyr`), and the
+  five open-coded `if (c>=48 && c<=57) ... elif ...` hex ladders in
+  `agent_id_from_str`, `trace_id_from_str` (×2 nibbles),
+  `span_id_from_str`, and the JSON `\uXXXX` decoder now all route
+  through it. One security-sensitive parse, one copy. No behavior
+  change — fuzz survival (`test_v112_fuzz.tcyr`) and all roundtrips
+  hold.
+
+### Security
+
+- **F-013 (LOW) — `version_from_str` unbounded separator scan.** The
+  prerelease (`-`) / build (`+`) separator was located with `strchr`,
+  which walks to a NUL terminator with no `slen` bound. On a `Str`
+  that is a slice of a larger buffer (`str_new` over heap, no NUL at
+  `slen`), this over-read past the logical end and could pick up a
+  `-`/`+` from adjacent memory, corrupting the patch-segment length.
+  Replaced with a single bounded forward scan over `[dot2+1, slen)`
+  (which also subsumes a redundant double-scan). The fuzz harness
+  never caught it — `fuzz_random_bytes` always NUL-terminates at
+  `buf+len`, masking the over-read. Findings in
+  [`docs/audit/2026-06-01-audit.md`](docs/audit/2026-06-01-audit.md).
+
+### Tests
+
+- **`tests/tcyr/test_v130_slice_safety.tcyr`** (+7 assertions) — F-013
+  regression: constructs genuine non-NUL-terminated version slices over
+  a larger buffer (all-digit filler + a stray `-` past `slen`) to
+  exercise the bounded scan directly, where the fuzz harness could not.
+  Test count `851 → 858`.
+
+### Performance
+
+- Bench-regression gate clean: **25/25 checked, 0 regressions** against
+  the committed baseline (`docs/benchmarks/history.csv`, v1.2.0 commit
+  `8479082`). The `_from_json` codegen wins from the 6.x line held
+  (`accel_flags_from_json` 6000ns→937ns, `injection_scores_from_json`
+  2000ns→342ns, `resource_limits_from_json` 3000ns→620ns,
+  `token_usage_from_json` 2000ns→456ns vs the v1.2.0 baseline). Single-
+  run bench jitter bounces several ops ±20–40% within the noise floor;
+  no op crossed threshold. The proto.cyr OTLP-encode win is structural
+  (per-byte grow-check → memcpy) and not covered by a dedicated bench.
+
+### Stats
+
+- DCE binary `313,344 B` → `311,264 B` (−2,080 B / ~−2 KB) from the
+  removed per-byte copy loops and collapsed hex ladders.
+- Test count `851` → `858` (+7 from `test_v130_slice_safety.tcyr`).
+- Public API unchanged; no breaking changes.
+
 ## [1.2.3] - 2026-05-28
 
 Major-toolchain-refresh patch on top of 1.2.2. No agnostik-side

@@ -61,14 +61,8 @@ fn _proto_fixed64(sb, field_no, n) {
 # string field — tag + varint(len) + utf8 bytes.
 fn _proto_string(sb, field_no, s: Str) {
     _proto_tag(sb, field_no, PROTO_WT_LENGTH);
-    var n = str_len(s);
-    _proto_varint(sb, n);
-    var d = str_data(s);
-    var i = 0;
-    while (i < n) {
-        str_builder_putc(sb, load8(d + i));
-        i = i + 1;
-    }
+    _proto_varint(sb, str_len(s));
+    str_builder_add(sb, s);
     return 0;
 }
 
@@ -77,11 +71,7 @@ fn _proto_string(sb, field_no, s: Str) {
 fn _proto_bytes(sb, field_no, ptr, len) {
     _proto_tag(sb, field_no, PROTO_WT_LENGTH);
     _proto_varint(sb, len);
-    var i = 0;
-    while (i < len) {
-        str_builder_putc(sb, load8(ptr + i));
-        i = i + 1;
-    }
+    str_builder_add(sb, str_new(ptr, len));
     return 0;
 }
 
@@ -91,13 +81,7 @@ fn _proto_bytes(sb, field_no, ptr, len) {
 # it through this fn to wrap with field_no + length prefix.
 fn _proto_message(sb, field_no, sub: Str) {
     _proto_tag(sb, field_no, PROTO_WT_LENGTH);
-    var n = str_len(sub);
-    _proto_varint(sb, n);
-    var d = str_data(sub);
-    var i = 0;
-    while (i < n) {
-        str_builder_putc(sb, load8(d + i));
-        i = i + 1;
-    }
+    _proto_varint(sb, str_len(sub));
+    str_builder_add(sb, sub);
     return 0;
 }

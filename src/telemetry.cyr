@@ -18,16 +18,10 @@ fn trace_id_from_str(s: Str) {
     var id = alloc(16);
     var i = 0;
     while (i < 16) {
-        var hi = load8(data + i * 2);
-        var lo = load8(data + i * 2 + 1);
-        if (hi >= 48 && hi <= 57) { hi = hi - 48; }
-        elif (hi >= 97 && hi <= 102) { hi = hi - 87; }
-        elif (hi >= 65 && hi <= 70) { hi = hi - 55; }
-        else { return err_invalid_argument(str_from("invalid hex in trace id")); }
-        if (lo >= 48 && lo <= 57) { lo = lo - 48; }
-        elif (lo >= 97 && lo <= 102) { lo = lo - 87; }
-        elif (lo >= 65 && lo <= 70) { lo = lo - 55; }
-        else { return err_invalid_argument(str_from("invalid hex in trace id")); }
+        var hi = _hex_nibble(load8(data + i * 2));
+        var lo = _hex_nibble(load8(data + i * 2 + 1));
+        if (hi < 0) { return err_invalid_argument(str_from("invalid hex in trace id")); }
+        if (lo < 0) { return err_invalid_argument(str_from("invalid hex in trace id")); }
         store8(id + i, hi << 4 | lo);
         i = i + 1;
     }
@@ -60,12 +54,8 @@ fn span_id_from_str(s: Str) {
     var val = 0;
     var i = 0;
     while (i < 16) {
-        var ch = load8(data + i);
-        var nibble = 0;
-        if (ch >= 48 && ch <= 57) { nibble = ch - 48; }
-        elif (ch >= 97 && ch <= 102) { nibble = ch - 87; }
-        elif (ch >= 65 && ch <= 70) { nibble = ch - 55; }
-        else { return err_invalid_argument(str_from("invalid hex in span id")); }
+        var nibble = _hex_nibble(load8(data + i));
+        if (nibble < 0) { return err_invalid_argument(str_from("invalid hex in span id")); }
         val = (val << 4) | nibble;
         i = i + 1;
     }
@@ -198,12 +188,6 @@ fn tctx_to_traceparent(c): Str {
     store8(fbuf + 2, 0);
     str_builder_add(sb, str_new(fbuf, 2));
     return str_builder_build(sb);
-}
-fn _hex_nibble(ch) {
-    if (ch >= 48 && ch <= 57) { return ch - 48; }
-    if (ch >= 97 && ch <= 102) { return ch - 87; }
-    if (ch >= 65 && ch <= 70) { return ch - 55; }
-    return 0 - 1;
 }
 fn tctx_from_traceparent(s: Str) {
     # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"

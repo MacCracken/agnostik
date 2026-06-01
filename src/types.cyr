@@ -58,9 +58,10 @@ fn _hex_byte(buf, offset, byte) {
     store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
     return 0;
 }
-# Returns 0-15 on valid hex char, -1 on invalid. Used by _json_str
-# (\uXXXX decoder) and version_from_str.
-fn _json_hex_digit(ch) {
+# Returns 0-15 on valid hex char, -1 on invalid. The single hex-char
+# decoder for the whole library — UUID/trace-id/span-id parsing, the
+# _json_str \uXXXX decoder, and version_from_str all route through it.
+fn _hex_nibble(ch) {
     if (ch >= 48 && ch <= 57)  { return ch - 48; }   # '0'-'9'
     if (ch >= 97 && ch <= 102) { return ch - 87; }   # 'a'-'f'
     if (ch >= 65 && ch <= 70)  { return ch - 55; }   # 'A'-'F'
@@ -69,10 +70,10 @@ fn _json_hex_digit(ch) {
 # Parse 4 hex digits at data+offset; return codepoint (0..65535) or -1.
 # Caller is responsible for bounds-checking offset+4 <= slen.
 fn _json_parse_u4(data, offset) {
-    var h0 = _json_hex_digit(load8(data + offset));
-    var h1 = _json_hex_digit(load8(data + offset + 1));
-    var h2 = _json_hex_digit(load8(data + offset + 2));
-    var h3 = _json_hex_digit(load8(data + offset + 3));
+    var h0 = _hex_nibble(load8(data + offset));
+    var h1 = _hex_nibble(load8(data + offset + 1));
+    var h2 = _hex_nibble(load8(data + offset + 2));
+    var h3 = _hex_nibble(load8(data + offset + 3));
     if (h0 < 0) { return 0 - 1; }
     if (h1 < 0) { return 0 - 1; }
     if (h2 < 0) { return 0 - 1; }
@@ -137,17 +138,10 @@ fn agent_id_from_str(s: Str) {
         if (si == 13) { si = si + 1; }
         if (si == 18) { si = si + 1; }
         if (si == 23) { si = si + 1; }
-        var hi = load8(data + si);
-        var lo = load8(data + si + 1);
-        # Convert hex char → nibble
-        if (hi >= 48 && hi <= 57) { hi = hi - 48; }
-        elif (hi >= 97 && hi <= 102) { hi = hi - 87; }
-        elif (hi >= 65 && hi <= 70) { hi = hi - 55; }
-        else { return err_invalid_argument(str_from("invalid hex in agent id")); }
-        if (lo >= 48 && lo <= 57) { lo = lo - 48; }
-        elif (lo >= 97 && lo <= 102) { lo = lo - 87; }
-        elif (lo >= 65 && lo <= 70) { lo = lo - 55; }
-        else { return err_invalid_argument(str_from("invalid hex in agent id")); }
+        var hi = _hex_nibble(load8(data + si));
+        var lo = _hex_nibble(load8(data + si + 1));
+        if (hi < 0) { return err_invalid_argument(str_from("invalid hex in agent id")); }
+        if (lo < 0) { return err_invalid_argument(str_from("invalid hex in agent id")); }
         store8(id + bi, hi << 4 | lo);
         si = si + 2;
         bi = bi + 1;
@@ -421,13 +415,19 @@ fn version_from_str(s: Str) {
         i = i + 1;
     }
     if (dot2 < 0) { return err_invalid_argument(str_from("invalid version: missing second dot")); }
-    # Find pre-release (-) or build (+) separator
-    # Use strchr to find hyphen or plus after patch
+    # Find the first pre-release (-) or build (+) separator after patch.
+    # Bounded scan over [dot2+1, slen): strchr would walk to a NUL
+    # terminator, over-reading past slen on non-NUL-terminated Str
+    # slices (str_new over a larger buffer). Single pass — semver puts
+    # prerelease before build, so the first separator is the patch end.
     var patch_end = slen;
-    var hyph = strchr(data + dot2 + 1, 45);
-    var plus = strchr(data + dot2 + 1, 43);
-    if (hyph >= 0) { patch_end = dot2 + 1 + hyph; }
-    elif (plus >= 0) { patch_end = dot2 + 1 + plus; }
+    var j = dot2 + 1;
+    var ch = 0;
+    while (j < slen) {
+        ch = load8(data + j);
+        if (ch == 45 || ch == 43) { patch_end = j; j = slen; }
+        else { j = j + 1; }
+    }
     # Audit 2026-04-26 F-005: every segment must be wholly digits.
     # str_to_int silently returns 0 for non-numeric input, so a string
     # like "abc.1.2" used to parse as 0.1.2; now it errors.

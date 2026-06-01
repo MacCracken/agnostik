@@ -73,6 +73,7 @@ CYRIUS_DCE=1 cyrius build ...                   # dead-code-eliminated release b
 - Do not add unnecessary dependencies
 - Do not skip tests before claiming changes work
 - Do not skip fuzz / benchmark verification before claiming a feature works
+- **Do not ship any release without the benchmark gate** — `scripts/bench-regression.sh` must pass with 0 regressions (or a `[bench-regression-ack]`) AND the delta table recorded in the CHANGELOG Performance section, on every patch/minor/major. See [Benchmark Gate](#benchmark-gate-before-every-release--patch-minor-major)
 - Do not use `sys_system()` with unsanitized input — command injection risk
 - Do not trust external data (file content, network input, user args) without validation
 - Do not use `break` in while loops with `var` declarations — use flag + `continue`
@@ -120,10 +121,38 @@ Every release runs a security audit pass. Minimum:
 
 Severity levels: **CRITICAL** (remote / privilege escalation), **HIGH** (moderate effort), **MEDIUM** (specific conditions), **LOW** (defense-in-depth).
 
+### Benchmark Gate (before EVERY release — patch, minor, major)
+
+Mandatory on every version bump, no exceptions — toolchain-only refresh
+patches included. A release does not ship until this passes and its
+results are recorded.
+
+1. **Run the gate** — `bash scripts/bench-regression.sh`. It compares
+   per-op averages against the most recent committed baseline in
+   `docs/benchmarks/history.csv` and **fails on any regression** beyond
+   threshold (50% ns-bracket / 80% us-bracket, with absolute floors for
+   jitter). The release is blocked while the gate fails.
+2. **Record the deltas** — the full delta table (baseline → current,
+   delta%, regressions count) goes in the CHANGELOG **Performance**
+   section for the release. "0 regressions" alone is not enough — note
+   the notable movers (wins and drifts) with numbers.
+3. **Intentional trade-offs** — if a regression is deliberate, ack it
+   with `[bench-regression-ack]` in the HEAD commit message AND justify
+   it in the CHANGELOG. Never silence the gate without a written reason.
+4. **Refresh the baseline** — committed `history.csv` baseline updates
+   ride in on the release tag (see CI / Release). Append the release's
+   run so the next release compares against it.
+5. **Subtle perf work** — single-run benches bounce ±20–30% on load;
+   the gate catches catastrophes, not drift. For claimed micro-wins,
+   run benches multiple times and report the median, not one sample.
+
+Numbers or it didn't happen — every performance claim in the CHANGELOG
+cites benchmark figures from this gate.
+
 ### Closeout Pass (before every minor/major bump)
 
 1. **Full test suite** — all `.tcyr` pass, zero failures
-2. **Benchmark baseline** — `cyrius bench`, save CSV; compare against prior closeout
+2. **Benchmark gate** — run the mandatory [Benchmark Gate](#benchmark-gate-before-every-release--patch-minor-major): `scripts/bench-regression.sh` passes, deltas recorded in CHANGELOG, baseline appended to `history.csv`
 3. **Dead code audit** — remove unused functions; record remaining floor in CHANGELOG
 4. **Refactor pass** — consolidate the minor's additions where parallel codepaths accreted
 5. **Code review pass** — walk diffs end-to-end for missed guards, ABI leaks, off-by-ones, silently-ignored errors
