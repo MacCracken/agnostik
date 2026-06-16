@@ -11,9 +11,9 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.2.3
-- **Toolchain**: Cyrius `6.0.14` (pinned in `cyrius.cyml`)
-- **Tests**: 851 assertions across 14 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
+- **Current**: 1.3.1
+- **Toolchain**: Cyrius `6.2.11` (pinned in `cyrius.cyml`)
+- **Tests**: 858 assertions across 15 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
   clean; api-surface gate locked at 871 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed) +
   2026-05-10 (1.0.x line, 1 INFO finding fixed). Cadence: every minor cut.
@@ -71,7 +71,7 @@ ResourceLimits_to_json(rl, j);                        # `{"max_memory":268435456
 ## Build / Test / Bench
 
 ```bash
-cyrius lib sync                                       # copy version-pinned stdlib snapshot into lib/ (6.0.x)
+cyrius lib sync                                       # copy version-pinned stdlib snapshot into lib/ (6.2.x)
 cyrius deps                                           # resolve git deps into lib/ (stdlib comes from lib sync)
 cyrius build src/main.cyr build/agnostik              # compile the test harness
 for t in tests/tcyr/*.tcyr; do cyrius test "$t"; done # 851/851

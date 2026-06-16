@@ -2,14 +2,16 @@
 
 ## Status
 
-**v1.3.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+**v1.3.1** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
 helpers), 858 test assertions across 15 `.tcyr` files (incl. byte-exact
 serde golden + 8-parser fuzz harness + OTLP coverage + slice-safety
-regression), 25 benchmarks, zero external dependencies, Cyrius `6.0.26`.
-v1.3.0 was a toolchain refresh + refactoring/optimization closeout
-(proto OTLP-encode memcpy, audit genesis-hash caching, hex-decode
-consolidation, F-013 buffer-safety fix) with no public API or wire
-change. See [`state.md`](state.md) for the live snapshot,
+regression), 25 benchmarks, zero external dependencies, Cyrius `6.2.11`.
+v1.3.1 was a toolchain-refresh patch (Cyrius `6.0.26` → `6.2.11`; stdlib
+`json` → `bayan` dep migration; no source changes; 3 ack'd bench
+regressions vs net 67–87% JSON-decode codegen wins) with no public API or
+wire change. v1.3.0 was a toolchain refresh + refactoring/optimization
+closeout (proto OTLP-encode memcpy, audit genesis-hash caching, hex-decode
+consolidation, F-013 buffer-safety fix). See [`state.md`](state.md) for the live snapshot,
 [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) for the
 most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
 release history.

@@ -6,7 +6,7 @@ type: state
 
 # Documentation Health — agnostik
 
-> **Last refresh**: 2026-06-01 (rows refreshed for the v1.3.0 toolchain-refresh + refactoring/optimization cut — Cyrius `6.0.14` → `6.0.26`; CLAUDE.md gained a mandatory Benchmark Gate; new `2026-06-01-audit.md`) | **Refresh cadence**: when docs are touched, update the affected row.
+> **Last refresh**: 2026-06-15 (rows refreshed for the v1.3.1 toolchain-refresh patch — Cyrius `6.0.26` → `6.2.11`; stdlib `json` → `bayan` dep migration; CHANGELOG / state.md / VERSION / CLAUDE.md Quick Start updated) | **Refresh cadence**: when docs are touched, update the affected row.
 > **Scope**: This repo only (`agnostik`) — root-level files (README, CHANGELOG, CLAUDE.md, etc.) plus the entire `docs/` tree. Cross-repo Cyrius pin/version drift lives in [`development/state.md`](development/state.md), not here.
 
 This is a **ledger**, not a one-time audit. Rewrite-in-place as docs change. The doc surface is small (~22 files) but every file is load-bearing — agnostik is the type vocabulary every AGNOS component depends on, and stale type docs propagate downstream.
@@ -43,12 +43,12 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 | File | Last touched | Status | Notes |
 |---|---|---|---|
 | `README.md` | 2026-05-28 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.2.3 (toolchain `6.0.14`); Quick Start gained `cyrius lib sync` step. |
-| `CHANGELOG.md` | 2026-06-01 | ✅ Fresh | Source of truth for shipped work. Updated through 1.3.0 (toolchain `6.0.14 → 6.0.26` + refactoring/optimization closeout; F-013 fix). |
-| `CLAUDE.md` | 2026-06-01 | ✅ Fresh | Durable rules. **Added mandatory Benchmark Gate** (run `bench-regression.sh` + record deltas on every release) — new Process subsection + hard-constraint rule + Closeout step-2 link. Quick Start `cyrius lib sync` intact. |
-| `CONTRIBUTING.md` | 2026-05-28 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + new gate-script steps. Setup snippet gained `cyrius lib sync` (6.0.x). |
+| `CHANGELOG.md` | 2026-06-15 | ✅ Fresh | Source of truth for shipped work. Updated through 1.3.1 (toolchain `6.0.26 → 6.2.11`; stdlib `json → bayan` dep migration; 3 ack'd bench regressions vs net 67–87% JSON-decode wins; DCE +81 KB). |
+| `CLAUDE.md` | 2026-06-15 | ✅ Fresh | Durable rules. Quick Start `cyrius lib sync` annotation bumped `(6.0.x)` → `(6.2.x)`. Mandatory Benchmark Gate + sub-byte rules intact. |
+| `CONTRIBUTING.md` | 2026-06-15 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + new gate-script steps. Setup snippet `cyrius lib sync` annotation bumped `(6.0.x)` → `(6.2.x)`. |
 | `SECURITY.md` | 2026-05-09 | ✅ Fresh | Supported lines (1.0/1.1/1.2), scope by attack surface, audits table. |
 | `CODE_OF_CONDUCT.md` | 2026-05-03 | 🔵 Evergreen | Standard. |
-| `VERSION` | 2026-06-01 | ✅ Fresh | `1.3.0` — source of truth, matches `cyrius.cyml`. |
+| `VERSION` | 2026-06-15 | ✅ Fresh | `1.3.1` — source of truth, matches `cyrius.cyml`. |
 
 ---
 
@@ -56,7 +56,7 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `state.md` | 2026-06-01 | ✅ Fresh | Live volatile state (version, sizes, test count, consumers, verification hosts). Refreshed at v1.3.0 (toolchain `6.0.26`, DCE 311,264 B / ~304 KB, 858 assertions, 15 test files). |
+| `state.md` | 2026-06-15 | ✅ Fresh | Live volatile state (version, sizes, test count, consumers, verification hosts). Refreshed at v1.3.1 (toolchain `6.2.11`, stdlib `json → bayan`, DCE 392,840 B / ~393 KB, 858 assertions, 15 test files). |
 | `roadmap.md` | 2026-06-01 | ✅ Fresh | Status block bumped to v1.3.0 (Cyrius `6.0.26`); v1.3.0 review items recorded; deferred cleanups added to backlog. |
 
 ---

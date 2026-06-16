@@ -2,6 +2,69 @@
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-06-15
+
+Toolchain-refresh patch on top of 1.3.0. Cyrius pin `6.0.26` →
+`6.2.11`. No agnostik-side source changes; the public API surface
+(871 fns) and all wire formats are byte-for-byte unchanged. The one
+project-visible change is a stdlib-layout migration: 6.2.x folds the
+former standalone `json` module (along with `base64`/`csv`/`toml`)
+into the bundled `bayan` distribution module, so `[deps] stdlib`
+swaps `json` → `bayan`. agnostik never called stdlib json directly
+(its JSON parsing is the hand-rolled `_json_*` family in
+`src/types.cyr`), but the 6.2.11 build references `bayan_json_get`
+from the auto-resolved stdlib preamble, so `bayan` must be declared
+to keep the build warning-free. `lib/` was wiped and re-synced from
+the 6.2.11 snapshot (`cyrius lib sync`, 97 `.cyr` files).
+
+### Toolchain
+
+- **`cyrius.cyml`** `[package].cyrius` pinned `6.0.26` → `6.2.11`.
+- **`cyrius.cyml`** `[deps] stdlib` `json` → `bayan` (6.2.x stdlib
+  reorg; standalone `json.cyr` no longer ships). All 858 test
+  assertions across 15 `.tcyr` files pass under the new pin; lint
+  clean across 15 source files (0 warnings); fmt clean; api-surface
+  unchanged at 871 public fns; `dist/agnostik.cyr` re-bundled for the
+  version banner only.
+
+### Performance
+
+Bench-regression gate vs the committed v1.2.0 baseline in
+`docs/benchmarks/history.csv`: **25 checked, 3 regressions** (medians
+of 6 runs — single-run benches bounce ±20–30%). The 6.2.11 codegen is
+a strongly net-positive trade-off — the multi-µs JSON-decode hot paths
+collapsed by 67–87%, while three sub-300ns construction/format ops
+gained ~100ns each. The three regressions are toolchain codegen, not
+source changes (source is unchanged), and are **ack'd with
+`[bench-regression-ack]`** — there is nothing to optimize agnostik-side
+and the net is overwhelmingly favorable.
+
+Wins (the ops that matter for wire decode at scale):
+
+| benchmark                    | baseline (ns) | current (ns) | delta% |
+|------------------------------|--------------:|-------------:|-------:|
+| accel_flags_from_json        |          6000 |         ~810 | −86.5% |
+| resource_limits_from_json    |          3000 |         ~500 | −83.5% |
+| injection_scores_from_json   |          2000 |         ~360 | −82.4% |
+| token_usage_from_json        |          2000 |         ~485 | −75.8% |
+| agent_stats_from_json        |          1000 |         ~330 | −67.6% |
+
+Regressions (ack'd — small constructor/format ops, ~100ns absolute):
+
+| benchmark                    | baseline (ns) | current (ns) | delta% | threshold |
+|------------------------------|--------------:|-------------:|-------:|----------:|
+| version_roundtrip            |           371 |         ~668 | +80.1% |       50% |
+| accelerator_device_full      |           177 |         ~284 | +60.5% |       50% |
+| version_to_str               |           191 |         ~296 | +55.0% |       50% |
+
+DCE binary `311,264 B` → `392,840 B` (+81 KB). Two compounding causes:
+(1) 6.2.11's DCE **NOPs** unreachable functions in place rather than
+stripping them (`257,630 bytes NOPed`, vs eliminated under 6.0.x); and
+(2) the `bayan` bundle (base64+json+csv+toml) adds ~119 KB of
+now-NOPed dead code that the leaner standalone `json.cyr` did not.
+None of it is reachable — all 858 tests pass and the type vocabulary
+consumers depend on is unchanged.
+
 ## [1.3.0] - 2026-06-01
 
 Minor release on top of 1.2.3: a toolchain refresh paired with a
