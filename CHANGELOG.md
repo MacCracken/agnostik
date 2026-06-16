@@ -30,14 +30,17 @@ the 6.2.11 snapshot (`cyrius lib sync`, 97 `.cyr` files).
 ### Performance
 
 Bench-regression gate vs the committed v1.2.0 baseline in
-`docs/benchmarks/history.csv`: **25 checked, 3 regressions** (medians
-of 6 runs — single-run benches bounce ±20–30%). The 6.2.11 codegen is
-a strongly net-positive trade-off — the multi-µs JSON-decode hot paths
-collapsed by 67–87%, while three sub-300ns construction/format ops
-gained ~100ns each. The three regressions are toolchain codegen, not
-source changes (source is unchanged), and are **ack'd with
-`[bench-regression-ack]`** — there is nothing to optimize agnostik-side
-and the net is overwhelmingly favorable.
+`docs/benchmarks/history.csv`: **3 consistent regressions** on an
+unloaded runner (medians of 6 local runs), rising to **6 under CI
+load** as more sub-µs/single-bucket ops cross threshold — single-run
+benches bounce ±20–30% on a loaded github-runner, exactly the jitter
+the gate header warns about. The 6.2.11 codegen is a strongly
+net-positive trade-off — the multi-µs JSON-decode hot paths collapsed
+by 67–87%, while a handful of sub-300ns construction/format ops gained
+~100ns each. All regressions are toolchain codegen, not source changes
+(source is unchanged), and are **ack'd with `[bench-regression-ack]`**
+in the release commit (a whole-run gate skip) — there is nothing to
+optimize agnostik-side and the net is overwhelmingly favorable.
 
 Wins (the ops that matter for wire decode at scale):
 
@@ -49,13 +52,20 @@ Wins (the ops that matter for wire decode at scale):
 | token_usage_from_json        |          2000 |         ~485 | −75.8% |
 | agent_stats_from_json        |          1000 |         ~330 | −67.6% |
 
-Regressions (ack'd — small constructor/format ops, ~100ns absolute):
+Regressions (all ack'd — small constructor/format ops, ~100ns
+absolute). The first three fire consistently (real codegen drift);
+the last three fire only under CI load (sub-µs ops below the gate's
+50ns/2µs absolute floors on an unloaded runner, inflated past
+threshold by runner contention):
 
-| benchmark                    | baseline (ns) | current (ns) | delta% | threshold |
-|------------------------------|--------------:|-------------:|-------:|----------:|
-| version_roundtrip            |           371 |         ~668 | +80.1% |       50% |
-| accelerator_device_full      |           177 |         ~284 | +60.5% |       50% |
-| version_to_str               |           191 |         ~296 | +55.0% |       50% |
+| benchmark                    | baseline (ns) | unloaded | under load | nature |
+|------------------------------|--------------:|---------:|-----------:|--------|
+| version_roundtrip            |           371 |     ~668 |       ~939 | codegen |
+| accelerator_device_full      |           177 |     ~284 |       ~397 | codegen |
+| version_to_str               |           191 |     ~296 |       ~374 | codegen |
+| traceparent_format           |          1000 |    ~2000 |       3000 | load jitter (µs rounding) |
+| sandbox_config_default       |            61 |     ~100 |        145 | load jitter (sub-µs) |
+| token_usage_update           |            42 |      ~87 |        120 | load jitter (sub-µs) |
 
 DCE binary `311,264 B` → `392,840 B` (+81 KB). Two compounding causes:
 (1) 6.2.11's DCE **NOPs** unreachable functions in place rather than
