@@ -97,6 +97,30 @@ concrete need.
 
 ---
 
+## Backlog — v1.3.1 toolchain review (unpinned, revisit later)
+
+Two items surfaced by the 6.2.11 pin that were **accepted as-is** at the
+v1.3.1 cut (toolchain trade-offs, no source-side fix) but warrant a later
+look. Full numbers in the CHANGELOG `[1.3.1]` Performance section.
+
+- **3 ack'd bench regressions** (`version_roundtrip` 371→~668ns,
+  `accelerator_device_full` 177→~284ns, `version_to_str` 191→~296ns).
+  Pure 6.2.11 codegen — source unchanged, nothing to optimize agnostik-side,
+  and the net is strongly positive (JSON-decode hot paths −67…87%). Revisit
+  if a later cyrius pin recovers these small-op paths, or if a consumer's
+  profile shows these constructor/format ops on a hot path. Ack'd via
+  `[bench-regression-ack]` in the release commit.
+- **DCE binary +81 KB** (`311,264 B` → `392,840 B`). Two causes: 6.2.11 DCE
+  *NOPs* unreachable fns in place instead of stripping, and the `bayan`
+  bundle (base64+json+csv+toml) adds ~119 KB of now-NOPed dead code the
+  former standalone `json.cyr` did not. agnostik uses none of bayan's json
+  directly — it's declared only to satisfy the build's `bayan_json_get`
+  preamble reference. Revisit if upstream ships a leaner standalone json
+  module (or strips-not-NOPs again), which would let `[deps] stdlib` drop
+  back off the bundle.
+
+---
+
 ## v2.0.0 — Breaking changes (next major)
 
 The two items here are the only breaking changes on the horizon. Batching
