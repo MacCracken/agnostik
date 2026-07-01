@@ -2,6 +2,19 @@
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-06-30
+
+Leaf step of the coordinated base-security-stack migration to cyrius
+**6.3.15** (agnostik is the shared-types leaf under aegis). Toolchain
+pin only — no agnostik-side source changes; the public API surface and
+all wire formats are byte-for-byte unchanged. All 810 assertions across
+the 15 test files pass on the new stack.
+
+### Changed
+
+- **Cyrius toolchain pin: 6.2.11 → 6.3.15.** `dist/agnostik.cyr`
+  regenerated at v1.3.2 (header only).
+
 ## [1.3.1] - 2026-06-15
 
 Toolchain-refresh patch on top of 1.3.0. Cyrius pin `6.0.26` →
