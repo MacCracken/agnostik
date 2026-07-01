@@ -161,11 +161,24 @@ fn ns_set_net(n, v)    { store64(n + 8, v); return 0; }
 fn ns_set_mount(n, v)  { store64(n + 16, v); return 0; }
 fn ns_set_user(n, v)   { store64(n + 24, v); return 0; }
 fn sandbox_config_new() {
+    # 88 bytes = 11 u64 slots. Unrolled: store the two live fields with
+    # their values and zero the other nine directly — no loop counter /
+    # compare / branch per slot. The old `while (i<88) store64(0)` loop
+    # zeroed all 11 then overwrote two; this is a hot constructor, so the
+    # unroll gives the bench real headroom against runner noise (the
+    # 6.3.x codegen shift left it hugging the regression floor).
     var s = alloc(88);
-    var i = 0;
-    while (i < 88) { store64(s + i, 0); i = i + 8; }
-    store64(s + 8, NET_LOCALHOST_ONLY);
+    store64(s + 0,  0);
+    store64(s + 8,  NET_LOCALHOST_ONLY);
+    store64(s + 16, 0);
     store64(s + 24, 1);
+    store64(s + 32, 0);
+    store64(s + 40, 0);
+    store64(s + 48, 0);
+    store64(s + 56, 0);
+    store64(s + 64, 0);
+    store64(s + 72, 0);
+    store64(s + 80, 0);
     return s;
 }
 fn _lazy_vec(ptr) {

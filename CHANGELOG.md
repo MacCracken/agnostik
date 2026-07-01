@@ -5,15 +5,28 @@
 ## [1.3.2] - 2026-06-30
 
 Leaf step of the coordinated base-security-stack migration to cyrius
-**6.3.15** (agnostik is the shared-types leaf under aegis). Toolchain
-pin only — no agnostik-side source changes; the public API surface and
-all wire formats are byte-for-byte unchanged. All 810 assertions across
-the 15 test files pass on the new stack.
+**6.3.15** (agnostik is the shared-types leaf under aegis). The public
+API surface and all wire formats are byte-for-byte unchanged. All 810
+assertions across the 15 test files pass on the new stack; the benchmark
+regression gate is green (0 regressions).
 
 ### Changed
 
 - **Cyrius toolchain pin: 6.2.11 → 6.3.15.** `dist/agnostik.cyr`
-  regenerated at v1.3.2 (header only).
+  regenerated at v1.3.2.
+
+### Performance
+
+- **`sandbox_config_new` unrolled** (`src/security.cyr`). Replaced the
+  11-iteration `while` zero-loop (which zeroed all 11 u64 slots, then
+  overwrote two) with 11 direct `store64`s — the two live fields with
+  their values, the other nine zeroed inline. Drops the per-slot loop
+  counter/compare/branch from a hot constructor: **~101ns → ~90ns**
+  (−10%) on the `sandbox_config_default` bench. The 6.3.x codegen shift
+  had left that bench hugging the regression-gate floor (a noisy CI
+  runner spiked it to 165ns / +66%, tripping the 50%/50ns threshold);
+  the unroll restores real headroom so the bench sits at/below its 99ns
+  baseline. No behavior change.
 
 ## [1.3.1] - 2026-06-15
 
