@@ -128,7 +128,7 @@ fn agent_id_to_str(id): Str {
 fn agent_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
-    if (slen != 36) { return err_invalid_argument(str_from("invalid agent id: expected UUID")); }
+    if (slen != 36) { return stik_err_invalid_argument(str_from("invalid agent id: expected UUID")); }
     var id = alloc(16);
     var si = 0;
     var bi = 0;
@@ -140,8 +140,8 @@ fn agent_id_from_str(s: Str) {
         if (si == 23) { si = si + 1; }
         var hi = _hex_nibble(load8(data + si));
         var lo = _hex_nibble(load8(data + si + 1));
-        if (hi < 0) { return err_invalid_argument(str_from("invalid hex in agent id")); }
-        if (lo < 0) { return err_invalid_argument(str_from("invalid hex in agent id")); }
+        if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in agent id")); }
+        if (lo < 0) { return stik_err_invalid_argument(str_from("invalid hex in agent id")); }
         store8(id + bi, hi << 4 | lo);
         si = si + 2;
         bi = bi + 1;
@@ -406,7 +406,7 @@ fn version_from_str(s: Str) {
         if (load8(data + i) == 46) { dot1 = i; break; }
         i = i + 1;
     }
-    if (dot1 < 0) { return err_invalid_argument(str_from("invalid version: missing dot")); }
+    if (dot1 < 0) { return stik_err_invalid_argument(str_from("invalid version: missing dot")); }
     # Find second dot
     i = dot1 + 1;
     var dot2 = 0 - 1;
@@ -414,7 +414,7 @@ fn version_from_str(s: Str) {
         if (load8(data + i) == 46) { dot2 = i; break; }
         i = i + 1;
     }
-    if (dot2 < 0) { return err_invalid_argument(str_from("invalid version: missing second dot")); }
+    if (dot2 < 0) { return stik_err_invalid_argument(str_from("invalid version: missing second dot")); }
     # Find the first pre-release (-) or build (+) separator after patch.
     # Bounded scan over [dot2+1, slen): strchr would walk to a NUL
     # terminator, over-reading past slen on non-NUL-terminated Str
@@ -435,13 +435,13 @@ fn version_from_str(s: Str) {
     var min_len = dot2 - dot1 - 1;
     var pat_len = patch_end - dot2 - 1;
     if (maj_len == 0 || min_len == 0 || pat_len == 0) {
-        return err_invalid_argument(str_from("invalid version: empty segment"));
+        return stik_err_invalid_argument(str_from("invalid version: empty segment"));
     }
     var k = 0;
     while (k < maj_len) {
         var c = load8(data + k);
         if (c < 48 || c > 57) {
-            return err_invalid_argument(str_from("invalid version: non-digit in major"));
+            return stik_err_invalid_argument(str_from("invalid version: non-digit in major"));
         }
         k = k + 1;
     }
@@ -449,7 +449,7 @@ fn version_from_str(s: Str) {
     while (k < min_len) {
         var c = load8(data + dot1 + 1 + k);
         if (c < 48 || c > 57) {
-            return err_invalid_argument(str_from("invalid version: non-digit in minor"));
+            return stik_err_invalid_argument(str_from("invalid version: non-digit in minor"));
         }
         k = k + 1;
     }
@@ -457,7 +457,7 @@ fn version_from_str(s: Str) {
     while (k < pat_len) {
         var c = load8(data + dot2 + 1 + k);
         if (c < 48 || c > 57) {
-            return err_invalid_argument(str_from("invalid version: non-digit in patch"));
+            return stik_err_invalid_argument(str_from("invalid version: non-digit in patch"));
         }
         k = k + 1;
     }

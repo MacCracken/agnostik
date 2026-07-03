@@ -117,8 +117,8 @@ fn test_names() {
     assert_eq(streq(device_vendor_name(VENDOR_AMD), "AMD"), 1, "v AMD");
     assert_eq(streq(agent_type_name(AGENT_TYPE_USER), "User"), 1, "at User");
     assert_eq(streq(agent_type_name(AGENT_TYPE_SYSTEM), "System"), 1, "at System");
-    assert_eq(streq(agnostik_err_kind_name(ERR_TIMEOUT), "timeout"), 1, "ek timeout");
-    assert_eq(streq(agnostik_err_kind_name(ERR_IO), "i/o error"), 1, "ek io");
+    assert_eq(streq(agnostik_err_kind_name(STIK_ERR_TIMEOUT), "timeout"), 1, "ek timeout");
+    assert_eq(streq(agnostik_err_kind_name(STIK_ERR_IO), "i/o error"), 1, "ek io");
     assert_eq(streq(classification_level_name(CLASS_PUBLIC), "Public"), 1, "cl Public");
     assert_eq(streq(pii_kind_name(PII_PHONE), "Phone"), 1, "pii Phone");
     assert_eq(streq(pii_kind_name(PII_FULL_NAME), "FullName"), 1, "pii FN");

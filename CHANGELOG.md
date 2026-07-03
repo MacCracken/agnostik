@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-07-03
+
+### Changed
+
+- **Namespaced the error family** to end symbol collisions when this bundle is
+  co-included with sibling libs that define their own `ERR_*` (notably agnodrm):
+  `ERR_*` → `STIK_ERR_*`, `err_*` → `stik_err_*`, `syserr_*` → `stik_syserr_*`.
+  `dist/agnostik.cyr` regenerated. Downstream consumers must migrate their
+  references (known consumer: aegis).
+
 ## [1.3.2] - 2026-06-30
 
 Leaf step of the coordinated base-security-stack migration to cyrius

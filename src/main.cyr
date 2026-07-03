@@ -28,16 +28,16 @@ include "src/validation.cyr"
 include "src/hardware.cyr"
 
 fn test_error() {
-    var e = agnostik_err_new(ERR_TIMEOUT, 0);
-    assert_eq(agnostik_err_kind(e), ERR_TIMEOUT, "error kind");
+    var e = agnostik_err_new(STIK_ERR_TIMEOUT, 0);
+    assert_eq(agnostik_err_kind(e), STIK_ERR_TIMEOUT, "error kind");
     assert_eq(agnostik_err_code(e), CODE_TIMEOUT, "error code");
     assert_eq(agnostik_err_is_retriable(e), 1, "timeout retriable");
-    var e2 = agnostik_err_new(ERR_PERMISSION_DENIED, str_from("shadow"));
+    var e2 = agnostik_err_new(STIK_ERR_PERMISSION_DENIED, str_from("shadow"));
     assert_eq(agnostik_err_is_retriable(e2), 0, "perm not retriable");
     var ok = Ok(42);
     assert_eq(is_ok(ok), 1, "Ok is ok");
     assert_eq(payload(ok), 42, "Ok payload");
-    var err = err_timeout();
+    var err = stik_err_timeout();
     assert_eq(is_ok(err), 0, "Err not ok");
     return 0;
 }
@@ -332,11 +332,11 @@ fn test_integration() {
     assert_eq(is_ok(version_from_str(str_from("invalid"))), 0, "ver parse invalid");
     assert_eq(is_ok(version_from_str(str_from("1.2"))), 0, "ver parse incomplete");
     # Error codes
-    assert_eq(agnostik_err_code(agnostik_err_new(ERR_AGENT_NOT_FOUND, 0)), 1001, "err code 1001");
-    assert_eq(agnostik_err_code(agnostik_err_new(ERR_IO, 0)), 1010, "err code 1010");
+    assert_eq(agnostik_err_code(agnostik_err_new(STIK_ERR_AGENT_NOT_FOUND, 0)), 1001, "err code 1001");
+    assert_eq(agnostik_err_code(agnostik_err_new(STIK_ERR_IO, 0)), 1010, "err code 1010");
     # Error kind names
-    assert_eq(streq(agnostik_err_kind_name(ERR_TIMEOUT), "timeout"), 1, "err name timeout");
-    assert_eq(streq(agnostik_err_kind_name(ERR_IO), "i/o error"), 1, "err name io");
+    assert_eq(streq(agnostik_err_kind_name(STIK_ERR_TIMEOUT), "timeout"), 1, "err name timeout");
+    assert_eq(streq(agnostik_err_kind_name(STIK_ERR_IO), "i/o error"), 1, "err name io");
     # --- security ---
     # SandboxConfig defaults
     var sb = sandbox_config_new();

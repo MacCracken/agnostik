@@ -14,14 +14,14 @@ fn trace_id_to_str(id): Str {
 fn trace_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
-    if (slen != 32) { return err_invalid_argument(str_from("expected 32 hex digits")); }
+    if (slen != 32) { return stik_err_invalid_argument(str_from("expected 32 hex digits")); }
     var id = alloc(16);
     var i = 0;
     while (i < 16) {
         var hi = _hex_nibble(load8(data + i * 2));
         var lo = _hex_nibble(load8(data + i * 2 + 1));
-        if (hi < 0) { return err_invalid_argument(str_from("invalid hex in trace id")); }
-        if (lo < 0) { return err_invalid_argument(str_from("invalid hex in trace id")); }
+        if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in trace id")); }
+        if (lo < 0) { return stik_err_invalid_argument(str_from("invalid hex in trace id")); }
         store8(id + i, hi << 4 | lo);
         i = i + 1;
     }
@@ -49,13 +49,13 @@ fn span_id_to_str(id): Str {
 fn span_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
-    if (slen != 16) { return err_invalid_argument(str_from("expected 16 hex digits")); }
+    if (slen != 16) { return stik_err_invalid_argument(str_from("expected 16 hex digits")); }
     var id = alloc(8);
     var val = 0;
     var i = 0;
     while (i < 16) {
         var nibble = _hex_nibble(load8(data + i));
-        if (nibble < 0) { return err_invalid_argument(str_from("invalid hex in span id")); }
+        if (nibble < 0) { return stik_err_invalid_argument(str_from("invalid hex in span id")); }
         val = (val << 4) | nibble;
         i = i + 1;
     }
@@ -194,10 +194,10 @@ fn tctx_from_traceparent(s: Str) {
     # Total: 55 chars
     var data = s.data;
     var slen = s.len;
-    if (slen != 55) { return err_invalid_argument(str_from("traceparent must be 55 chars")); }
-    if (load8(data + 2) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
-    if (load8(data + 35) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
-    if (load8(data + 52) != 45) { return err_invalid_argument(str_from("invalid traceparent format")); }
+    if (slen != 55) { return stik_err_invalid_argument(str_from("traceparent must be 55 chars")); }
+    if (load8(data + 2) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
+    if (load8(data + 35) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
+    if (load8(data + 52) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
     # Parse trace_id (32 hex chars at offset 3)
     var tid = trace_id_from_str(str_new(data + 3, 32))?;
     # Parse span_id (16 hex chars at offset 36)
@@ -205,8 +205,8 @@ fn tctx_from_traceparent(s: Str) {
     # Parse flags (2 hex chars at offset 53)
     var fhi = _hex_nibble(load8(data + 53));
     var flo = _hex_nibble(load8(data + 54));
-    if (fhi < 0) { return err_invalid_argument(str_from("invalid hex in traceparent flags")); }
-    if (flo < 0) { return err_invalid_argument(str_from("invalid hex in traceparent flags")); }
+    if (fhi < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent flags")); }
+    if (flo < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent flags")); }
     var flags = fhi << 4 | flo;
     var ctx = alloc(40);
     store64(ctx, tid);
