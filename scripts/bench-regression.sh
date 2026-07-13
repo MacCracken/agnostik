@@ -4,10 +4,13 @@
 # beyond a threshold unless the HEAD commit message carries
 # `[bench-regression-ack]` (intentional perf trade-off, ack'd by author).
 #
-# Threshold strategy: tuned for CI noise + cyrius's whole-µs rounding.
+# Threshold strategy: tuned for CI noise + toolchain rendering drift.
 # Single-run bench output bounces ±20-30% on github-runners load; the
 # gate catches catastrophic regressions, not subtle drift. Subtle perf
-# work wants manual benches with multiple runs.
+# work wants manual benches with multiple runs. Averages parse at full
+# fractional precision (e.g. `1.294us` → 1294 ns), but older baselines
+# in history.csv were captured under a cyrius that rounded avg to whole
+# µs — so a baseline-vs-current pair can straddle that rendering change.
 #
 #   - baseline <  1000ns (ns-precision):
 #       fires on delta% > NS_THRESHOLD (default 50%) AND
@@ -21,11 +24,13 @@
 #   - baseline >= 1000ns (us-bracketed, rounding-noisy):
 #       fires on delta% > US_THRESHOLD (default 80%) AND
 #               absolute delta >= US_BUCKET_FLOOR_NS (default 2000;
-#               ≥2 us-buckets)
-#       cyrius bench rounds avg to whole µs — `1us → 2us` is a
-#       single-bucket transition that could be just 1.999µs → 2.0µs
-#       (0.05% real slowdown reported as 100%). Real regressions on
-#       µs-bracket ops shift ≥2 buckets reliably.
+#               ≥2 µs absolute)
+#       A whole-µs baseline compared against a fractional current can
+#       show a full-µs jump that is pure rendering artifact — `1us`
+#       (baseline 1000) vs a genuine 1.999µs current reads as 100%
+#       while being a 0.05% real slowdown. Stacked on ±20-30% single-
+#       run jitter, the ≥2000 ns absolute floor keeps that noise below
+#       the fire line; real µs-bracket regressions clear ≥2 µs reliably.
 #
 # Usage:
 #   scripts/bench-regression.sh         # default: 50/80% + 50ns/2us floors
@@ -55,13 +60,14 @@ BENCH_OUT=$(CYRIUS_NO_WARN_SHADOW_LIB=1 cyrius bench tests/bcyr/agnostik.bcyr 2>
 # Parse current run into name=ns map (normalize us/ms to ns).
 declare -A CURRENT
 while IFS= read -r line; do
-    if [[ "$line" =~ ^[[:space:]]*([a-zA-Z_/0-9]+):[[:space:]]*([0-9]+)(ns|us|ms)[[:space:]]+avg ]]; then
-        val="${BASH_REMATCH[2]}"
-        case "${BASH_REMATCH[3]}" in
-            ns) ;;
-            us) val=$((val * 1000)) ;;
-            ms) val=$((val * 1000000)) ;;
+    if [[ "$line" =~ ^[[:space:]]*([a-zA-Z_/0-9]+):[[:space:]]*([0-9]+(\.[0-9]+)?)(ns|us|ms)[[:space:]]+avg ]]; then
+        raw="${BASH_REMATCH[2]}"
+        case "${BASH_REMATCH[4]}" in
+            ns) scale=1 ;;
+            us) scale=1000 ;;
+            ms) scale=1000000 ;;
         esac
+        val=$(awk -v v="$raw" -v s="$scale" 'BEGIN { printf "%.0f", v * s }')
         CURRENT["${BASH_REMATCH[1]}"]="$val"
     fi
 done <<< "$BENCH_OUT"

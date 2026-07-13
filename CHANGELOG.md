@@ -2,6 +2,28 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **Benchmark harness silently dropped fractional-µs averages.** Both
+  `scripts/bench-history.sh` and `scripts/bench-regression.sh` parsed
+  bench output with an integer-only value capture (`([0-9]+)(ns|us|ms)`),
+  so lines like `trace_context_new: 1.294us avg` or `traceparent_format:
+  2.336us avg` failed to match — the parser consumed `1`, expected a unit,
+  hit `.`, and skipped the whole line. Benches that render ≥1µs with a
+  decimal were captured only on the occasional run where they rounded to a
+  whole unit, so a single run parsed ~15–20 of the 25 tracked benches:
+  `history.csv` release-baseline appends missed ~5–10 benches and the
+  regression gate reported "20 checked" instead of 25, leaving those
+  benches only intermittently regression-checked. The value capture now
+  accepts an optional fractional part (`[0-9]+(\.[0-9]+)?`) and normalizes
+  to ns with floating-point math (`awk`, since bash integer arithmetic
+  can't compute `1.294 * 1000`), preserving the ns/us/ms unit scaling. A
+  single `bench-history.sh` run now appends all 25 rows and the regression
+  gate reports "25 checked". The finer precision introduces no false
+  positives — the us-bracket floor (>80% **and** ≥2000ns absolute) still
+  clears the largest observed mover (`audit_entry_full`, +39%/+788ns) by a
+  wide margin. Tooling-only; no library source or wire-format change.
+
 ## [1.3.4] - 2026-07-13
 
 ### Toolchain
