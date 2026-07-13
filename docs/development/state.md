@@ -5,6 +5,53 @@
 
 ## Version
 
+**1.3.4** — Toolchain-refresh patch on top of 1.3.3. Cyrius pin
+`6.3.15` → `6.4.62`. No agnostik-side source changes; the sole code
+change is a test-harness fix: `tests/tcyr/agnostik.tcyr` was missing
+`include "src/proto.cyr"` (it includes `telemetry.cyr`, whose
+`Span_to_otlp_proto` calls the `_proto_*` helpers) — benign since v1.2.0
+as those fns were unreachable in that unit, but 6.4.62's link
+diagnostics surfaced it as 5 warnings; include added mirroring
+`main.cyr`. Public API (871 fns) and all wire formats byte-for-byte
+unchanged. 6.4.x `lib sync` now copies only the declared
+`[deps].stdlib` subset (25 `.cyr`) by default (`--full` for the whole
+snapshot); `bayan` still ships (no `json`→`bayan`-style reorg this
+cycle). Bench-regression gate: 20 checked, **0 regressions** — 6.4.62
+codegen is uniformly faster, **every** op improved (medians of 3 runs:
+`token_usage_update` 88→~42ns −52%, `sandbox_config_default` 99→~50ns
+−49%, `version_roundtrip` 666→~350ns −47%, `accelerator_device_full`
+296→~159ns −46%, `version_to_str` 292→~170ns −42%, `message_build_3turn`
+1000→~618ns −38%). 858/858 tests pass; lint/fmt clean; api-surface
+unchanged at 871 fns; `dist/agnostik.cyr` re-bundled. DCE binary
+`392,840 B` → `350,016 B` (−43 KB — 6.4.62's DCE NOP-fill is leaner).
+`cyrius audit` now runs on 6.4.62 (the long-standing missing-`check.sh`
+breakage is **resolved**) but its test/bench sub-phases false-fail on
+unresolved manifest stdlib (`clock_now_ns`/`bayan_json_get`); workaround
+(run gates individually) unchanged — see the audit issue file.
+
+**1.3.3** — Error-family namespacing on top of 1.3.2. To end symbol
+collisions when the bundle is co-included with sibling libs that define
+their own `ERR_*` (notably agnodrm): `ERR_*` → `STIK_ERR_*`, `err_*` →
+`stik_err_*`, `syserr_*` → `stik_syserr_*`. `dist/agnostik.cyr`
+regenerated. **Breaking (symbol-level):** downstream consumers must
+migrate their references (known consumer: aegis). No wire-format or
+type-shape change.
+
+**1.3.2** — Toolchain refresh on top of 1.3.1 — leaf step of the
+coordinated base-security-stack migration to cyrius `6.3.15` (agnostik
+is the shared-types leaf under aegis). Cyrius pin `6.2.11` → `6.3.15`.
+Public API surface and all wire formats byte-for-byte unchanged; all
+858 assertions across the 15 test files pass on the new stack;
+bench-regression gate green (0 regressions). One perf improvement:
+`sandbox_config_new` unrolled (`src/security.cyr`) — the 11-iteration
+`while` zero-loop (zeroed all 11 u64 slots, then overwrote two)
+replaced with 11 direct `store64`s (two live fields with their values,
+nine zeroed inline), dropping the per-slot loop counter/compare/branch
+from the hot constructor: **~101ns → ~90ns** (−10%) on
+`sandbox_config_default`. No behavior change. (The shipped 1.3.2
+CHANGELOG entry says "810 assertions" — an undercount that omits
+`test_v107`'s 48; the real total is 858.)
+
 **1.3.1** — Toolchain-refresh patch on top of 1.3.0. Cyrius pin
 `6.0.26` → `6.2.11`. No agnostik-side source changes; public API
 (871 fns) and all wire formats byte-for-byte unchanged. Project-visible
@@ -252,28 +299,43 @@ for full release notes.
 
 ## Toolchain
 
-- **Cyrius**: `6.2.11` (pinned in `cyrius.cyml [package].cyrius`)
-- **Stdlib resolution (6.2.x)**: `cyrius lib sync` copies the
+- **Cyrius**: `6.4.62` (pinned in `cyrius.cyml [package].cyrius`) —
+  shipped in `1.3.4` (bumped from `6.3.15`). Every functional gate
+  green: 858/858 tests, lint/fmt clean, bench gate 0 regressions
+  (uniformly faster codegen).
+- **Stdlib resolution (6.4.x)**: `cyrius lib sync` copies the
   version-pinned snapshot into `./lib/`; `cyrius deps` resolves git
   deps only and presence-checks the `[deps] stdlib` array. Run
   `lib sync` before `deps` on a fresh checkout. `build`/`test`/`bench`
   resolve stdlib from the snapshot directly (no `./lib/` required).
-- **Stdlib layout (6.2.x)**: standalone `json.cyr` (with
-  `base64`/`csv`/`toml`) was folded into the bundled `bayan.cyr`
-  distribution module. `[deps] stdlib` lists `bayan` (not `json`).
-  agnostik uses none of stdlib json directly, but the 6.2.11 build
-  references `bayan_json_get` from the auto-resolved preamble, so
-  `bayan` must be declared for a 0-warning build.
+  **6.4.x behavior change**: `lib sync` now copies only the declared
+  `[deps].stdlib` subset (25 `.cyr`) by default, not the whole snapshot;
+  pass `--full` for the complete set.
+- **Stdlib layout**: standalone `json.cyr` (with `base64`/`csv`/`toml`)
+  was folded into the bundled `bayan.cyr` distribution module back at
+  6.2.x, and `bayan` still ships in 6.4.62 (no reorg this cycle).
+  `[deps] stdlib` lists `bayan` (not `json`). agnostik uses none of
+  stdlib json directly, but the build references `bayan_json_get` from
+  the auto-resolved preamble, so `bayan` must be declared for a
+  0-warning build.
 - **Compiler**: `cc5` — invoked via `cyrius {build,test,bench}`; raw
   `cat | cc5` is forbidden (manifest auto-resolves deps and prepends includes)
 - **Locally installed vs released**: `cyrius --version` may report
   a newer dev build; the manifest always pins to the latest
   **released** version so CI and external contributors get a
   reproducible toolchain. Bump the pin only when a new release ships.
-- **`cyrius audit`** is still broken on 6.0.x (missing `check.sh`
-  — same upstream issue as 5.7.12 / 5.10.x, filed in
-  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md)).
-  Workaround: run `cyrius self / test / fmt --check / lint` individually.
+- **`cyrius audit`** — on 6.4.62 the long-standing missing-`check.sh`
+  breakage is **resolved** (audit now runs its fmt/lint/docs/tests/bench
+  phases inline; fmt + lint pass clean). But a **new** limitation
+  replaced it: the `tests`/`bench` sub-phases compile the `.tcyr`/`.bcyr`
+  files without resolving the manifest `[deps] stdlib` preamble, so they
+  false-fail on `undefined function 'clock_now_ns'` / `'bayan_json_get'`
+  even though `cyrius test` passes those same files (223/223). So
+  `cyrius audit` is still not a usable single-command gate — workaround
+  unchanged: run `cyrius self / test / fmt --check / lint` individually.
+  Details in
+  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md)
+  (Update 2026-07-13).
 
 ## Source layout
 
@@ -311,7 +373,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Test files            | 15        | tests/tcyr/ (+test_v130_slice_safety) |
 | Test assertions       | 858       | 0 failed; +7 F-013 slice-safety regression at v1.3.0 (was 851 through v1.2.3) |
 | Benchmarks            | 25        | tests/bcyr/                        |
-| Test binary (DCE)     | ~393 KB   | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0 from chrono+proto surface; ~304 KB at 1.2.1; ~306 KB / 313,344 B at 1.2.3 across the 6.0.x boundary; 311,264 B at 1.3.0; 392,840 B at 1.3.1, +81 KB — 6.2.11 DCE NOPs unreachable fns in place instead of stripping + ~119 KB now-NOPed `bayan` bundle) |
+| Test binary (DCE)     | 350,016 B | `build/agnostik` after `CYRIUS_DCE=1 cyrius build` (261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0 from chrono+proto surface; ~304 KB at 1.2.1; ~306 KB / 313,344 B at 1.2.3 across the 6.0.x boundary; 311,264 B at 1.3.0; 392,840 B at 1.3.1 — 6.2.11 DCE NOPs unreachable fns in place + ~119 KB now-NOPed `bayan` bundle; **350,016 B at 1.3.4** on the 6.4.62 pin, −43 KB — leaner 6.4.62 NOP-fill) |
 | Build warnings        | 0         |                                    |
 | Lint warnings         | 0         | (28 UFCS false positives resolved upstream in cyrius 5.7.7) |
 | Lib bundle (dist/)    | regenerated by `cyrius distlib` | tracked in CI sync check |
@@ -334,7 +396,7 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.3.1` (toolchain-refresh patch Cyrius `6.0.26` → `6.2.11`; stdlib `json` → `bayan` dep migration; no source changes; 858/858 tests, api-surface unchanged at 871 fns, 3 ack'd bench regressions vs net 67–87% JSON-decode wins, DCE binary +81 KB from 6.2.11 NOP-not-strip DCE + bayan bundle, no public API/wire change). Prior: `1.3.0` (Cyrius `6.0.14` → `6.0.26` + refactoring/optimization closeout — proto OTLP-encode memcpy, audit genesis-hash caching, hex-decode consolidation, F-013 buffer-safety fix).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.3.4` (toolchain-refresh patch Cyrius `6.3.15` → `6.4.62`; no source changes bar the `agnostik.tcyr` proto-include fix; 858/858 tests, api-surface unchanged at 871 fns, bench gate 20 checked / 0 regressions with uniformly faster codegen, DCE binary −43 KB to 350,016 B, no public API/wire change). Prior: `1.3.3` (error-family namespacing `ERR_* → STIK_ERR_*` — symbol-level breaking, consumers migrate; known consumer aegis); `1.3.2` (Cyrius `6.2.11` → `6.3.15`, base-security-stack leaf migration + `sandbox_config_new` unroll −10%); `1.3.1` (Cyrius `6.0.26` → `6.2.11`, stdlib `json` → `bayan`).
 
 ## Verification hosts
 

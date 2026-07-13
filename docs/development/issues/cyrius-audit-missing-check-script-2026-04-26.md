@@ -108,3 +108,45 @@ for f in src/*.cyr; do cyrius lint "$f"; done           # lint
 ```
 
 Same coverage; just no single entry point.
+
+## Update 2026-07-13 — cyrius 6.4.62 (during the 6.3.15 → 6.4.62 pin bump)
+
+The **original `check.sh`-missing failure is resolved** on 6.4.62.
+`cyrius audit` now runs to completion — it executes `fmt`, `lint`,
+`docs`, `tests`, and `bench` phases inline (proposed-fix option 2
+above appears to have landed; `$CYRIUS_HOME/versions/6.4.62/bin/check.sh`
+still does not exist, yet the command no longer shells out to it). The
+`fmt` and `lint` phases pass clean.
+
+**A different limitation replaced it, so `cyrius audit` is still not a
+usable single-command gate for this project.** Its `tests` and `bench`
+sub-phases compile the `.tcyr`/`.bcyr` files **without resolving the
+manifest `[deps] stdlib` preamble**, so functions the test files rely
+on the manifest to inject go undefined:
+
+```
+── tests ──
+warning: undefined function 'bayan_json_get'
+warning: undefined function 'clock_now_ns'
+error: refusing to emit binary with 1 reachable undefined function(s)
+       (pass --allow-undef to downgrade)
+  FAIL: tests/tcyr/agnostik.tcyr (compile error)
+10 passed, 5 failed
+```
+
+The 5 "failures" are the test files that reach `clock_now_ns` (the
+`chrono` stdlib fn — called from `audit.cyr`/`agent.cyr`/`telemetry.cyr`/
+`secrets.cyr`) as a live symbol. This is a **false failure**: the same
+files compile and pass cleanly under the real gate —
+`cyrius test tests/tcyr/agnostik.tcyr` → `223 passed, 0 failed` — because
+`cyrius test`/`build`/`bench` resolve `chrono`/`bayan` from
+`cyrius.cyml [deps] stdlib` (the test files deliberately do **not**
+manually `include "lib/chrono.cyr"` etc.). `audit`'s stricter compile
+skips that resolution.
+
+**Net status:** the specific bug this file was filed for (missing
+`check.sh`) is **closed** on 6.4.62. A new, distinct `audit`
+stdlib-resolution defect is open. The agnostik workaround (run
+`self`/`test`/`fmt --check`/`lint` individually — all green on 6.4.62)
+is unchanged. Re-check whether the resolution defect is fixed at the
+next pin bump; if so, this file can move to `archive/`.

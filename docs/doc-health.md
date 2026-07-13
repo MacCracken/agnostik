@@ -6,7 +6,7 @@ type: state
 
 # Documentation Health — agnostik
 
-> **Last refresh**: 2026-06-15 (rows refreshed for the v1.3.1 toolchain-refresh patch — Cyrius `6.0.26` → `6.2.11`; stdlib `json` → `bayan` dep migration; CHANGELOG / state.md / VERSION / CLAUDE.md Quick Start updated) | **Refresh cadence**: when docs are touched, update the affected row.
+> **Last refresh**: 2026-07-13 (v1.3.4 release cut — cyrius `6.3.15` → `6.4.62` toolchain refresh. CHANGELOG stamped `[1.3.4]`, VERSION → 1.3.4, state.md fully reconciled including the previously-missing **1.3.2**/**1.3.3** version narratives, `cyrius-audit-missing-check-script` issue updated, history.csv baseline appended). | **Refresh cadence**: when docs are touched, update the affected row.
 > **Scope**: This repo only (`agnostik`) — root-level files (README, CHANGELOG, CLAUDE.md, etc.) plus the entire `docs/` tree. Cross-repo Cyrius pin/version drift lives in [`development/state.md`](development/state.md), not here.
 
 This is a **ledger**, not a one-time audit. Rewrite-in-place as docs change. The doc surface is small (~22 files) but every file is load-bearing — agnostik is the type vocabulary every AGNOS component depends on, and stale type docs propagate downstream.
@@ -42,13 +42,13 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `README.md` | 2026-05-28 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.2.3 (toolchain `6.0.14`); Quick Start gained `cyrius lib sync` step. |
-| `CHANGELOG.md` | 2026-06-15 | ✅ Fresh | Source of truth for shipped work. Updated through 1.3.1 (toolchain `6.0.26 → 6.2.11`; stdlib `json → bayan` dep migration; 3 ack'd bench regressions vs net 67–87% JSON-decode wins; DCE +81 KB). |
-| `CLAUDE.md` | 2026-06-15 | ✅ Fresh | Durable rules. Quick Start `cyrius lib sync` annotation bumped `(6.0.x)` → `(6.2.x)`. Mandatory Benchmark Gate + sub-byte rules intact. |
-| `CONTRIBUTING.md` | 2026-06-15 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + new gate-script steps. Setup snippet `cyrius lib sync` annotation bumped `(6.0.x)` → `(6.2.x)`. |
+| `README.md` | 2026-07-13 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.3.4 (Current `1.3.4`, toolchain `6.4.62`); Quick Start `cyrius lib sync` annotation bumped `(6.2.x)` → `(6.4.x: subset by default)`. |
+| `CHANGELOG.md` | 2026-07-13 | ✅ Fresh | Source of truth for shipped work. Through **1.3.4** (cyrius `6.3.15 → 6.4.62`; 0 regressions / uniformly faster codegen; `agnostik.tcyr` proto-include fix; DCE 350,016 B). `[Unreleased]` empty. |
+| `CLAUDE.md` | 2026-07-13 | ✅ Fresh | Durable rules. Quick Start `cyrius lib sync` annotation bumped `(6.2.x)` → `(6.4.x: subset by default)`. Mandatory Benchmark Gate + sub-byte rules intact. (gvar-toks limit note edited separately by user.) |
+| `CONTRIBUTING.md` | 2026-07-13 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + gate-script steps. Setup snippet `cyrius lib sync` annotation bumped `(6.2.x)` → `(6.4.x: subset by default)`. |
 | `SECURITY.md` | 2026-05-09 | ✅ Fresh | Supported lines (1.0/1.1/1.2), scope by attack surface, audits table. |
 | `CODE_OF_CONDUCT.md` | 2026-05-03 | 🔵 Evergreen | Standard. |
-| `VERSION` | 2026-06-15 | ✅ Fresh | `1.3.1` — source of truth, matches `cyrius.cyml`. |
+| `VERSION` | 2026-07-13 | ✅ Fresh | `1.3.4` — source of truth; `cyrius.cyml` version resolves via `${file:VERSION}`. |
 
 ---
 
@@ -56,8 +56,8 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `state.md` | 2026-06-15 | ✅ Fresh | Live volatile state (version, sizes, test count, consumers, verification hosts). Refreshed at v1.3.1 (toolchain `6.2.11`, stdlib `json → bayan`, DCE 392,840 B / ~393 KB, 858 assertions, 15 test files). |
-| `roadmap.md` | 2026-06-01 | ✅ Fresh | Status block bumped to v1.3.0 (Cyrius `6.0.26`); v1.3.0 review items recorded; deferred cleanups added to backlog. |
+| `state.md` | 2026-07-13 | ✅ Fresh | Live volatile state. Reconciled at the v1.3.4 cut — Version section now runs 1.3.4 → 1.3.1 (1.3.2/1.3.3 backfilled), Toolchain `6.4.62`, `cyrius audit` status updated, Stats DCE 350,016 B / 858 assertions / 15 test files, Recent releases current. |
+| `roadmap.md` | 2026-07-13 | ✅ Fresh | Status block bumped to v1.3.4 (Cyrius `6.4.62`); prior-stable line (1.3.1–1.3.3) summarized. v1.3.0/v1.3.1 review backlog items retained. |
 
 ---
 
@@ -102,7 +102,7 @@ Filed-upstream issue records. Open issues sit at the top level; resolved issues 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
 | `cyrius-derive-comments-in-struct-body-2026-05-10.md` | 2026-05-09 | ✅ Fresh — open | Filed during v1.2.0. Workaround in CONTRIBUTING.md. |
-| `cyrius-audit-missing-check-script-2026-04-26.md` | 2026-06-01 | 🟠 Read-through — still open | Filed against 5.7.x; re-confirmed **still broken on 6.0.26** at the v1.3.0 cut (`cyrius audit` → `script not found: .../bin/check.sh`). Workaround (run `self`/`test`/`fmt`/`lint` individually) stays. Re-check at next cut. |
+| `cyrius-audit-missing-check-script-2026-04-26.md` | 2026-07-13 | 🟠 Open — bug morphed | Update appended for 6.4.62: the original missing-`check.sh` breakage is **resolved** (audit runs inline; fmt/lint clean), but a **new** defect replaced it — audit's `tests`/`bench` sub-phases don't resolve manifest `[deps] stdlib`, false-failing on `clock_now_ns`/`bayan_json_get`. Workaround (run gates individually) unchanged. Archive when the new defect clears. |
 | `archive/README.md` | 2026-05-08 | 🔵 Evergreen | Index for resolved-issue archive. |
 | `archive/cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md` | 2026-05-08 | 📦 Frozen | Closed — fixed upstream. |
 | `archive/cyrlint-char-literal-brace-bug-2026-05-09.md` | 2026-05-08 | 📦 Frozen | Closed — fixed upstream (5.10.6 / 5.10.10). |
@@ -134,7 +134,7 @@ None outstanding for the v1.2.0 cut. This section will repopulate when:
 
 ## In-flight (blocked, not stale)
 
-- `cyrius-audit-missing-check-script-2026-04-26.md` — re-confirmed still broken on 6.0.26 at the v1.3.0 cut (`check.sh` still absent). Owner: agnostik audit pass; trigger: re-check next time the pin bumps.
+- `cyrius-audit-missing-check-script-2026-04-26.md` — on the v1.3.4 / 6.4.62 cut (2026-07-13) the original missing-`check.sh` breakage cleared, but a new audit stdlib-resolution defect surfaced (test/bench sub-phases don't resolve manifest `[deps] stdlib`). Owner: agnostik audit pass; trigger: re-check next pin bump, archive if the new defect clears.
 
 ---
 
@@ -173,4 +173,4 @@ This file's refresh cadence is **opportunistic** (touched when other docs are to
 
 ---
 
-*Last refresh: 2026-06-01 (rows refreshed for the v1.3.0 toolchain-refresh + refactoring/optimization cut — Cyrius `6.0.14` → `6.0.26`; CLAUDE.md Benchmark Gate added; `2026-06-01-audit.md` filed). Refresh in place when docs are touched.*
+*Last refresh: 2026-07-13 (v1.3.4 release cut — cyrius `6.3.15` → `6.4.62` toolchain refresh. CHANGELOG/VERSION stamped, state.md fully reconciled (1.3.2/1.3.3 backfilled), README/CONTRIBUTING/CLAUDE.md lib-sync annotations bumped `(6.2.x)` → `(6.4.x)`, `cyrius-audit-missing-check-script` issue updated, history.csv baseline appended). Refresh in place when docs are touched.*

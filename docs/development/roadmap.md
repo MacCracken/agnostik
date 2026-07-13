@@ -2,16 +2,18 @@
 
 ## Status
 
-**v1.3.1** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+**v1.3.4** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
 helpers), 858 test assertions across 15 `.tcyr` files (incl. byte-exact
 serde golden + 8-parser fuzz harness + OTLP coverage + slice-safety
-regression), 25 benchmarks, zero external dependencies, Cyrius `6.2.11`.
-v1.3.1 was a toolchain-refresh patch (Cyrius `6.0.26` → `6.2.11`; stdlib
-`json` → `bayan` dep migration; no source changes; 3 ack'd bench
-regressions vs net 67–87% JSON-decode codegen wins) with no public API or
-wire change. v1.3.0 was a toolchain refresh + refactoring/optimization
-closeout (proto OTLP-encode memcpy, audit genesis-hash caching, hex-decode
-consolidation, F-013 buffer-safety fix). See [`state.md`](state.md) for the live snapshot,
+regression), 25 benchmarks, zero external dependencies, Cyrius `6.4.62`.
+v1.3.4 was a toolchain-refresh patch (Cyrius `6.3.15` → `6.4.62`; no
+source changes bar the `agnostik.tcyr` proto-include fix; bench gate 20
+checked / 0 regressions with uniformly faster codegen; DCE binary −43 KB
+to 350,016 B) with no public API or wire change. Prior stable line:
+v1.3.3 (error-family namespacing `ERR_* → STIK_ERR_*`, symbol-level
+breaking — consumers migrate), v1.3.2 (Cyrius `6.2.11` → `6.3.15`
+base-security-stack leaf migration + `sandbox_config_new` unroll −10%),
+v1.3.1 (Cyrius `6.0.26` → `6.2.11`, stdlib `json` → `bayan`). See [`state.md`](state.md) for the live snapshot,
 [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) for the
 most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
 release history.

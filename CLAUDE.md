@@ -37,7 +37,7 @@ Project was ported from a Rust crate. **Do not manually create project structure
 ## Quick Start
 
 ```bash
-cyrius lib sync                                 # copy version-pinned stdlib snapshot into lib/ (6.2.x)
+cyrius lib sync                                 # copy version-pinned stdlib snapshot into lib/ (6.4.x: declared subset by default, --full for all)
 cyrius deps                                     # resolve git deps into lib/ (stdlib comes from lib sync)
 cyrius build src/main.cyr build/agnostik        # build the test harness binary
 cyrius test tests/tcyr/agnostik.tcyr            # run the unit-test harness
@@ -186,7 +186,7 @@ cites benchmark figures from this gate.
 - Trait objects via vtable dispatch: `trait_obj_new(vtable, data)`
 - Function pointers via `fncall0` / `fncall1` / `fncall2` (inline asm)
 - `#derive(Serialize)` generates correct `_to_json` — integers as bare numbers, `: Str` fields as quoted strings
-- Enum values for constants — don't consume `gvar_toks` slots (256 initialized globals limit)
+- Enum values for constants — don't consume `gvar_toks` slots (4,096 initialized globals limit)
 - Heap-allocate large buffers — `var buf[256000]` bloats the binary by 256 KB
 - `break` in while loops with `var` declarations is unreliable — use flag + `continue`
 - No negative literals — write `(0 - N)` not `-N`
@@ -194,7 +194,8 @@ cites benchmark figures from this gate.
 - `match` is reserved — don't use as a variable name
 - `return;` without value is invalid — always `return 0;`
 - All `var` declarations are function-scoped — no block scoping
-- Max limits per compilation unit: 4,096 variables, 1,024 functions, 256 initialized globals
+- Max limits per compilation unit: 4,096 variables, 1,024 functions, 4,096 initialized globals
+- Counting rule: only a top-level `var NAME = <non-literal>;` (call / identifier / expression initializer) consumes an initialized-globals slot; a bare integer-literal init (`var x = 42;`) takes the static-init fast path and enum members are const-folded, so neither counts. See the cyrius guide's **Global Initializers** section (`docs/guides/cyrius-guide.md` in the cyrius repo)
 
 ## CI / Release
 
