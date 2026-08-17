@@ -24,6 +24,12 @@
   clears the largest observed mover (`audit_entry_full`, +39%/+788ns) by a
   wide margin. Tooling-only; no library source or wire-format change.
 
+## [1.3.5] - 2026-08-17
+
+### Changed
+
+- cyrius pin 6.4.62 -> **6.5.27**, matching the rest of the AGNOS desktop stack. Build 354,112 -> 417,608 bytes; 15/15 green.
+
 ## [1.3.4] - 2026-07-13
 
 ### Toolchain
