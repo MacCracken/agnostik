@@ -2,6 +2,41 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **CI's format gate reported drift for every file, on every run.** The
+  `Format check` step tested formatting with
+  `diff -q <(cyrius fmt "$f" 2>/dev/null) "$f"`, which assumes
+  `cyrius fmt <file>` is a stdout filter that prints the formatted source.
+  **That stopped being true at cyrius `6.5.27`**: through `6.5.26` bare
+  `fmt` printed the formatted source to stdout (4,329 B for
+  `src/error.cyr`), and from `6.5.27` onward it is an in-place rewriter that
+  prints **nothing**. So the `diff` compared an *empty* stream against each
+  file and failed unconditionally — all 31 files, regardless of their actual
+  formatting. Bisected across every installed toolchain: `6.5.20`/`6.5.24`/
+  `6.5.25`/`6.5.26` → stdout filter; `6.5.27`/`6.5.28`/…/`6.5.35` → in-place.
+
+  The breakage therefore entered with the **v1.3.5** pin bump to `6.5.27`
+  and lay dormant because that release skipped its gates; v1.3.6 is the
+  first CI run on a `≥6.5.27` toolchain. It is not caused by the
+  `6.5.27 → 6.5.35` bump, and the source files were never mis-formatted —
+  `cyrius fmt --check` reports all 31 clean, as it did at the v1.3.6 cut.
+
+  The step now uses `cyrius fmt --check "$f"`, which signals drift purely
+  through its exit code (0 = canonical) and never rewrites the file, and it
+  echoes cyrfmt's message so a real failure names the offending line.
+  Verified both directions locally under `bash`: clean tree → `rc 0`,
+  "fmt: clean (31 files)"; with a deliberately non-canonical continuation
+  indent appended to `src/validation.cyr` → `rc 1`, `needs fmt:
+  src/validation.cyr` plus `cyrfmt: src/validation.cyr:78: not canonically
+  formatted`. Note the prior history here: the step originally read
+  `diff <(cyrius fmt "$f" --check)`, and commit `f8fdcee` ("ci fmt issue")
+  moved it to bare `fmt` — correctly diagnosing that `--check` emits no
+  output, but landing on a form that emits none either. The fix is to stop
+  diffing stdout altogether and use the exit code.
+
+  CI-only; no library source, public API, or wire-format change.
+
 ## [1.3.6] - 2026-08-24
 
 ### Toolchain

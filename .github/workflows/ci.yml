@@ -62,16 +62,20 @@ jobs:
           fi
 
       - name: Format check
-        # `cyrius fmt <file>` writes the formatted source to stdout; diff
-        # against the committed file catches drift. (`--check` only sets
-        # the exit code; it does NOT emit the formatted output, so diffing
-        # its stdout always reports spurious drift.)
+        # Use `cyrius fmt --check <file>`, which reports drift purely via its
+        # exit code (0 = canonical, non-zero = drift) and never rewrites the
+        # file. Do NOT diff the stdout of `cyrius fmt <file>`: through 6.5.26
+        # that printed the formatted source, but since **6.5.27** `fmt` is an
+        # in-place rewriter that prints nothing, so the old
+        # `diff <(cyrius fmt "$f") "$f"` form compared an empty stream against
+        # every file and reported drift unconditionally for all of them.
         run: |
           fail=0
           for f in src/*.cyr tests/tcyr/*.tcyr tests/bcyr/*.bcyr; do
             [ -f "$f" ] || continue
-            if ! diff -q <(cyrius fmt "$f" 2>/dev/null) "$f" > /dev/null; then
+            if ! out=$(cyrius fmt --check "$f" 2>&1); then
               echo "needs fmt: $f"
+              [ -n "$out" ] && printf '%s\n' "$out" | sed 's/^/    /'
               fail=1
             fi
           done
