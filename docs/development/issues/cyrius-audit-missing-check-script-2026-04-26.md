@@ -150,3 +150,90 @@ stdlib-resolution defect is open. The agnostik workaround (run
 `self`/`test`/`fmt --check`/`lint` individually — all green on 6.4.62)
 is unchanged. Re-check whether the resolution defect is fixed at the
 next pin bump; if so, this file can move to `archive/`.
+
+---
+
+## Update 2026-08-24 — cyrius 6.5.35 (during the 6.5.27 → 6.5.35 pin bump, agnostik v1.3.6)
+
+The **audit stdlib-resolution defect is fixed for the two phases it broke**,
+but the underlying bug is routed around rather than resolved, so this file
+stays **open** — narrowed to `cyrius self`.
+
+### What changed
+
+`cyrius audit` now completes its project sweep on this repo:
+
+```
+── fmt ──    ok: format clean
+── lint ──   ok: lint clean
+── docs ──   853 undocumented public fns
+── tests ──  15 files, 858 passed, 0 failed
+── bench ──  25 benchmarks, completes
+```
+
+The `tests` and `bench` sub-phases resolve the manifest `[deps] stdlib`
+preamble correctly — the `undefined function 'clock_now_ns'` /
+`'bayan_json_get'` false failures documented in the 2026-07-13 update are
+**gone from those phases**. Restoring the bench phase immediately paid for
+itself: it surfaced `tests/bcyr/agnostik.bcyr` missing
+`include "src/proto.cyr"` (5 undefined `_proto_*` references, benign but
+latent since v1.2.0 — the same defect v1.3.4 fixed in the `.tcyr` and
+missed in the `.bcyr`). Fixed in v1.3.6.
+
+### Why this stays open
+
+1. **`cyrius self` still false-fails, identically.** Standalone:
+
+   ```
+   === Self-Hosting Check ===
+   warning: undefined function 'bayan_json_get'
+   warning: undefined function 'clock_now_ns'
+   error: refusing to emit binary with 1 reachable undefined function(s)
+     FAIL: cycc!=cycc                                          # rc 1
+   ```
+
+   Same root cause, same two symbols. Verified on **6.5.27, 6.5.30, and
+   6.5.35** against this tree, so it is not a 6.5.35 regression — it is the
+   original defect, still present on the one command that still triggers it.
+
+2. **`audit` does not exercise the self-host path at all** — and has not
+   since **6.2.24**, three minors before this bump. Walking every installed
+   toolchain's `cyrius --help`:
+
+   | versions | `audit` help line |
+   |---|---|
+   | 6.0.1 – 6.2.10 | `full check: self-host, test, fmt, lint` |
+   | 6.2.11 – 6.2.23 | `local item suite (check.sh: fmt/lint/format/tests)` |
+   | 6.2.24 – 6.5.35 | `project sweep: fmt/lint/docs/tests/bench` |
+
+   So the self-host phase left `audit` long before 6.5.35 — that part is
+   **not** a change in this release, and the 2026-07-13 update's framing
+   should be read accordingly. What it means for this issue is that `audit`
+   was never going to re-surface the `self` failure, and the
+   preamble-resolution bug was never fixed for `self` — only for `audit`'s
+   own `tests`/`bench` phases, at 6.5.35.
+
+### Unrelated: audit's non-zero exit
+
+`cyrius audit` still exits 1, but no longer for a toolchain reason: the
+`docs` phase reports **853 undocumented public fns** (`cyrius doc --check`
+→ rc 23). That is agnostik's own documentation gap — 6.5.27 reports the
+identical count — and is tracked as a roadmap backlog item, not here.
+
+**Net status (corrected 2026-08-24 by bisecting the installed toolchains
+against this tree — both earlier fix-point attributions were wrong, each
+having recorded whichever version agnostik next happened to re-test):**
+
+| defect | actually closed at | evidence |
+|---|---|---|
+| missing-`check.sh` shell-out | **6.2.24** (not 6.4.62) | 6.2.23 → `error: script not found: ~/.cyrius/bin/check.sh`; 6.2.24 runs `fmt/lint/docs/tests/bench` inline |
+| `audit` `tests`/`bench` stdlib preamble | **6.4.73** (not 6.5.35) | 6.4.72 → `10 passed, 5 failed`; 6.4.73 → `15 passed, 0 failed`; clean on every version since, **including 6.5.27** |
+| `cyrius self` stdlib preamble | **still open** | fails identically on 6.5.27, 6.5.30, 6.5.35 |
+
+Consequence worth recording: `cyrius audit` was **already fully working on
+6.5.27**, the pin agnostik v1.3.6 bumped from. v1.3.6 surfaced the
+`agnostik.bcyr` include bug by *running the gate*, which v1.3.5 skipped —
+not because 6.5.35 changed anything. Workaround: run `cyrius audit` for
+fmt/lint/tests/bench and read its per-phase verdicts rather than its exit
+code; treat `cyrius self`'s failure as known-false. Archive this file when
+`cyrius self` resolves its stdlib preamble.

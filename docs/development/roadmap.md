@@ -2,21 +2,26 @@
 
 ## Status
 
-**v1.3.4** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+**v1.3.6** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
 helpers), 858 test assertions across 15 `.tcyr` files (incl. byte-exact
 serde golden + 8-parser fuzz harness + OTLP coverage + slice-safety
-regression), 25 benchmarks, zero external dependencies, Cyrius `6.4.62`.
-v1.3.4 was a toolchain-refresh patch (Cyrius `6.3.15` → `6.4.62`; no
-source changes bar the `agnostik.tcyr` proto-include fix; bench gate 20
-checked / 0 regressions with uniformly faster codegen; DCE binary −43 KB
-to 350,016 B) with no public API or wire change. Prior stable line:
-v1.3.3 (error-family namespacing `ERR_* → STIK_ERR_*`, symbol-level
-breaking — consumers migrate), v1.3.2 (Cyrius `6.2.11` → `6.3.15`
-base-security-stack leaf migration + `sandbox_config_new` unroll −10%),
-v1.3.1 (Cyrius `6.0.26` → `6.2.11`, stdlib `json` → `bayan`). See [`state.md`](state.md) for the live snapshot,
-[`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) for the
-most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
-release history.
+regression), 25 benchmarks, zero external dependencies, Cyrius `6.5.35`.
+v1.3.6 was a toolchain-refresh patch (Cyrius `6.5.27` → `6.5.35`; no
+source-logic changes; bench gate 25 checked / 0 regressions with 23 of 25
+ops faster; binary +215,520 B to 629,032 B, entirely the NOPed `bayan`
+PDF subsystem the 6.5.3x stdlib folds in) with no public API or wire
+change. It also reconciled the gates and docs that the v1.3.5 cut skipped
+— fmt debt in 3 files, the missing `history.csv` baseline, and the
+`1.3.4`-era Status blocks in README / state.md / roadmap / doc-health.
+Prior stable line: v1.3.5 (Cyrius `6.4.62` → `6.5.27`, matching the AGNOS
+desktop stack), v1.3.4 (Cyrius `6.3.15` → `6.4.62` + `agnostik.tcyr`
+proto-include fix), v1.3.3 (error-family namespacing `ERR_* →
+STIK_ERR_*`, symbol-level breaking — consumers migrate), v1.3.2 (Cyrius
+`6.2.11` → `6.3.15` base-security-stack leaf migration +
+`sandbox_config_new` unroll −10%). See [`state.md`](state.md) for the live
+snapshot, [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
+for the most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md)
+for full release history.
 
 Every item below is pinned to a specific release. Shipped work is recorded
 in `CHANGELOG.md` and not duplicated here — the principle: if work is worth
@@ -123,6 +128,47 @@ look. Full numbers in the CHANGELOG `[1.3.1]` Performance section.
   preamble reference. Revisit if upstream ships a leaner standalone json
   module (or strips-not-NOPs again), which would let `[deps] stdlib` drop
   back off the bundle.
+
+---
+
+## Backlog — v1.3.6 toolchain review (unpinned, revisit later)
+
+Three items surfaced by the 6.5.35 pin, all **accepted as-is** at the
+v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
+
+- **853 undocumented public fns** — the *sole* reason `cyrius audit` exits
+  non-zero (`cyrius doc --check` takes one file and exits with that file's
+  count: `src/main.cyr` → 23, `src/agent.cyr` → 177; 853 is the sum over
+  the 15 `src/*.cyr`) (its fmt / lint /
+  tests / bench phases all pass). Pre-existing and unchanged by the bump —
+  6.5.27 reports the identical count — but it is agnostik's own gap, not a
+  toolchain bug, and it is what stops `audit` from being usable as a
+  single-command CI gate. Sizing it honestly: 853 fns is a large sustained
+  effort, so the realistic shape is incremental (document a module per
+  cycle, gate new fns at the api-surface check) rather than one sweep.
+  Until then, read `audit`'s per-phase verdicts, not its exit code.
+
+- **Binary +215,520 B (+52.1%)** — `413,512` → `629,032` B, entirely the
+  361-fn PDF parse/encode subsystem (209 private `_pdf*` + 152 public
+  `bayan_pdf_*`) that 6.5.3x folds into the bundled `bayan`
+  module (`215,481` → `641,083` B of source). agnostik reaches none of it;
+  it lands NOPed. Same shape as the v1.3.1 `+81 KB` item below, one
+  magnitude up, and the same resolution applies: revisit if upstream ships
+  a leaner json module or returns to strip-not-NOP DCE, either of which
+  would let `[deps] stdlib` drop the bundle. Worth noting the metric itself
+  has quietly changed meaning — since DCE NOP-fills in place, a DCE build
+  and a plain build now emit byte-identical artifacts, so "binary size"
+  tracks total stdlib surface, not reachable surface.
+
+- **`cyrius self` still false-fails** — same `clock_now_ns` /
+  `bayan_json_get` preamble-resolution defect, verified on 6.5.27, 6.5.30,
+  and 6.5.35, so not a 6.5.35 regression. `cyrius audit` does not cover it
+  and has not since 6.2.24, when the self-host phase left `audit`'s phase
+  list; the `audit`-side preamble fix landed at **6.4.73**, already present
+  in the previous 6.5.27 pin — the bug was routed around, not repaired.
+  Tracked in
+  [`issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md);
+  archive that file when `self` resolves its preamble.
 
 ---
 

@@ -2,7 +2,152 @@
 
 ## [Unreleased]
 
+## [1.3.6] - 2026-08-24
+
+### Toolchain
+
+- **Cyrius toolchain pin: `6.5.27` → `6.5.35`.** No agnostik-side logic
+  changes. The public API surface (**871 fns**) and every wire format are
+  byte-for-byte unchanged, so this is a drop-in patch for every consumer.
+  `lib/` re-synced from the 6.5.35 snapshot: `cyrius lib sync` resolves the
+  **15** declared `[deps].stdlib` modules to **25 files** (the 15 plus 10
+  platform peers — `syscalls_{macos,windows,aarch64_linux,linux_common,
+  x86_64_linux,x86_64_agnos}`, `alloc_{agnos,macos,windows}`,
+  `hashmap_fast`). `lib/` holds **27** because two files sit outside
+  `lib sync`: `atomic.cyr`, written by `cyrius deps`, and the vendored,
+  git-tracked `keccak.cyr`. All 27 byte-match the snapshot. The
+  stdlib **module set is unchanged at 101 modules**: no `json`→`bayan`-style
+  reorg this cycle, and `[deps].stdlib` needs no edit. Three vendored
+  modules changed content:
+
+  - **`bayan`** `215,481` → `641,083` B (431 → **799** fns, +368). 6.5.3x
+    folds a complete PDF parse/encode subsystem into the bundled `bayan`
+    distribution module: **361 PDF fns**, of which **209** are private
+    `_pdf*` internals across eleven families (`_pdfc`, `_pdfe`, `_pdff`,
+    `_pdfg`, `_pdfl`, `_pdfo`, `_pdfp`, `_pdfu`, `_pdfw`, `_pdfx`, `_pdfz`)
+    and **152** are public `bayan_pdf_*` entry points. 6.5.27 has zero of
+    either. agnostik calls none of it: its JSON is the hand-rolled `_json_*`
+    family in `src/types.cyr`, and the only bayan symbol the build touches is
+    `bayan_json_get` from the auto-resolved preamble. All 361 land in the
+    binary **NOPed, not stripped**, which is the entire cause of the size
+    delta below.
+  - **`fmt`** `11,428` → `12,844` B — upstream `fmt_float_buf` carry fix: a
+    rounded fraction that reached a full unit (`frac == 10^decimals`) was
+    emitted verbatim as the fraction field instead of carrying into the
+    integer part, so `3 - 1e-7` printed `2.1000000`. Not user-visible in
+    agnostik, which formats no floats (`metric_float` in `src/telemetry.cyr`
+    is a tagged-union constructor over an integer payload, not a formatter).
+  - **`syscalls_windows`** `16,361` → `18,078` B — non-x86_64-linux path,
+    unexercised by this project's gates.
+
+- **Build warnings back to 0.** The 1.3.5 pin emitted three
+  `assigning non-pointer to typed pointer` warnings from
+  `lib/bayan.cyr` (`_toml_parse_multiline_q` ×2, `_toml_parse_str`);
+  all three are fixed upstream in 6.5.35.
+
+- **`cyrius audit` is usable — and already was on the previous pin.** This
+  release runs it for the first time in a while, which is how the harness
+  bug below was found, but **none of that is a 6.5.35 change** and the
+  earlier drafts of this entry got the attribution wrong. Bisecting the
+  installed toolchains against this exact tree:
+  - The original missing-`check.sh` breakage ended at **6.2.24** — 6.2.23
+    still exits `error: script not found: ~/.cyrius/bin/check.sh`, 6.2.24
+    runs `fmt / lint / docs / tests / bench` inline. (The issue file's
+    2026-07-13 update recorded this as "resolved at 6.4.62"; 6.4.62 was
+    simply the next version agnostik happened to re-test.)
+  - The follow-on defect — `tests`/`bench` compiling without resolving the
+    manifest `[deps] stdlib` preamble, false-failing on
+    `undefined function 'clock_now_ns'` / `'bayan_json_get'` — ended at
+    **6.4.73**: 6.4.72 reports `10 passed, 5 failed`, 6.4.73 reports
+    `15 passed, 0 failed`. So it was **already fixed in 6.5.27**, the pin
+    this release bumps *from*: running `~/.cyrius/versions/6.5.27/bin/cyrius
+    audit` against this tree produces the same clean sweep as 6.5.35.
+
+  What actually surfaced the bench-harness bug was **running the gate at
+  all** — v1.3.5 skipped it — not the toolchain bump.
+
+  Still open, and the reason
+  [`cyrius-audit-missing-check-script-2026-04-26`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md)
+  is not archived: **`cyrius self` still false-fails**, standalone, with the
+  same two undefined symbols and `FAIL: cycc!=cycc`. Verified on 6.5.27,
+  6.5.30 and 6.5.35, so it is not a 6.5.35 regression — it is the original
+  preamble defect, still live on the one command that triggers it. `audit`
+  does not cover it and has not since **6.2.24**, when the self-host phase
+  left its phase list; `cyrius --help` read "full check: self-host, test,
+  fmt, lint" from 6.0.1 through **6.2.10**, "local item suite (check.sh:
+  fmt/lint/format/tests)" from 6.2.11, and "project sweep:
+  fmt/lint/docs/tests/bench" since 6.2.24.
+
+- **`cyrius audit` exits 1 on its `docs` phase — 853 undocumented public
+  fns.** Unchanged by this bump (6.5.27 reports the identical 853) and
+  agnostik's own gap, not a toolchain bug; recorded as a roadmap backlog
+  item rather than papered over. Note on the tooling: `cyrius doc --check`
+  takes a **single file** and exits with *that file's* undocumented count —
+  `src/main.cyr` → 23, `src/agent.cyr` → 177, `src/lib.cyr` → 0 — so 853 is
+  the sum across the 15 `src/*.cyr` files, not any one command's exit code.
+  Read `audit`'s per-phase verdicts, not its exit code, and keep running
+  `cyrius self` separately in the knowledge that it false-fails.
+
+- **Binary `413,512` → `629,032` B (+215,520 B, +52.1%).** Entirely the
+  NOPed `bayan` PDF subsystem above — nothing new is reachable, and
+  unreachable-fn accounting moves in lockstep (1,503 fns / 291,041 B →
+  1,871 fns / 445,949 B). Both figures measured on this host by building
+  each pin end-to-end (its own `cycc` **and** its own stdlib snapshot), so
+  the delta isolates the toolchain change. Note `CYRIUS_DCE=1` and a plain
+  build now yield the **identical** byte count at both pins (413,512 at
+  6.5.27, 629,032 at 6.5.35): DCE NOP-fills unreachable code in place rather
+  than removing it, so it does not shrink the artifact — it only guarantees
+  dead code cannot execute. This is not new and not a 6.5.x change: a probe
+  binary with 3,000 unreferenced fns measures byte-identical under plain and
+  `CYRIUS_DCE=1` builds on **6.0.1**, the oldest 6.x on this host, as on
+  every version since. The v1.3.5 CHANGELOG's
+  `354,112 -> 417,608 bytes` line does not reproduce under either
+  measurement and is superseded by these figures.
+
 ### Fixed
+
+- **`tests/bcyr/agnostik.bcyr` was missing `include "src/proto.cyr"`.**
+  The same defect v1.3.4 fixed in `tests/tcyr/agnostik.tcyr`, present in the
+  bench harness and missed by that sweep. The file includes
+  `src/telemetry.cyr` — whose `Span_to_otlp_proto` calls the `_proto_*` wire
+  helpers — but never pulled in `src/proto.cyr`, leaving 5 undefined-function
+  references (`_proto_string` / `_proto_bytes` / `_proto_int64` /
+  `_proto_fixed64` / `_proto_message`). Benign in effect: no benchmark calls
+  `Span_to_otlp_proto`, so the references are unreachable and the harness
+  linked and ran correctly. Latent since `proto.cyr` landed in v1.2.0 — and
+  **not** hidden by tooling: a plain `cyrius bench tests/bcyr/agnostik.bcyr`
+  prints all five warnings, and does so on 6.4.62 and 6.5.27 as well as
+  6.5.35. It was overlooked in bench output for four releases, then caught
+  here by `cyrius audit`'s bench phase. Nothing about 6.5.35 revealed it;
+  running the gates that v1.3.5 skipped did. Include added after `types`
+  mirroring
+  `src/lib.cyr` / `agnostik.tcyr` order. Bench-harness warnings back to 0;
+  the recorded baseline and every figure in Performance below come from the
+  fixed harness.
+
+- **Three files were not canonically formatted.** `cyrius fmt --check`
+  failed on `src/main.cyr`, `tests/tcyr/agnostik.tcyr`, and
+  `tests/tcyr/test_v110_serde_golden.tcyr` — multi-line call arguments were
+  indented flush with the call (4 spaces) instead of the canonical 2-spaces-
+  per-open-paren continuation. Pre-existing debt, **not** introduced by this
+  bump: the 6.5.27 and 6.5.30 formatters reject the same three files
+  identically, so it entered at or before the 1.3.5 cut and was missed
+  because that release skipped its fmt gate. Canonicalized with
+  `cyrius fmt`; the change is whitespace-only across 16 lines (`git diff -w`
+  is empty) and all 858 assertions pass unchanged afterward.
+
+- **The v1.3.5 release skipped two mandatory gates.** Per CLAUDE.md the
+  benchmark gate is required on *every* version bump including
+  toolchain-only patches, and the closeout requires a doc-sync pass; 1.3.5
+  ran neither. Consequences visible in-tree: no 1.3.5 row was appended to
+  `docs/benchmarks/history.csv` (so this release's baseline is the
+  2026-07-13 / 1.3.4-line run, and its deltas span `6.4.62 → 6.5.27 →
+  6.5.35` rather than one pin step), `cyrius.cyml` was left pinned at
+  `6.5.27` against a `6.5.35` wrapper (toolchain-drift warning on every
+  build), and `README.md`, `docs/development/state.md`,
+  `docs/development/roadmap.md`, and `docs/doc-health.md` still described
+  **1.3.4 / cyrius 6.4.62**. All of the above are reconciled in this
+  release; 1.3.5 itself is left as shipped.
 
 - **Benchmark harness silently dropped fractional-µs averages.** Both
   `scripts/bench-history.sh` and `scripts/bench-regression.sh` parsed
@@ -23,6 +168,64 @@
   positives — the us-bracket floor (>80% **and** ≥2000ns absolute) still
   clears the largest observed mover (`audit_entry_full`, +39%/+788ns) by a
   wide margin. Tooling-only; no library source or wire-format change.
+
+### Performance
+
+Benchmark gate (`scripts/bench-regression.sh`): **25 checked, 0 new,
+0 regressions** — no `[bench-regression-ack]` needed. Baseline is the most
+recent committed row per bench in `docs/benchmarks/history.csv`. Because
+v1.3.5 never appended one the baseline is split, and **no row here is a
+single-pin-step delta**: 20 of 25 benches baseline to the 2026-07-13
+(v1.3.4-line) run and span `6.4.62 → 6.5.27 → 6.5.35`, while the five that
+the fractional-µs parser bug dropped from that run — `accel_flags_to_json`,
+`audit_entry_full`, `resource_limits_to_json`, `trace_context_new`,
+`traceparent_format` — fall back to the 2026-06-20 run, captured under
+cyrius **6.2.11**, and span `6.2.11 → 6.5.35`. The "baseline from" column
+marks which is which. Current values are **medians of 3 runs** (per CLAUDE.md,
+single-run benches bounce ±20–30%); a separate single-pass gate run also
+reported 0 regressions.
+
+| benchmark | baseline (ns) | 1.3.6 median (ns) | delta | baseline from |
+|---|---:|---:|---:|---|
+| `accel_flags_from_json` | 683 | 675 | -1.2% | 2026-07-13 |
+| `accel_flags_to_json` | 2,000 | 1,540 | -23.0% | 2026-06-20 |
+| `accelerator_device_full` | 154 | 110 | -28.6% | 2026-07-13 |
+| `agent_id_new` | 579 | 545 | -5.9% | 2026-07-13 |
+| `agent_id_roundtrip` | 994 | 945 | -4.9% | 2026-07-13 |
+| `agent_id_to_str` | 723 | 677 | -6.4% | 2026-07-13 |
+| `agent_stats_from_json` | 279 | 264 | -5.4% | 2026-07-13 |
+| `agent_stats_to_json` | 772 | 660 | -14.5% | 2026-07-13 |
+| `audit_entry_full` | 2,000 | 2,168 | +8.4% | 2026-06-20 |
+| `inference_request_full` | 684 | 378 | -44.7% | 2026-07-13 |
+| `injection_scores_from_json` | 300 | 291 | -3.0% | 2026-07-13 |
+| `injection_scores_to_json` | 858 | 768 | -10.5% | 2026-07-13 |
+| `message_build_3turn` | 592 | 360 | -39.2% | 2026-07-13 |
+| `resource_limits_from_json` | 437 | 424 | -3.0% | 2026-07-13 |
+| `resource_limits_to_json` | 1,000 | 924 | -7.6% | 2026-06-20 |
+| `sandbox_config_default` | 51 | 30 | -41.2% | 2026-07-13 |
+| `security_context_full` | 729 | 621 | -14.8% | 2026-07-13 |
+| `token_usage_from_json` | 428 | 381 | -11.0% | 2026-07-13 |
+| `token_usage_to_json` | 948 | 824 | -13.1% | 2026-07-13 |
+| `token_usage_update` | 41 | 27 | -34.1% | 2026-07-13 |
+| `trace_context_child` | 549 | 548 | -0.2% | 2026-07-13 |
+| `trace_context_new` | 1,000 | 1,080 | +8.0% | 2026-06-20 |
+| `traceparent_format` | 2,000 | 1,659 | -17.1% | 2026-06-20 |
+| `version_roundtrip` | 360 | 267 | -25.8% | 2026-07-13 |
+| `version_to_str` | 164 | 111 | -32.3% | 2026-07-13 |
+
+**23 of 25 ops improved.** agnostik's source is unchanged, so every
+movement here is toolchain-side. Notable wins:
+`inference_request_full` 684 → 378 ns (**-44.7%**), `sandbox_config_default` 51 → 30 ns (**-41.2%**), `message_build_3turn` 592 → 360 ns (**-39.2%**), `token_usage_update` 41 → 27 ns (**-34.1%**), `version_to_str` 164 → 111 ns (**-32.3%**), `accelerator_device_full` 154 → 110 ns (**-28.6%**), `version_roundtrip` 360 → 267 ns (**-25.8%**).
+
+Above baseline: `audit_entry_full` +8.4%, `trace_context_new` +8.0% — both
+well inside the 80% us-bracket threshold, and both compare against
+**whole-µs-truncated** 2026-06-20 baselines, so a `2,000` ns baseline
+encodes anything from 2,000–2,999 ns. The cause is the bench formatter, not
+the parser fix below: pre-6.2.15 `_fmt_time` rendered the µs branch as
+`major = ns / 1000` — integer division, no fraction, no rounding term — and
+fractional rendering arrived in 6.2.15. Measured against a real value
+anywhere in that bucket, both figures sit inside noise rather than
+representing measured slowdowns.
 
 ## [1.3.5] - 2026-08-17
 
