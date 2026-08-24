@@ -2,40 +2,157 @@
 
 ## [Unreleased]
 
+### Security
+
+- **F-014 (MEDIUM) — `_fill_random`'s error sentinel neither exited its
+  loop nor stayed in bounds.** The `/dev/urandom` fallback in
+  `src/types.cyr` set `off = 0 - 1` on a failed `read(2)`, intending to
+  abandon the loop. Cyrius compares **signed** (verified: `(0 - 1) < 16`
+  is true), so `off < n` stayed true and the loop retried with
+  destination `buf + (0 - 1)` — one byte *before* the buffer — and length
+  `n - (0 - 1)` = `n + 1`. Two failure modes: a successful retry wrote
+  `n + 1` bytes from `buf - 1`, corrupting the preceding byte, shifting
+  every random byte by one position, and then reporting **success**
+  (`off` reached `n`), handing the caller a silently-misaligned
+  identifier with no error; or, if reads kept failing, `off` stayed `-1`
+  forever and the loop never terminated, so the deliberate fail-loud path
+  (`stderr` + `exit(70)`) was unreachable and the library call hung.
+  Reachable from `agent_id_new()` / `user_id_new()` / `span_id_new()`,
+  but only when `getrandom(2)` does not return exactly `n` (old kernel,
+  `ENOSYS`, seccomp, signal) *and* `/dev/urandom` then fails — not
+  attacker-triggerable, which is why it is MEDIUM and not HIGH. The
+  fallback exists for degraded environments, however, which is exactly
+  where it would have run. Fixed by exiting on an explicit flag and
+  reporting success off that flag rather than off the offset (`break` is
+  unreliable in a Cyrius `while` carrying `var` declarations, so
+  flag + `continue` is the mandated idiom).
+
 ### Fixed
 
-- **CI's format gate reported drift for every file, on every run.** The
-  `Format check` step tested formatting with
-  `diff -q <(cyrius fmt "$f" 2>/dev/null) "$f"`, which assumes
-  `cyrius fmt <file>` is a stdout filter that prints the formatted source.
-  **That stopped being true at cyrius `6.5.27`**: through `6.5.26` bare
-  `fmt` printed the formatted source to stdout (4,329 B for
-  `src/error.cyr`), and from `6.5.27` onward it is an in-place rewriter that
-  prints **nothing**. So the `diff` compared an *empty* stream against each
-  file and failed unconditionally — all 31 files, regardless of their actual
-  formatting. Bisected across every installed toolchain: `6.5.20`/`6.5.24`/
-  `6.5.25`/`6.5.26` → stdout filter; `6.5.27`/`6.5.28`/…/`6.5.35` → in-place.
+- **F-015 (MEDIUM) — traceparent accepted an all-zero trace-id and an
+  all-zero parent-id.** W3C Trace Context declares both invalid and
+  requires implementations to ignore such a header; both parsed cleanly.
+  A peer that sent `00-000…0-00f067aa0ba902b7-01` had its context
+  accepted and propagated, collapsing distinct traces onto a reserved
+  sentinel id across all eleven consumers, since agnostik is the shared
+  implementation. Now rejected via a new private `_all_zero_bytes`
+  helper. The rule is "all bytes zero", not "leading zeros" — a trace-id
+  of `0…01` stays valid and is covered by a test.
 
-  The breakage therefore entered with the **v1.3.5** pin bump to `6.5.27`
-  and lay dormant because that release skipped its gates; v1.3.6 is the
-  first CI run on a `≥6.5.27` toolchain. It is not caused by the
-  `6.5.27 → 6.5.35` bump, and the source files were never mis-formatted —
-  `cyrius fmt --check` reports all 31 clean, as it did at the v1.3.6 cut.
+- **F-016 (MEDIUM) — the traceparent version field was never
+  validated.** `tctx_from_traceparent` checked the three `-` delimiters
+  at offsets 2/35/52 but never inspected the 2-char version at 0–1, so
+  `zz-…` parsed and version `ff` — explicitly forbidden by the spec —
+  was accepted. Both are now rejected. A valid hex version above `00`
+  still parses: the spec requires forward compatibility for the fields
+  an implementation understands, so `01-…` must be accepted, and that
+  direction is tested too.
 
-  The step now uses `cyrius fmt --check "$f"`, which signals drift purely
-  through its exit code (0 = canonical) and never rewrites the file, and it
-  echoes cyrfmt's message so a real failure names the offending line.
-  Verified both directions locally under `bash`: clean tree → `rc 0`,
-  "fmt: clean (31 files)"; with a deliberately non-canonical continuation
-  indent appended to `src/validation.cyr` → `rc 1`, `needs fmt:
-  src/validation.cyr` plus `cyrfmt: src/validation.cyr:78: not canonically
-  formatted`. Note the prior history here: the step originally read
-  `diff <(cyrius fmt "$f" --check)`, and commit `f8fdcee` ("ci fmt issue")
-  moved it to bare `fmt` — correctly diagnosing that `--check` emits no
-  output, but landing on a form that emits none either. The fix is to stop
-  diffing stdout altogether and use the exit code.
+- **F-017 (LOW) — uppercase hex was accepted throughout the
+  traceparent.** The spec mandates lowercase. The shared `_hex_nibble`
+  accepts `A`–`F`, which is *correct* for its other caller — JSON's
+  four-hex-digit `\u` escapes, where RFC 8259 permits either case. This
+  was a latent consequence of the v1.3.0 de-duplication that merged
+  `_json_hex_digit` into `_hex_nibble`, coupling two callers with
+  different case rules. Fixed at the W3C boundary rather than in the
+  shared helper, so conforming JSON is unaffected; a test asserts JSON
+  `\u` escapes stay case-insensitive to stop a future "simplification"
+  from pushing the check back down.
 
-  CI-only; no library source, public API, or wire-format change.
+- **F-019 (LOW) — `user_id_from_str` had no roundtrip test**, breaking
+  the rule that every parse function carries one. It is a thin
+  delegation to `agent_id_from_str`, so the risk was low — but the
+  delegation is precisely what an accidental edit to the `user_id_*`
+  alias block would break silently. Roundtrip and reject-garbage tests
+  added.
+
+- **F-020 (INFO) — `secret_metadata_new` over-allocated by 16 bytes.**
+  Confirmed from the v1.3.0 deferred list: it allocated 72 B / 9 slots
+  and wrote all nine, but only offsets 0/8/16/32/40/48 have accessors —
+  24, 56 and 64 were zeroed and then unreachable. Shrunk to 56 B, the
+  smallest size still covering the highest accessed field (`owner` at
+  48), and the two now-out-of-range stores removed. Offset 24 stays
+  zeroed as an interior hole; removing it would mean renumbering every
+  accessor for no gain. Internal only — no caller writes these records by
+  raw offset.
+
+### Changed
+
+- **`cyrius lint` is now fully clean, including its deferral tracker.**
+  Previously 9 untracked-deferral reports across `src/types.cyr` (4) and
+  `tests/tcyr/test_v107_unicode_pii.tcyr` (5) — every one a false
+  positive from prose mentioning JSON's `\uXXXX` escape form, which
+  cyrlint reads as an untracked `XXX` marker. Reworded to "four-hex-digit
+  `\u` escape" (comments and one banner string only — no test data or
+  assertion semantics touched, confirmed by diff). CI's lint gate only
+  fails on `warn` lines so it was already passing, but the noise made the
+  deferral tracker useless for its actual purpose. `cyrius lint` now
+  reports **0 warnings and 0 untracked deferrals across all 32 files**.
+
+### Documentation
+
+- **Audit report** at
+  [`docs/audit/2026-08-24-audit.md`](docs/audit/2026-08-24-audit.md).
+  This was a full source sweep rather than a diff review: v1.3.5 and
+  v1.3.6 were toolchain-only, so the last audit of the *source* was
+  2026-06-01 (v1.3.0). It records six new findings, confirms two
+  long-standing backlog items, and — deliberately — writes down what was
+  checked and found **sound**, so the next pass does not re-derive it:
+  the v1.1.1 sub-byte struct narrowing (`InjectionScores` 5 B,
+  `AcceleratorFlags` 9 B — accessor widths and offsets all correct, no
+  raw `store64` bypass); `_proto_varint`, whose suspicious-looking
+  post-shift mask turns out to emulate a logical shift exactly and
+  produce byte-identical output to canonical protobuf across the full
+  i64 range including negatives; all 10 syscall sites; and the continued
+  absence of `sys_system`, path traversal, stack buffers, and any
+  unbounded `strchr`/`strlen` over a non-NUL-terminated `Str`.
+
+- **Two contract gaps quantified and pinned to v1.4.0** in
+  [`docs/development/roadmap.md`](docs/development/roadmap.md) rather
+  than repaired here, because both need *additive public API* and that
+  does not belong in a patch:
+  - **F-018 (MEDIUM)** — 58 enums, 54 `*_name()` functions, and
+    **zero** enum `*_parse()`. The only `_parse` in the library is the
+    private `_json_parse`. So the CLAUDE.md roundtrip guarantee holds for
+    no enum at all, and each of the eleven consumers must hand-roll its
+    own string→enum mapping — the exact duplication agnostik exists to
+    prevent.
+  - **F-021 (MEDIUM)** — `SecretMetadata` has six getters and no
+    setters, and the constructor zeroes `expires_at` and `owner`, so
+    `smeta_expires_at()` returns `0` for every secret in every released
+    version. A consumer building expiry enforcement on it concludes
+    nothing ever expires. Interim guidance: do not treat it as
+    authoritative.
+
+### Testing
+
+- New `tests/tcyr/test_v137_hardening.tcyr` (+28 assertions, 858 → 886
+  across 16 files). Covers F-015/F-016/F-017 against the W3C spec
+  examples, the F-019 roundtrip, and F-014's control flow through a
+  faithful replica with a scripted `read` result — forcing a real
+  `getrandom(2)` failure from a test is impractical. It also pins the
+  signed-comparison behaviour F-014 depended on, so a future toolchain
+  flipping `<` to unsigned trips the guard instead of silently making the
+  removed sentinel pattern safe again.
+
+### Performance
+
+Benchmark gate vs the committed v1.3.6 baseline: **25 checked, 0
+regressions.** The added traceparent validation is a 55-byte scan plus
+two all-zero checks and is not on a benchmarked path (`traceparent_format`
+exercises the formatter, not the parser). Most ops measured slightly
+faster: `sandbox_config_default` 42 → 31 ns (−26.2%),
+`accelerator_device_full` 118 → 101 ns (−14.4%), `agent_id_new`
+609 → 525 ns (−13.8%), `agent_id_to_str` 772 → 700 ns (−9.3%),
+`trace_context_child` 612 → 553 ns (−9.6%).
+
+An earlier pre/post comparison in this pass showed a uniform +3…12% rise
+across *every* benchmark, including ones the diff cannot touch. That was
+host contention from a concurrent build, not a regression: untouched
+control benchmarks moved as much (+7.4%) as or more than benches near
+changed code (+3.2%), and the shift shrank to +2.7% when samples went
+from 3 to 5 runs. Noted because this host cannot produce trustworthy
+sub-10% comparisons while another project is compiling.
 
 ## [1.3.6] - 2026-08-24
 
@@ -140,6 +257,40 @@
   measurement and is superseded by these figures.
 
 ### Fixed
+
+
+- **CI's format gate reported drift for every file, on every run.** The
+  `Format check` step tested formatting with
+  `diff -q <(cyrius fmt "$f" 2>/dev/null) "$f"`, which assumes
+  `cyrius fmt <file>` is a stdout filter that prints the formatted source.
+  **That stopped being true at cyrius `6.5.27`**: through `6.5.26` bare
+  `fmt` printed the formatted source to stdout (4,329 B for
+  `src/error.cyr`), and from `6.5.27` onward it is an in-place rewriter that
+  prints **nothing**. So the `diff` compared an *empty* stream against each
+  file and failed unconditionally — all 31 files, regardless of their actual
+  formatting. Bisected across every installed toolchain: `6.5.20`/`6.5.24`/
+  `6.5.25`/`6.5.26` → stdout filter; `6.5.27`/`6.5.28`/…/`6.5.35` → in-place.
+
+  The breakage therefore entered with the **v1.3.5** pin bump to `6.5.27`
+  and lay dormant because that release skipped its gates; v1.3.6 is the
+  first CI run on a `≥6.5.27` toolchain. It is not caused by the
+  `6.5.27 → 6.5.35` bump, and the source files were never mis-formatted —
+  `cyrius fmt --check` reports all 31 clean, as it did at the v1.3.6 cut.
+
+  The step now uses `cyrius fmt --check "$f"`, which signals drift purely
+  through its exit code (0 = canonical) and never rewrites the file, and it
+  echoes cyrfmt's message so a real failure names the offending line.
+  Verified both directions locally under `bash`: clean tree → `rc 0`,
+  "fmt: clean (31 files)"; with a deliberately non-canonical continuation
+  indent appended to `src/validation.cyr` → `rc 1`, `needs fmt:
+  src/validation.cyr` plus `cyrfmt: src/validation.cyr:78: not canonically
+  formatted`. Note the prior history here: the step originally read
+  `diff <(cyrius fmt "$f" --check)`, and commit `f8fdcee` ("ci fmt issue")
+  moved it to bare `fmt` — correctly diagnosing that `--check` emits no
+  output, but landing on a form that emits none either. The fix is to stop
+  diffing stdout altogether and use the exit code.
+
+  CI-only; no library source, public API, or wire-format change.
 
 - **`tests/bcyr/agnostik.bcyr` was missing `include "src/proto.cyr"`.**
   The same defect v1.3.4 fixed in `tests/tcyr/agnostik.tcyr`, present in the

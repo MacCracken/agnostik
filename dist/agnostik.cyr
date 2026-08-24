@@ -139,14 +139,24 @@ fn _fill_random(buf, n) {
     if (fd >= 0) {
         # Loop in case the kernel returns a short read (rare for small n
         # but legal per read(2)).
+        #
+        # F-014 (audit 2026-08-24): the read-failure branch used to set
+        # `off = 0 - 1` as a "give up" sentinel. Cyrius compares SIGNED,
+        # so `(0 - 1) < n` stays true and the loop ran again with
+        # `buf + (0 - 1)` and length `n - (0 - 1)` = n + 1 — a one-byte
+        # heap underflow write, and a non-terminating loop if the reads
+        # kept failing. `break` is unreliable in a while loop carrying
+        # `var` declarations, so exit via an explicit flag + continue and
+        # report success off the flag rather than off the offset.
         var off = 0;
+        var failed = 0;
         while (off < n) {
             var r = syscall(0, fd, buf + off, n - off);
-            if (r <= 0) { off = 0 - 1; }
-            else { off = off + r; }
+            if (r <= 0) { failed = 1; off = n; continue; }
+            off = off + r;
         }
         syscall(3, fd);
-        if (off == n) { return 0; }
+        if (failed == 0) { return 0; }
     }
     # Both sources failed. Identifier generation is security-critical
     # (agent_id, session_id, trace_id back authorisation in aegis/sigil)
@@ -187,7 +197,7 @@ fn _hex_byte(buf, offset, byte) {
 }
 # Returns 0-15 on valid hex char, -1 on invalid. The single hex-char
 # decoder for the whole library — UUID/trace-id/span-id parsing, the
-# _json_str \uXXXX decoder, and version_from_str all route through it.
+# _json_str's \u escape decoder, and version_from_str all route through it.
 fn _hex_nibble(ch) {
     if (ch >= 48 && ch <= 57)  { return ch - 48; }   # '0'-'9'
     if (ch >= 97 && ch <= 102) { return ch - 87; }   # 'a'-'f'
@@ -363,8 +373,8 @@ fn _json_int(src: Str, key: Str) {
 # the full string, not just the prefix. Decode the common escapes
 # (\" \\ \/ \n \t \r \b \f) by writing into a fresh buffer; the buffer
 # is at most as long as the source so allocating slen bytes is safe.
-# v1.0.7: \uXXXX (and \uD8XX\uDCXX surrogate pairs) decoded as UTF-8.
-# Output is at most as long as input — \uXXXX is 6 source bytes
+# v1.0.7: four-hex-digit \u escapes (and surrogate pairs) decoded as UTF-8.
+# Output is at most as long as input — a \u escape is 6 source bytes
 # producing ≤4 UTF-8 bytes, surrogate pair is 12 source bytes
 # producing 4 UTF-8 bytes. slen+1 buffer remains sufficient.
 # Malformed escapes (truncated, invalid hex, orphan surrogate) emit
@@ -399,7 +409,7 @@ fn _json_str(src: Str, key: Str) {
             elif (esc == 98)    { store8(out + op, 8);  op = op + 1; vi = vi + 2; }
             elif (esc == 102)   { store8(out + op, 12); op = op + 1; vi = vi + 2; }
             elif (esc == 117) {
-                # \uXXXX — needs 6 source bytes (\, u, X, X, X, X).
+                # \u escape — needs 6 source bytes (\, u, then 4 hex).
                 if (vi + 6 > slen) {
                     op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                     vi = slen;
@@ -1961,6 +1971,18 @@ fn tctx_to_traceparent(c): Str {
     str_builder_add(sb, str_new(fbuf, 2));
     return str_builder_build(sb);
 }
+# True when all `len` bytes at `p` are zero. Used to reject the all-zero
+# trace-id / parent-id that W3C Trace Context declares invalid (F-015).
+fn _all_zero_bytes(p, len) {
+    var i = 0;
+    var nz = 0;
+    while (i < len) {
+        if (load8(p + i) != 0) { nz = 1; i = len; continue; }
+        i = i + 1;
+    }
+    if (nz == 1) { return 0; }
+    return 1;
+}
 fn tctx_from_traceparent(s: Str) {
     # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"
     # Total: 55 chars
@@ -1970,10 +1992,49 @@ fn tctx_from_traceparent(s: Str) {
     if (load8(data + 2) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
     if (load8(data + 35) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
     if (load8(data + 52) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
+    # F-017 (audit 2026-08-24): W3C Trace Context requires the whole
+    # header to be LOWERCASE hex; uppercase makes the traceparent
+    # invalid and it must be ignored. The shared `_hex_nibble` also
+    # serves JSON's four-hex-digit `\u` escapes, where RFC 8259 permits
+    # either case, so the case rule is enforced here on the W3C-governed
+    # path instead of tightening the shared helper. Covers version, trace-id, parent-id
+    # and flags — every hex position in the header.
+    var ci = 0;
+    while (ci < 55) {
+        if (ci == 2) { ci = 3; continue; }
+        if (ci == 35) { ci = 36; continue; }
+        if (ci == 52) { ci = 53; continue; }
+        var ch = load8(data + ci);
+        if (ch >= 65 && ch <= 70) {
+            return stik_err_invalid_argument(str_from("traceparent must be lowercase hex"));
+        }
+        ci = ci + 1;
+    }
+    # F-016 (audit 2026-08-24): the 2-char version field was never
+    # validated — non-hex versions parsed, and version "ff" (which the
+    # spec forbids) was accepted. Reject both. A version above 00 that is
+    # still valid hex is accepted: the spec requires forward
+    # compatibility for the fields this implementation understands.
+    var vhi = _hex_nibble(load8(data));
+    var vlo = _hex_nibble(load8(data + 1));
+    if (vhi < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent version")); }
+    if (vlo < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent version")); }
+    if (vhi == 15 && vlo == 15) {
+        return stik_err_invalid_argument(str_from("traceparent version ff is forbidden"));
+    }
     # Parse trace_id (32 hex chars at offset 3)
     var tid = trace_id_from_str(str_new(data + 3, 32))?;
     # Parse span_id (16 hex chars at offset 36)
     var sid = span_id_from_str(str_new(data + 36, 16))?;
+    # F-015 (audit 2026-08-24): an all-zero trace-id and an all-zero
+    # parent-id are both invalid per spec and must be rejected. These
+    # parsed cleanly before, so an invalid context propagated downstream.
+    if (_all_zero_bytes(tid, 16) == 1) {
+        return stik_err_invalid_argument(str_from("traceparent trace-id must not be all zero"));
+    }
+    if (_all_zero_bytes(sid, 8) == 1) {
+        return stik_err_invalid_argument(str_from("traceparent parent-id must not be all zero"));
+    }
     # Parse flags (2 hex chars at offset 53)
     var fhi = _hex_nibble(load8(data + 53));
     var flo = _hex_nibble(load8(data + 54));
@@ -2912,8 +2973,20 @@ fn secret_destroy(s) {
     store64(s + 8, 0);
     return 0;
 }
+# F-020 (audit 2026-08-24): this allocated 72 B / 9 slots, but only
+# offsets 0, 8, 16, 32, 40 and 48 have accessors — 24, 56 and 64 were
+# zeroed and then unreachable. Shrunk to 56 B, the smallest size that
+# still covers the highest accessed field (owner at 48). Offset 24 stays
+# zeroed: it is an interior hole, so removing it would mean renumbering
+# every accessor. No caller writes these records by raw offset, so the
+# shrink is invisible outside this file.
+#
+# F-021 (docs/development/roadmap.md, v1.4.0): `expires_at` (16) and `owner` (48)
+# have getters but no setters and are never written after construction,
+# so both always read 0. Adding setters is additive public API and does
+# not belong in a patch release.
 fn secret_metadata_new(name: Str, kind) {
-    var m = alloc(72);
+    var m = alloc(56);
     store64(m, name);
     store64(m + 8, clock_now_ns());
     store64(m + 16, 0);
@@ -2921,8 +2994,6 @@ fn secret_metadata_new(name: Str, kind) {
     store64(m + 32, kind);
     store64(m + 40, vec_new());
     store64(m + 48, 0);
-    store64(m + 56, 0);
-    store64(m + 64, 0);
     return m;
 }
 fn smeta_name(m)        { return load64(m); }

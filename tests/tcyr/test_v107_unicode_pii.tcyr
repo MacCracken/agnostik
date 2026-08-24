@@ -1,7 +1,7 @@
 # tests/tcyr/test_v107_unicode_pii.tcyr
 #
 # Coverage for the v1.0.7 additive features:
-# - JSON \uXXXX Unicode escape decoder in `_json_str`
+# - JSON four-hex-digit \u escape decoder in `_json_str`
 #   (single BMP, surrogate-pair, malformed-fallback paths)
 # - New `PiiKind` variants (PII_GENETIC, PII_BIOMETRIC_TEMPLATE,
 #   PII_PRECISE_GEOLOCATION)
@@ -19,7 +19,7 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
-# ─── \uXXXX decoder — single BMP codepoint paths ──────────────────
+# ─── \u decoder — single BMP codepoint paths ─────────────────────
 
 fn test_unicode_ascii_via_u_escape() {
     # A = 'A' (0x41) — falls in 1-byte UTF-8 range.
@@ -66,7 +66,7 @@ fn test_unicode_surrogate_pair() {
     return 0;
 }
 
-# ─── \uXXXX decoder — malformed-fallback paths (U+FFFD = 0xEF 0xBF 0xBD) ──
+# ─── \u decoder — malformed fallback (U+FFFD = 0xEF 0xBF 0xBD) ───
 
 fn _assert_replacement_3bytes(s, label) {
     var d = str_data(s);
@@ -118,7 +118,7 @@ fn test_unicode_high_then_non_low() {
     return 0;
 }
 
-# ─── \uXXXX mixed with ASCII + other escapes ──────────────────────
+# ─── \u escapes mixed with ASCII + other escapes ─────────────────
 
 fn test_unicode_mixed_with_ascii() {
     # ASCII + A + ASCII roundtrip.
@@ -172,7 +172,7 @@ fn test_pii_new_variants_distinct_tags() {
 }
 
 fn main() {
-    println("=== agnostik v1.0.7: \\uXXXX decoder + PiiKind additions ===");
+    println("=== agnostik v1.0.7: \\u decoder + PiiKind additions ===");
     test_unicode_ascii_via_u_escape();
     test_unicode_2byte_utf8();
     test_unicode_3byte_utf8();

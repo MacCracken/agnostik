@@ -6,7 +6,7 @@ type: state
 
 # Documentation Health — agnostik
 
-> **Last refresh**: 2026-08-24 (v1.3.6 release cut — cyrius `6.5.27` → `6.5.35` toolchain refresh, **plus the doc-sync the v1.3.5 cut skipped entirely**. CHANGELOG stamped `[1.3.6]`, VERSION → 1.3.6, state.md reconciled off its stale **1.3.4 / 6.4.62** state with 1.3.5 backfilled and 1.3.6 added, Toolchain + Stats + Recent-releases sections rewritten, README/roadmap Status blocks bumped, `cyrius-audit-missing-check-script` issue updated (narrowed to `cyrius self`, stays open), new v1.3.6 roadmap backlog section, history.csv baseline appended — 25 rows, the first full append since the fractional-µs parser fix). | **Refresh cadence**: when docs are touched, update the affected row.
+> **Last refresh**: 2026-08-24 (v1.3.7 P(-1) hardening sweep — new audit report `docs/audit/2026-08-24-audit.md` (F-014..F-021), new test file `tests/tcyr/test_v137_hardening.tcyr` (+28 assertions, 858 → 886), CHANGELOG `[Unreleased]` Security/Fixed/Documentation/Testing/Performance sections, new roadmap **v1.4.0 — Contract completeness** section pinning F-018/F-021, v1.3.0 backlog over-alloc item marked RESOLVED, state.md Stats + in-flight note, README Status/Audits blocks. Earlier same day: the v1.3.6 release cut and its post-tag CI format-gate fix.) | **Refresh cadence**: when docs are touched, update the affected row.
 > **Scope**: This repo only (`agnostik`) — root-level files (README, CHANGELOG, CLAUDE.md, etc.) plus the entire `docs/` tree. Cross-repo Cyrius pin/version drift lives in [`development/state.md`](development/state.md), not here.
 
 This is a **ledger**, not a one-time audit. Rewrite-in-place as docs change. The doc surface is small (~22 files) but every file is load-bearing — agnostik is the type vocabulary every AGNOS component depends on, and stale type docs propagate downstream.
@@ -42,8 +42,8 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `README.md` | 2026-08-24 | ✅ Fresh | v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.3.6 (Current `1.3.6`, toolchain `6.5.35`) — it had been left at `1.3.4`/`6.4.62` through the whole 1.3.5 line; Quick Start `cyrius lib sync` annotation now `(6.4.x+: subset by default)`; the Quick Start test-loop comment corrected `851/851` → `858/858` (stale since v1.3.0 and self-contradicting the Status block 60 lines above). |
-| `CHANGELOG.md` | 2026-08-24 | ✅ Fresh | Source of truth for shipped work. Through **1.3.6** (cyrius `6.5.27 → 6.5.35`; Toolchain + Fixed + Performance sections; 25 checked / 0 regressions, 23 of 25 faster; `agnostik.bcyr` proto-include fix; fmt debt cleared; binary 413,512 → 629,032 B). `[Unreleased]` carries the post-tag CI format-gate fix (cyrius `6.5.27` changed `cyrius fmt` from a stdout filter to an in-place rewriter, so CI's `diff <(cyrius fmt ...)` gate failed every file). Note **1.3.5**'s entry is a single line with a `354,112 -> 417,608 bytes` figure that does not reproduce — superseded by the 1.3.6 measurements, left as shipped. |
+| `README.md` | 2026-08-24 | ✅ Fresh | Status block now 886 assertions / 16 files; Audits line lists all four audits incl. 2026-08-24. v1.2.0 audit rewrite (Status block + module table + OTLP example + gate-script list + Decisions section). Status block bumped at v1.3.6 (Current `1.3.6`, toolchain `6.5.35`) — it had been left at `1.3.4`/`6.4.62` through the whole 1.3.5 line; Quick Start `cyrius lib sync` annotation now `(6.4.x+: subset by default)`; the Quick Start test-loop comment corrected `851/851` → `858/858` (stale since v1.3.0 and self-contradicting the Status block 60 lines above). |
+| `CHANGELOG.md` | 2026-08-24 | ✅ Fresh | Source of truth for shipped work. Through **1.3.6** (cyrius `6.5.27 → 6.5.35`; Toolchain + Fixed + Performance sections; 25 checked / 0 regressions, 23 of 25 faster; `agnostik.bcyr` proto-include fix; fmt debt cleared; binary 413,512 → 629,032 B). `[Unreleased]` carries the v1.3.7 P(-1) hardening sweep (F-014..F-021). **1.3.6** also carries the CI format-gate fix folded in post-tag (cyrius `6.5.27` changed `cyrius fmt` from a stdout filter to an in-place rewriter, so CI's `diff <(cyrius fmt ...)` gate failed every file unconditionally). Note **1.3.5**'s entry is a single line with a `354,112 -> 417,608 bytes` figure that does not reproduce — superseded by the 1.3.6 measurements, left as shipped. |
 | `CLAUDE.md` | 2026-08-24 | ✅ Fresh | Durable rules. Quick Start `cyrius lib sync` annotation now `(6.4.x+: subset by default)`. Mandatory Benchmark Gate + sub-byte rules intact. The 1.3.5 cut violated the Benchmark Gate and Closeout doc-sync rules — the rules were correct, the release skipped them; no rule change made. |
 | `CONTRIBUTING.md` | 2026-08-24 | ✅ Fresh | `cyrlint` fix + derive guidance + sub-byte rule + gate-script steps. Setup snippet `cyrius lib sync` annotation now `(6.4.x+: subset by default)`. |
 | `SECURITY.md` | 2026-05-09 | ✅ Fresh | Supported lines (1.0/1.1/1.2), scope by attack surface, audits table. |
@@ -56,8 +56,8 @@ Pattern lifted from the genesis-repo ledger ([`agnosticos/docs/doc-health.md`](h
 
 | File | Last touched | Status | Notes |
 |---|---|---|---|
-| `state.md` | 2026-08-24 | ✅ Fresh | Live volatile state. Fully reconciled at the v1.3.6 cut — it had gone stale at **1.3.4 / 6.4.62** because the 1.3.5 release ran no doc-sync. Version section now runs 1.3.6 → 1.3.0 (**1.3.5 backfilled**, 1.3.6 added); Toolchain section rewritten (`6.5.35`, stdlib-resolves-from-pin clarification, new DCE NOP-fill entry, narrowed `cyrius audit`/`cyrius self` status); Stats rewritten (binary 629,032 B, dist 121,132 B, new undocumented-fns row); Recent releases current. |
-| `roadmap.md` | 2026-08-24 | ✅ Fresh | Status block bumped to v1.3.6 (Cyrius `6.5.35`) from a stale v1.3.4; prior-stable line now 1.3.5–1.3.2. New **Backlog — v1.3.6 toolchain review** section (853 undocumented fns, binary +215,520 B, `cyrius self` false-fail). v1.3.0/v1.3.1 review backlog items retained. |
+| `state.md` | 2026-08-24 | ✅ Fresh | Live volatile state. Stats now 16 test files / 886 assertions; carries an **in-flight** note for the unreleased v1.3.7 P(-1) work (VERSION deliberately still reads 1.3.6 — the cut is the maintainer's call). Fully reconciled at the v1.3.6 cut — it had gone stale at **1.3.4 / 6.4.62** because the 1.3.5 release ran no doc-sync. Version section now runs 1.3.6 → 1.3.0 (**1.3.5 backfilled**, 1.3.6 added); Toolchain section rewritten (`6.5.35`, stdlib-resolves-from-pin clarification, new DCE NOP-fill entry, narrowed `cyrius audit`/`cyrius self` status); Stats rewritten (binary 629,032 B, dist 121,132 B, new undocumented-fns row); Recent releases current. |
+| `roadmap.md` | 2026-08-24 | ✅ Fresh | New **v1.4.0 — Contract completeness** section pinning F-018 (54 enums lack `*_parse`) and F-021 (unsettable `SecretMetadata` fields), both held out of the patch as additive API; v1.3.0 backlog over-alloc item marked RESOLVED with the cross-consumer evidence; setter-less `mcap_supports_*` folded into the F-021 work. Status block bumped to v1.3.6 (Cyrius `6.5.35`) from a stale v1.3.4; prior-stable line now 1.3.5–1.3.2. New **Backlog — v1.3.6 toolchain review** section (853 undocumented fns, binary +215,520 B, `cyrius self` false-fail). v1.3.0/v1.3.1 review backlog items retained. |
 
 ---
 
@@ -89,9 +89,10 @@ Date-stamped, frozen by design. Each minor cut runs an audit pass per CLAUDE.md 
 |---|---|---|---|
 | `2026-04-26-audit.md` | 2026-04-26 | 📦 Frozen | Pre-1.0.0 hardening — F-001..F-011 closed. |
 | `2026-05-10-audit.md` | 2026-05-09 (filed under 05-10) | 📦 Frozen | Post-1.0 cumulative diff (1.0.1..1.0.7) — F-012 INFO closed, prior findings re-verified. |
-| `2026-06-01-audit.md` | 2026-06-01 | ✅ Fresh | v1.3.0 closeout pass — **F-013 (LOW)** `version_from_str` unbounded `strchr` over-read fixed + regression-tested; F-001..F-012 re-verified closed; deferred cleanup cluster logged. |
+| `2026-06-01-audit.md` | 2026-06-01 | 📦 Frozen | v1.3.0 closeout pass — **F-013 (LOW)** `version_from_str` unbounded `strchr` over-read fixed + regression-tested; F-001..F-012 re-verified closed; deferred cleanup cluster logged. |
+| `2026-08-24-audit.md` | 2026-08-24 | ✅ Fresh | v1.3.7 **P(-1) full-source sweep** (first source audit since v1.3.0 — 1.3.5/1.3.6 were toolchain-only). Repaired: **F-014 (MEDIUM)** `_fill_random` error sentinel — signed compare meant `off = 0 - 1` retried at `buf - 1` with `n + 1` bytes, or hung; **F-015/F-016 (MEDIUM)** + **F-017 (LOW)** W3C traceparent validation; **F-019 (LOW)** missing roundtrip test; **F-020 (INFO)** over-alloc, cross-consumer-confirmed. Pinned to v1.4.0: **F-018** (zero enum `*_parse`) and **F-021** (unsettable `SecretMetadata` fields). Also records verified-sound negative results (sub-byte struct widths, `_proto_varint` vs canonical protobuf across the full i64 range, all 10 syscall sites). |
 
-Next audit slot: at v1.4.0 cut (or sooner if a CVE pattern surfaces in agnostik's input-handling paths or the cyrius toolchain's parser/serde dependencies).
+Next audit slot: at the v1.4.0 cut, which is also where F-018/F-021 land (or sooner if a CVE pattern surfaces in agnostik's input-handling paths or the cyrius toolchain's parser/serde dependencies).
 
 ---
 
@@ -143,7 +144,7 @@ None outstanding for the v1.2.0 cut. This section will repopulate when:
 
 | # | Commitment | Trigger | Source | Notes |
 |---|---|---|---|---|
-| 1 | **Audit report retention** — keep all `docs/audit/YYYY-MM-DD-audit.md` reports verbatim through at least v2.0.0; re-evaluate at the major cut whether pre-1.0 reports get folded into a single historical summary. | v2.0.0 cut | This file | Today's surface is 2 reports — purge pressure is zero. |
+| 1 | **Audit report retention** — keep all `docs/audit/YYYY-MM-DD-audit.md` reports verbatim through at least v2.0.0; re-evaluate at the major cut whether pre-1.0 reports get folded into a single historical summary. | v2.0.0 cut | This file | Today's surface is 4 reports — purge pressure is zero. |
 | 2 | **Issue archive purge** — the `docs/development/issues/archive/` set is a record of upstream cyrius bugs that landed during agnostik development. Keep through v2.0.0; at major cut, decide whether to roll them up into a single CHANGELOG-of-cyrius-quirks file. | v2.0.0 cut | This file | Same low-pressure shape. |
 
 ---
@@ -174,4 +175,4 @@ This file's refresh cadence is **opportunistic** (touched when other docs are to
 
 ---
 
-*Last refresh: 2026-08-24 (v1.3.6 release cut — cyrius `6.5.27` → `6.5.35` toolchain refresh, plus the doc-sync the v1.3.5 cut skipped. CHANGELOG/VERSION stamped, state.md reconciled off a stale 1.3.4/6.4.62 state (1.3.5 backfilled, 1.3.6 added, Toolchain/Stats/Recent-releases rewritten), README/roadmap Status blocks bumped, lib-sync annotations `(6.4.x)` → `(6.4.x+)`, `cyrius-audit-missing-check-script` issue narrowed to `cyrius self`, new v1.3.6 roadmap backlog, history.csv baseline appended. Refresh in place when docs are touched.*
+*Last refresh: 2026-08-24 (v1.3.7 P(-1) hardening sweep — audit report for F-014..F-021, `test_v137_hardening.tcyr`, CHANGELOG `[Unreleased]`, roadmap v1.4.0 pin, state.md Stats + in-flight note, README Status/Audits. Earlier same day: v1.3.6 cut + CI fmt-gate fix.) Refresh in place when docs are touched.*

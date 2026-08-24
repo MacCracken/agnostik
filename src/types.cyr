@@ -12,14 +12,24 @@ fn _fill_random(buf, n) {
     if (fd >= 0) {
         # Loop in case the kernel returns a short read (rare for small n
         # but legal per read(2)).
+        #
+        # F-014 (audit 2026-08-24): the read-failure branch used to set
+        # `off = 0 - 1` as a "give up" sentinel. Cyrius compares SIGNED,
+        # so `(0 - 1) < n` stays true and the loop ran again with
+        # `buf + (0 - 1)` and length `n - (0 - 1)` = n + 1 — a one-byte
+        # heap underflow write, and a non-terminating loop if the reads
+        # kept failing. `break` is unreliable in a while loop carrying
+        # `var` declarations, so exit via an explicit flag + continue and
+        # report success off the flag rather than off the offset.
         var off = 0;
+        var failed = 0;
         while (off < n) {
             var r = syscall(0, fd, buf + off, n - off);
-            if (r <= 0) { off = 0 - 1; }
-            else { off = off + r; }
+            if (r <= 0) { failed = 1; off = n; continue; }
+            off = off + r;
         }
         syscall(3, fd);
-        if (off == n) { return 0; }
+        if (failed == 0) { return 0; }
     }
     # Both sources failed. Identifier generation is security-critical
     # (agent_id, session_id, trace_id back authorisation in aegis/sigil)
@@ -60,7 +70,7 @@ fn _hex_byte(buf, offset, byte) {
 }
 # Returns 0-15 on valid hex char, -1 on invalid. The single hex-char
 # decoder for the whole library — UUID/trace-id/span-id parsing, the
-# _json_str \uXXXX decoder, and version_from_str all route through it.
+# _json_str's \u escape decoder, and version_from_str all route through it.
 fn _hex_nibble(ch) {
     if (ch >= 48 && ch <= 57)  { return ch - 48; }   # '0'-'9'
     if (ch >= 97 && ch <= 102) { return ch - 87; }   # 'a'-'f'
@@ -236,8 +246,8 @@ fn _json_int(src: Str, key: Str) {
 # the full string, not just the prefix. Decode the common escapes
 # (\" \\ \/ \n \t \r \b \f) by writing into a fresh buffer; the buffer
 # is at most as long as the source so allocating slen bytes is safe.
-# v1.0.7: \uXXXX (and \uD8XX\uDCXX surrogate pairs) decoded as UTF-8.
-# Output is at most as long as input — \uXXXX is 6 source bytes
+# v1.0.7: four-hex-digit \u escapes (and surrogate pairs) decoded as UTF-8.
+# Output is at most as long as input — a \u escape is 6 source bytes
 # producing ≤4 UTF-8 bytes, surrogate pair is 12 source bytes
 # producing 4 UTF-8 bytes. slen+1 buffer remains sufficient.
 # Malformed escapes (truncated, invalid hex, orphan surrogate) emit
@@ -272,7 +282,7 @@ fn _json_str(src: Str, key: Str) {
             elif (esc == 98)    { store8(out + op, 8);  op = op + 1; vi = vi + 2; }
             elif (esc == 102)   { store8(out + op, 12); op = op + 1; vi = vi + 2; }
             elif (esc == 117) {
-                # \uXXXX — needs 6 source bytes (\, u, X, X, X, X).
+                # \u escape — needs 6 source bytes (\, u, then 4 hex).
                 if (vi + 6 > slen) {
                     op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                     vi = slen;

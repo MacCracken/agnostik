@@ -5,6 +5,24 @@
 
 ## Version
 
+> **In flight (unreleased, staged for `1.3.7`)** — P(-1) hardening sweep
+> per CLAUDE.md §P(-1). Full report:
+> [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md). Six new
+> findings; four repaired here (**F-014** `_fill_random`'s error sentinel
+> neither exited its loop nor stayed in bounds — signed compare made
+> `off = 0 - 1` retry at `buf - 1` with `n + 1` bytes, or hang;
+> **F-015/F-016/F-017** W3C traceparent validation — all-zero
+> trace-id/parent-id, unvalidated version field, uppercase hex;
+> **F-019** missing `user_id_from_str` roundtrip test; **F-020**
+> `secret_metadata_new` 72 B → 56 B, cross-consumer-confirmed safe). Two
+> contract gaps quantified and pinned to **v1.4.0** because they need
+> additive public API: **F-018** (58 enums, 54 `*_name()`, **zero** enum
+> `*_parse()`) and **F-021** (`SecretMetadata.expires_at`/`.owner` are
+> unsettable, so `smeta_expires_at()` returns 0 for every secret ever
+> released). 886/886 tests; lint/fmt/vet clean; api-surface unchanged at
+> 871 fns; bench gate 25 checked / 0 regressions. `VERSION` still reads
+> `1.3.6` — the cut is the maintainer's call.
+
 **1.3.6** — Toolchain-refresh patch on top of 1.3.5, plus the gate and
 doc reconciliation the 1.3.5 cut skipped. Cyrius pin `6.5.27` → `6.5.35`.
 No agnostik-side logic changes: public API (**871 fns**, matches
@@ -529,8 +547,8 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 |-----------------------|-----------|------------------------------------|
 | Source LOC (src/)     | ~3,180    | down from 7,121 LOC Rust; −2 KB binary at 1.3.0 from copy-loop/ladder removal |
 | Module count          | 12        |                                    |
-| Test files            | 15        | tests/tcyr/ (+test_v130_slice_safety) |
-| Test assertions       | 858       | 0 failed; +7 F-013 slice-safety regression at v1.3.0 (was 851 through v1.2.3) |
+| Test files            | 16        | tests/tcyr/ (+test_v137_hardening at the 2026-08-24 P(-1) pass) |
+| Test assertions       | 886       | 0 failed; +28 F-014..F-019 hardening regressions at the 2026-08-24 P(-1) pass (858 through v1.3.6; 851 through v1.2.3) |
 | Benchmarks            | 25        | `tests/bcyr/agnostik.bcyr` — gained the missing `src/proto.cyr` include at 1.3.6 |
 | Test binary           | 629,032 B | `build/agnostik`. DCE and plain builds are now byte-identical (see Toolchain — DCE NOP-fills in place, it does not shrink). History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0 from chrono+proto surface; ~304 KB at 1.2.1; ~306 KB / 313,344 B at 1.2.3 across the 6.0.x boundary; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (6.2.11 NOPs in place + ~119 KB `bayan`); 350,016 B at 1.3.4 (6.4.62, −43 KB, leaner NOP-fill); 413,512 B at 1.3.5 (6.5.27); **629,032 B at 1.3.6** on the 6.5.35 pin, **+215,520 B** — 6.5.3x folds a 361-fn PDF subsystem into `bayan`, all NOPed, none reachable |
 | Build warnings        | 0         | 3 vendored-`bayan` TOML warnings at the 1.3.5 pin fixed upstream in 6.5.35; 5 bench-harness `_proto_*` warnings fixed at 1.3.6 |

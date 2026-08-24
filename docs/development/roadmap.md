@@ -92,10 +92,21 @@ they aren't re-discovered each cycle. Full context in
   getters with no matching setter (can only read 0). Decide: add setters
   (complete the API) or drop (decorative). Additive (setters) is
   non-breaking; pin to a minor when a consumer needs to *set* them.
-- **`secret_metadata_new` over-alloc** (`secrets.cyr`) — 72 B / 9 slots,
-  3 unreachable (offsets 24/56/64). Shrink to 56 B is a layout change;
-  no in-repo raw writers, but external consumers may. Confirm via the
-  cross-consumer sweep before trimming.
+  **Note:** the 2026-08-24 audit found the same shape in
+  `SecretMetadata` (F-021) and rated it MEDIUM there, because an
+  always-zero `expires_at` on a *secrets* type is a security footgun
+  rather than a decorative gap. These seven are the benign end of the
+  same defect class — fold them into the F-021 work in **v1.4.0** so the
+  library gets one consistent answer on setter-less getters instead of
+  two.
+- ~~**`secret_metadata_new` over-alloc** (`secrets.cyr`) — 72 B / 9 slots,
+  3 unreachable (offsets 24/56/64).~~ **RESOLVED in v1.3.7** (F-020).
+  The gating question — whether an external consumer writes offsets
+  56/64 by raw pointer — was answered instead of waived: all eleven
+  consumer repos grep to **zero** references to `smeta_` /
+  `secret_metadata`, so the layout is private to the file. Shrunk to
+  56 B. See [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md)
+  §F-020.
 
 These are not security exposures — F-013 (the one real finding) shipped
 in v1.3.0. Trigger for action: the v1.2.4 cross-consumer sweep landing
@@ -169,6 +180,73 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
   Tracked in
   [`issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md);
   archive that file when `self` resolves its preamble.
+
+---
+
+## v1.4.0 — Contract completeness (pinned from the 2026-08-24 P(-1) audit)
+
+Both items are **additive public API**, which is why they were held out
+of the v1.3.7 patch rather than repaired there. Full write-ups in
+[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md).
+
+### F-018 — `*_parse()` for every enum that has `*_name()`
+
+🔴 **Contract breach, MEDIUM.** CLAUDE.md requires *"All public enums must
+have `*_name()` (string representation) and `*_parse(s)` (roundtrip)."*
+Measured at the v1.3.7 cut: **58 enums, 54 `*_name()`, 0 enum
+`*_parse()`.** The only `_parse` symbol in the library is the private
+`_json_parse`; the five `*_from_str` functions cover ID and version
+types, not enums. The roundtrip guarantee therefore holds for no enum in
+the type vocabulary.
+
+Why it matters more than the count suggests: a consumer deserialising an
+`AgentStatus`, `ClassificationLevel`, `AuditSeverity` or `LlmProvider`
+from config or a wire payload has no library path back from the string,
+so all eleven consumers hand-roll their own mapping. That is the exact
+duplication agnostik exists to prevent, and divergent hand-rolled
+mappings are how two components come to disagree about what
+`"restricted"` means.
+
+Plan:
+1. Add `*_parse(s: Str)` for each of the 54 enums carrying a `*_name()`,
+   returning `Result` and accepting exactly what `*_name()` emits.
+2. Add **one table-driven test** asserting `parse(name(v)) == v` for
+   every variant of every enum, so the invariant is enforced
+   mechanically. This matters as much as the functions: the reason a
+   58-enum / zero-parser gap survived eight releases is that nothing
+   checked it.
+3. Regenerate `docs/api-surface.snapshot` (871 → ~925 fns) and commit it
+   in the same change.
+4. Decide per-enum whether parsing is case-insensitive. Recommendation:
+   exact-match only, mirroring `*_name()` output, so the roundtrip is
+   total and no ambiguity is introduced.
+
+### F-021 — `SecretMetadata.expires_at` / `.owner` are unsettable
+
+🔴 **MEDIUM.** `SecretMetadata` has six getters and **zero** setters, and
+`secret_metadata_new` writes `0` to both `expires_at` (offset 16) and
+`owner` (offset 48). No code path in the library can give either a
+non-zero value, so `smeta_expires_at()` returns `0` for every secret in
+every version released to date.
+
+A consumer implementing rotation or expiry enforcement reads `0`,
+correctly interprets it as "no expiry set", and concludes the secret
+never expires — for every secret, permanently. In a secrets type that is
+a security-relevant footgun: the API advertises an expiry concept it
+cannot express. `owner` has the same shape, weakening any
+ownership-based check built on it.
+
+Plan — pick one, do not do both:
+- **Setters** (`smeta_set_expires_at`, `smeta_set_owner`): additive,
+  smallest blast radius, keeps the constructor signature. Preferred.
+- **Wider constructor**: expresses the invariant better (metadata is
+  arguably immutable) but is a **breaking** signature change, so it
+  would need v2.0.0, not v1.4.0.
+
+Either way, note in the release that `smeta_expires_at` was previously
+always `0` — a consumer that "handled" expiry against it was a no-op and
+needs re-checking, which is a behavioural correction for them even though
+the agnostik change is additive.
 
 ---
 
