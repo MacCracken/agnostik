@@ -5,23 +5,75 @@
 
 ## Version
 
-> **In flight (unreleased, staged for `1.3.7`)** — P(-1) hardening sweep
-> per CLAUDE.md §P(-1). Full report:
-> [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md). Six new
-> findings; four repaired here (**F-014** `_fill_random`'s error sentinel
-> neither exited its loop nor stayed in bounds — signed compare made
-> `off = 0 - 1` retry at `buf - 1` with `n + 1` bytes, or hang;
-> **F-015/F-016/F-017** W3C traceparent validation — all-zero
-> trace-id/parent-id, unvalidated version field, uppercase hex;
-> **F-019** missing `user_id_from_str` roundtrip test; **F-020**
-> `secret_metadata_new` 72 B → 56 B, cross-consumer-confirmed safe). Two
-> contract gaps quantified and pinned to **v1.4.0** because they need
-> additive public API: **F-018** (58 enums, 54 `*_name()`, **zero** enum
-> `*_parse()`) and **F-021** (`SecretMetadata.expires_at`/`.owner` are
-> unsettable, so `smeta_expires_at()` returns 0 for every secret ever
-> released). 886/886 tests; lint/fmt/vet clean; api-surface unchanged at
-> 871 fns; bench gate 25 checked / 0 regressions. `VERSION` still reads
-> `1.3.6` — the cut is the maintainer's call.
+**1.4.0** — Contract completeness minor on top of 1.3.7, closing the two
+gaps the 2026-08-24 P(-1) audit found and deliberately held out of that
+patch because both are **additive public API**. Report:
+[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md).
+
+**F-018** — the library had 31 enum `*_name()` functions and **zero**
+enum `*_parse()`, so the CLAUDE.md roundtrip contract held for no enum at
+all and every one of the eleven consumers hand-rolled its own string→enum
+mapping. Now 31 `*_parse` functions covering **204 members**. Exact match
+with no case-folding or aliasing; an unrecognised string returns `Err`
+rather than a sentinel variant, so a config typo surfaces instead of
+silently becoming `Unknown`. Seven members are named by their `_name`
+*fallback* rather than an explicit arm (`STIK_ERR_UNKNOWN`,
+`HEALTH_UNKNOWN`, `VENDOR_CUSTOM`, `LLM_CUSTOM`, `MEM_UNKNOWN`,
+`PII_CUSTOM`, `STATUS_UNKNOWN`) — their `_parse` maps the fallback string
+back so the roundtrip is total, while the other 24 enums reject theirs
+since no member owns it. **F-021** — 9 setters for fields that had
+getters but no setter and therefore read `0` in every prior release:
+`smeta_set_expires_at` / `smeta_set_owner`, plus the seven original
+`mcap_set_supports_*` flags (closing the v1.3.0 backlog item in the same
+change so setter-less getters get one consistent answer). Chose setters
+over a wider constructor signature, which would have been breaking.
+
+Consumer note: any expiry handling built against `smeta_expires_at`
+before 1.4.0 read a permanent `0` and was a no-op — a behavioural
+correction for consumers even though this change is purely additive.
+
+Public API **871 → 911 fns** (+31 parse, +9 setters), **zero removals**;
+`docs/api-surface.snapshot` regenerated. No wire-format, struct-layout or
+signature change. Tests **886 → 1,367** across 17 files: the new
+`tests/tcyr/test_v140_enum_parse.tcyr` is mechanically derived and
+asserts `parse(name(v)) == v` for all 204 members plus per-enum rejection
+and fallback cases (481 assertions). That test is as much the deliverable
+as the functions — a 31-enum gap survived eight releases precisely
+because nothing checked it. Bench gate 25 checked / 0 regressions;
+lint/fmt/vet clean.
+
+Correction recorded during implementation: the audit's first draft put
+this at "54 `*_name()` functions". That grep conflated real enum name
+functions with 20 struct-field accessors also called `*_name`
+(`span_name`, `smeta_name`, `topic_name`, …). Re-extracted properly: 31
+enum name functions / 204 members. A further **27 declared enums have no
+`*_name()` at all** — mostly bitflag sets like `LinuxCapability` (39
+values) — and were deliberately left out of scope.
+
+**1.3.7** — P(-1) hardening sweep per CLAUDE.md §P(-1); first full source
+audit since v1.3.0, since 1.3.5/1.3.6 were toolchain-only. Six findings
+repaired. **F-014 (MEDIUM)** — `_fill_random`'s `/dev/urandom` fallback
+set `off = 0 - 1` as a give-up sentinel, but Cyrius compares **signed**,
+so `off < n` stayed true and the loop retried with destination `buf - 1`
+and length `n + 1`: either a one-byte heap underflow write that then
+reported *success* (handing the caller a silently-shifted identifier), or
+a non-terminating loop that made the deliberate fail-loud path
+unreachable. Reachable from `agent_id_new`/`user_id_new`/`span_id_new`,
+whose ids back authorisation in aegis/sigil. Fixed with a flag-based exit.
+**F-015/F-016 (MEDIUM)** and **F-017 (LOW)** — W3C traceparent
+validation: all-zero trace-id and parent-id were accepted (spec requires
+rejection), the 2-char version field was never validated (`zz-…` parsed,
+forbidden `ff` accepted), and uppercase hex was accepted throughout. The
+case fix lives at the W3C boundary rather than in the shared
+`_hex_nibble`, which legitimately accepts uppercase for JSON's
+four-hex-digit `\u` escapes. **F-019 (LOW)** — `user_id_from_str` had no
+roundtrip test. **F-020 (INFO)** — `secret_metadata_new` 72 B → 56 B,
+after confirming (not waiving) the backlog's cross-consumer caution: all
+eleven consumer repos grep to zero references to `SecretMetadata`. Also
+cleared 9 pre-existing `cyrius lint` untracked-deferral false positives
+(prose mentioning `\uXXXX` read as an `XXX` marker), so lint now reports
+0 warnings **and** 0 untracked deferrals across all 32 files. 858 → 886
+assertions; bench gate 25 checked / 0 regressions.
 
 **1.3.6** — Toolchain-refresh patch on top of 1.3.5, plus the gate and
 doc reconciliation the 1.3.5 cut skipped. Cyrius pin `6.5.27` → `6.5.35`.
@@ -547,13 +599,13 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 |-----------------------|-----------|------------------------------------|
 | Source LOC (src/)     | ~3,180    | down from 7,121 LOC Rust; −2 KB binary at 1.3.0 from copy-loop/ladder removal |
 | Module count          | 12        |                                    |
-| Test files            | 16        | tests/tcyr/ (+test_v137_hardening at the 2026-08-24 P(-1) pass) |
-| Test assertions       | 886       | 0 failed; +28 F-014..F-019 hardening regressions at the 2026-08-24 P(-1) pass (858 through v1.3.6; 851 through v1.2.3) |
+| Test files            | 17        | tests/tcyr/ (+test_v137_hardening at v1.3.7, +test_v140_enum_parse at v1.4.0) |
+| Test assertions       | 1,367     | 0 failed; +481 exhaustive enum-parse roundtrip at v1.4.0 (886 at v1.3.7; 858 through v1.3.6; 851 through v1.2.3) |
 | Benchmarks            | 25        | `tests/bcyr/agnostik.bcyr` — gained the missing `src/proto.cyr` include at 1.3.6 |
 | Test binary           | 629,032 B | `build/agnostik`. DCE and plain builds are now byte-identical (see Toolchain — DCE NOP-fills in place, it does not shrink). History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0 from chrono+proto surface; ~304 KB at 1.2.1; ~306 KB / 313,344 B at 1.2.3 across the 6.0.x boundary; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (6.2.11 NOPs in place + ~119 KB `bayan`); 350,016 B at 1.3.4 (6.4.62, −43 KB, leaner NOP-fill); 413,512 B at 1.3.5 (6.5.27); **629,032 B at 1.3.6** on the 6.5.35 pin, **+215,520 B** — 6.5.3x folds a 361-fn PDF subsystem into `bayan`, all NOPed, none reachable |
 | Build warnings        | 0         | 3 vendored-`bayan` TOML warnings at the 1.3.5 pin fixed upstream in 6.5.35; 5 bench-harness `_proto_*` warnings fixed at 1.3.6 |
 | Lint warnings         | 0         | (28 UFCS false positives resolved upstream in cyrius 5.7.7) |
-| Lib bundle (dist/)    | 121,132 B | regenerated by `cyrius distlib`; tracked in CI sync check. 1.3.6 diff is the version banner only |
+| Lib bundle (dist/)    | regenerated by `cyrius distlib` | regenerated by `cyrius distlib`; tracked in CI sync check. 1.3.6 diff is the version banner only |
 | Undocumented pub fns  | 853       | `cyrius doc --check` rc 23 — the sole reason `cyrius audit` exits non-zero on 6.5.35; pre-existing, backlog item |
 
 ## Consumers
@@ -574,23 +626,22 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: `1.3.6`
-(toolchain-refresh patch Cyrius `6.5.27` → `6.5.35`; no source-logic
-changes; 858/858 tests, api-surface unchanged at 871 fns, bench gate 25
-checked / 0 regressions with 23 of 25 ops faster; binary +215,520 B to
-629,032 B, entirely the NOPed `bayan` PDF subsystem; two fixes found by
-running the gates 1.3.5 skipped, neither attributable to 6.5.35 — the
-`agnostik.bcyr` missing-`proto.cyr` include, and the narrowing of the
-2026-04-26 issue to `cyrius self`, which stays **open**; plus the fmt,
-`history.csv` baseline, and doc-Status reconciliation the 1.3.5 cut
-skipped. No public API/wire change). Prior: `1.3.5` (Cyrius `6.4.62` →
-`6.5.27`, aligning with the AGNOS desktop stack; shipped without its
-benchmark gate or doc-sync — reconciled at 1.3.6); `1.3.4`
-(Cyrius `6.3.15` → `6.4.62` + `agnostik.tcyr` proto-include fix);
-`1.3.3` (error-family namespacing `ERR_* → STIK_ERR_*` — symbol-level
-breaking, consumers migrate; known consumer aegis); `1.3.2` (Cyrius
-`6.2.11` → `6.3.15`, base-security-stack leaf migration +
-`sandbox_config_new` unroll −10%).
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent stable: **`1.4.0`**
+— contract completeness. 31 `*_parse()` functions covering 204 enum
+members (there were **zero** before, so the CLAUDE.md roundtrip contract
+held for no enum) plus 9 setters for fields that had getters and read `0`
+forever. Additive only: surface 871 → **911** fns, zero removals, no wire
+or layout change; tests 886 → **1,367** via an exhaustive
+`parse(name(v)) == v` suite. Prior: `1.3.7` (P(-1) hardening sweep —
+F-014 `_fill_random` signed-sentinel underflow/hang, F-015/F-016/F-017
+W3C traceparent validation, F-019 missing roundtrip test, F-020
+`secret_metadata_new` 72 → 56 B, plus a lint-deferral cleanup);
+`1.3.6` (Cyrius `6.5.27` → `6.5.35`, +215,520 B from the NOPed `bayan`
+PDF subsystem, plus the post-tag CI format-gate fix — `cyrius fmt` stopped
+being a stdout filter at 6.5.27, which broke CI's diff-based gate);
+`1.3.5` (Cyrius `6.4.62` → `6.5.27`, shipped without its benchmark gate
+or doc-sync — reconciled at 1.3.6); `1.3.4` (Cyrius `6.3.15` → `6.4.62`
++ `agnostik.tcyr` proto-include fix).
 
 ## Verification hosts
 

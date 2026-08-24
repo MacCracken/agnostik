@@ -41,6 +41,32 @@ fn llm_provider_name(p) {
     elif (p == LLM_COHERE)     { return "Cohere"; }
     return "Custom";
 }
+# Inverse of llm_provider_name. Exact match on what llm_provider_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# llm_provider_parse(llm_provider_name(v)) == v holds for every LlmProvider member.
+# `Custom` is LLM_CUSTOM's canonical name (it is produced by
+# llm_provider_name's fallback, not by an explicit arm), so it maps back here.
+fn llm_provider_parse(s: Str) {
+    if (str_eq_cstr(s, "Ollama") == 1) { return Ok(LLM_OLLAMA); }
+    elif (str_eq_cstr(s, "LlamaCpp") == 1) { return Ok(LLM_LLAMA_CPP); }
+    elif (str_eq_cstr(s, "OpenAI") == 1) { return Ok(LLM_OPENAI); }
+    elif (str_eq_cstr(s, "Anthropic") == 1) { return Ok(LLM_ANTHROPIC); }
+    elif (str_eq_cstr(s, "Google") == 1) { return Ok(LLM_GOOGLE); }
+    elif (str_eq_cstr(s, "DeepSeek") == 1) { return Ok(LLM_DEEPSEEK); }
+    elif (str_eq_cstr(s, "Mistral") == 1) { return Ok(LLM_MISTRAL); }
+    elif (str_eq_cstr(s, "Grok") == 1) { return Ok(LLM_GROK); }
+    elif (str_eq_cstr(s, "Groq") == 1) { return Ok(LLM_GROQ); }
+    elif (str_eq_cstr(s, "OpenRouter") == 1) { return Ok(LLM_OPENROUTER); }
+    elif (str_eq_cstr(s, "LMStudio") == 1) { return Ok(LLM_LMSTUDIO); }
+    elif (str_eq_cstr(s, "LocalAI") == 1) { return Ok(LLM_LOCALAI); }
+    elif (str_eq_cstr(s, "Together") == 1) { return Ok(LLM_TOGETHER); }
+    elif (str_eq_cstr(s, "Fireworks") == 1) { return Ok(LLM_FIREWORKS); }
+    elif (str_eq_cstr(s, "Bedrock") == 1) { return Ok(LLM_BEDROCK); }
+    elif (str_eq_cstr(s, "Vertex") == 1) { return Ok(LLM_VERTEX); }
+    elif (str_eq_cstr(s, "Cohere") == 1) { return Ok(LLM_COHERE); }
+    elif (str_eq_cstr(s, "Custom") == 1) { return Ok(LLM_CUSTOM); }
+    return stik_err_invalid_argument(str_from("unknown LlmProvider name"));
+}
 enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; }
 fn message_role_name(r) {
     if (r == ROLE_SYSTEM)        { return "system"; }
@@ -48,6 +74,16 @@ fn message_role_name(r) {
     elif (r == ROLE_ASSISTANT)   { return "assistant"; }
     elif (r == ROLE_TOOL)        { return "tool"; }
     return "unknown";
+}
+# Inverse of message_role_name. Exact match on what message_role_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# message_role_parse(message_role_name(v)) == v holds for every MessageRole member.
+fn message_role_parse(s: Str) {
+    if (str_eq_cstr(s, "system") == 1) { return Ok(ROLE_SYSTEM); }
+    elif (str_eq_cstr(s, "user") == 1) { return Ok(ROLE_USER); }
+    elif (str_eq_cstr(s, "assistant") == 1) { return Ok(ROLE_ASSISTANT); }
+    elif (str_eq_cstr(s, "tool") == 1) { return Ok(ROLE_TOOL); }
+    return stik_err_invalid_argument(str_from("unknown MessageRole name"));
 }
 enum ContentBlockType {
     CB_TEXT;
@@ -119,6 +155,18 @@ fn finish_reason_name(r) {
     elif (r == FINISH_ERROR)            { return "error"; }
     elif (r == FINISH_RECITATION)       { return "recitation"; }
     return "unknown";
+}
+# Inverse of finish_reason_name. Exact match on what finish_reason_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# finish_reason_parse(finish_reason_name(v)) == v holds for every FinishReason member.
+fn finish_reason_parse(s: Str) {
+    if (str_eq_cstr(s, "stop") == 1) { return Ok(FINISH_STOP); }
+    elif (str_eq_cstr(s, "length") == 1) { return Ok(FINISH_LENGTH); }
+    elif (str_eq_cstr(s, "content_filter") == 1) { return Ok(FINISH_CONTENT_FILTER); }
+    elif (str_eq_cstr(s, "tool_use") == 1) { return Ok(FINISH_TOOL_USE); }
+    elif (str_eq_cstr(s, "error") == 1) { return Ok(FINISH_ERROR); }
+    elif (str_eq_cstr(s, "recitation") == 1) { return Ok(FINISH_RECITATION); }
+    return stik_err_invalid_argument(str_from("unknown FinishReason name"));
 }
 enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
 enum ResponseFormat { RESP_TEXT; RESP_JSON_OBJECT; RESP_JSON_SCHEMA; }
@@ -302,6 +350,17 @@ fn mcap_supports_citations(m)  { return load64(m + 88); }
 fn mcap_supports_video_input(m)         { return load64(m + 96); }
 fn mcap_supports_caching(m)             { return load64(m + 104); }  # prompt/context caching
 fn mcap_supports_parallel_tool_calls(m) { return load64(m + 112); }
+# F-021 (audit 2026-08-24): the seven original flag getters below had no
+# setters, so they could only ever read 0 — the same defect class as
+# SecretMetadata's unsettable fields, resolved together in v1.4.0 so the
+# library gives one consistent answer on setter-less getters.
+fn mcap_set_supports_vision(m, v)     { store64(m + 40, v); return 0; }
+fn mcap_set_supports_tools(m, v)      { store64(m + 48, v); return 0; }
+fn mcap_set_supports_structured(m, v) { store64(m + 56, v); return 0; }
+fn mcap_set_supports_streaming(m, v)  { store64(m + 64, v); return 0; }
+fn mcap_set_supports_thinking(m, v)   { store64(m + 72, v); return 0; }
+fn mcap_set_supports_audio(m, v)      { store64(m + 80, v); return 0; }
+fn mcap_set_supports_citations(m, v)  { store64(m + 88, v); return 0; }
 fn mcap_set_display_name(m, v: Str) { store64(m + 8, v); return 0; }
 fn mcap_set_context_window(m, v)    { store64(m + 24, v); return 0; }
 fn mcap_set_max_output(m, v)        { store64(m + 32, v); return 0; }

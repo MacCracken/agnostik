@@ -9,6 +9,15 @@ fn validation_severity_name(s) {
     elif (s == VSEV_HIGH)      { return "High"; }
     return "Unknown";
 }
+# Inverse of validation_severity_name. Exact match on what validation_severity_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# validation_severity_parse(validation_severity_name(v)) == v holds for every ValidationSeverity member.
+fn validation_severity_parse(s: Str) {
+    if (str_eq_cstr(s, "Low") == 1) { return Ok(VSEV_LOW); }
+    elif (str_eq_cstr(s, "Medium") == 1) { return Ok(VSEV_MEDIUM); }
+    elif (str_eq_cstr(s, "High") == 1) { return Ok(VSEV_HIGH); }
+    return stik_err_invalid_argument(str_from("unknown ValidationSeverity name"));
+}
 fn validation_warning_new(code, message: Str, severity) {
     var w = alloc(40);
     store64(w, code);

@@ -2,26 +2,30 @@
 
 ## Status
 
-**v1.3.6** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), 858 test assertions across 15 `.tcyr` files (incl. byte-exact
-serde golden + 8-parser fuzz harness + OTLP coverage + slice-safety
-regression), 25 benchmarks, zero external dependencies, Cyrius `6.5.35`.
-v1.3.6 was a toolchain-refresh patch (Cyrius `6.5.27` → `6.5.35`; no
-source-logic changes; bench gate 25 checked / 0 regressions with 23 of 25
-ops faster; binary +215,520 B to 629,032 B, entirely the NOPed `bayan`
-PDF subsystem the 6.5.3x stdlib folds in) with no public API or wire
-change. It also reconciled the gates and docs that the v1.3.5 cut skipped
-— fmt debt in 3 files, the missing `history.csv` baseline, and the
-`1.3.4`-era Status blocks in README / state.md / roadmap / doc-health.
-Prior stable line: v1.3.5 (Cyrius `6.4.62` → `6.5.27`, matching the AGNOS
-desktop stack), v1.3.4 (Cyrius `6.3.15` → `6.4.62` + `agnostik.tcyr`
-proto-include fix), v1.3.3 (error-family namespacing `ERR_* →
-STIK_ERR_*`, symbol-level breaking — consumers migrate), v1.3.2 (Cyrius
-`6.2.11` → `6.3.15` base-security-stack leaf migration +
-`sandbox_config_new` unroll −10%). See [`state.md`](state.md) for the live
-snapshot, [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
-for the most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md)
-for full release history.
+**v1.4.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), **1,367 test assertions across 17 `.tcyr` files**, 25
+benchmarks, zero external dependencies, Cyrius `6.5.35`.
+
+v1.4.0 closed the two contract gaps the 2026-08-24 P(-1) audit found:
+**F-018** (31 enums had `*_name()` and **zero** `*_parse()`, so the
+roundtrip contract held for no enum — now 31 `*_parse` covering 204
+members, with an exhaustive 481-assertion `parse(name(v)) == v` test) and
+**F-021** (9 fields had getters but no setters and read `0` forever —
+`SecretMetadata.expires_at`/`.owner` plus the seven `mcap_supports_*`
+flags). Additive only: surface 871 → **911** fns, zero removals, no wire
+or layout change.
+
+v1.3.7 was the P(-1) hardening sweep that found them — **F-014** (a
+signed-comparison sentinel in `_fill_random` that retried at `buf - 1`
+with `n + 1` bytes, or hung), **F-015/F-016/F-017** (W3C traceparent
+validation: all-zero ids, unvalidated version, uppercase hex),
+**F-019/F-020**. Prior: v1.3.6 (Cyrius `6.5.27` → `6.5.35` + the CI
+format-gate fix), v1.3.5 (`6.4.62` → `6.5.27`), v1.3.4 (`6.3.15` →
+`6.4.62`), v1.3.3 (error-family namespacing `ERR_* → STIK_ERR_*`,
+symbol-level breaking). See [`state.md`](state.md) for the live snapshot,
+[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md) for the
+most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
+release history.
 
 Every item below is pinned to a specific release. Shipped work is recorded
 in `CHANGELOG.md` and not duplicated here — the principle: if work is worth
@@ -88,16 +92,10 @@ they aren't re-discovered each cycle. Full context in
   needs it. All are in `docs/api-surface.snapshot`; gate any
   removal/rename on the v1.2.4 cross-consumer sweep confirming no
   external dependency.
-- **Setter-less `mcap_supports_*` getters** (`llm.cyr`) — seven flag
-  getters with no matching setter (can only read 0). Decide: add setters
-  (complete the API) or drop (decorative). Additive (setters) is
-  non-breaking; pin to a minor when a consumer needs to *set* them.
-  **Note:** the 2026-08-24 audit found the same shape in
-  `SecretMetadata` (F-021) and rated it MEDIUM there, because an
-  always-zero `expires_at` on a *secrets* type is a security footgun
-  rather than a decorative gap. These seven are the benign end of the
-  same defect class — fold them into the F-021 work in **v1.4.0** so the
-  library gets one consistent answer on setter-less getters instead of
+- ~~**Setter-less `mcap_supports_*` getters** (`llm.cyr`) — seven flag
+  getters with no matching setter (can only read 0).~~ **RESOLVED in
+  v1.4.0** (F-021): setters added, alongside `SecretMetadata`'s, so the
+  library gives one consistent answer on setter-less getters rather than
   two.
 - ~~**`secret_metadata_new` over-alloc** (`secrets.cyr`) — 72 B / 9 slots,
   3 unreachable (offsets 24/56/64).~~ **RESOLVED in v1.3.7** (F-020).
@@ -183,70 +181,59 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
 
 ---
 
-## v1.4.0 — Contract completeness (pinned from the 2026-08-24 P(-1) audit)
+## v1.4.0 — Contract completeness ✅ SHIPPED
 
-Both items are **additive public API**, which is why they were held out
-of the v1.3.7 patch rather than repaired there. Full write-ups in
+Both findings from the 2026-08-24 P(-1) audit, held out of the v1.3.7
+patch because they are additive public API. Full write-ups in
 [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md).
 
-### F-018 — `*_parse()` for every enum that has `*_name()`
+### F-018 — `*_parse()` for every enum with a `*_name()` ✅
 
-🔴 **Contract breach, MEDIUM.** CLAUDE.md requires *"All public enums must
-have `*_name()` (string representation) and `*_parse(s)` (roundtrip)."*
-Measured at the v1.3.7 cut: **58 enums, 54 `*_name()`, 0 enum
-`*_parse()`.** The only `_parse` symbol in the library is the private
-`_json_parse`; the five `*_from_str` functions cover ID and version
-types, not enums. The roundtrip guarantee therefore holds for no enum in
-the type vocabulary.
+Shipped: **31 `*_parse` functions covering 204 enum members.** Before
+this, the library had 31 enum `_name` functions and **zero** enum
+`_parse`, so the CLAUDE.md roundtrip contract held for no enum and all
+eleven consumers hand-rolled their own string→enum mappings.
 
-Why it matters more than the count suggests: a consumer deserialising an
-`AgentStatus`, `ClassificationLevel`, `AuditSeverity` or `LlmProvider`
-from config or a wire payload has no library path back from the string,
-so all eleven consumers hand-roll their own mapping. That is the exact
-duplication agnostik exists to prevent, and divergent hand-rolled
-mappings are how two components come to disagree about what
-`"restricted"` means.
+What the implementation settled:
+- **Exact match, no coercion** — no case-folding, trimming or aliases.
+  An unrecognised string is `Err`, not a sentinel variant, so a config
+  typo surfaces instead of silently becoming `Unknown`.
+- **Seven members are named by their `_name` fallback**, not an explicit
+  arm (`STIK_ERR_UNKNOWN`, `HEALTH_UNKNOWN`, `VENDOR_CUSTOM`,
+  `LLM_CUSTOM`, `MEM_UNKNOWN`, `PII_CUSTOM`, `STATUS_UNKNOWN`). Their
+  `_parse` maps the fallback string back so the roundtrip is total; the
+  other 24 enums reject theirs, since no member owns it.
+- **The test is the deliverable as much as the functions.**
+  `tests/tcyr/test_v140_enum_parse.tcyr` asserts `parse(name(v)) == v`
+  for all 204 members plus per-enum rejection cases — 481 assertions,
+  mechanically derived. A 31-enum gap survived eight releases because
+  nothing checked it; now something does.
 
-Plan:
-1. Add `*_parse(s: Str)` for each of the 54 enums carrying a `*_name()`,
-   returning `Result` and accepting exactly what `*_name()` emits.
-2. Add **one table-driven test** asserting `parse(name(v)) == v` for
-   every variant of every enum, so the invariant is enforced
-   mechanically. This matters as much as the functions: the reason a
-   58-enum / zero-parser gap survived eight releases is that nothing
-   checked it.
-3. Regenerate `docs/api-surface.snapshot` (871 → ~925 fns) and commit it
-   in the same change.
-4. Decide per-enum whether parsing is case-insensitive. Recommendation:
-   exact-match only, mirroring `*_name()` output, so the roundtrip is
-   total and no ambiguity is introduced.
+Correction recorded during implementation: the audit's first draft said
+"54 `*_name()` functions". That grep conflated enum name functions with
+20 struct-field accessors also called `*_name` (`span_name`,
+`smeta_name`, …). The real figure is 31 enum name functions / 204
+members.
 
-### F-021 — `SecretMetadata.expires_at` / `.owner` are unsettable
+**Still open (deliberately out of scope):** 27 declared enums have no
+`*_name()` *or* `*_parse()` — mostly bitflag/constant sets like
+`LinuxCapability` (39 values) where a string name may not be meaningful.
+Whether they need one is a separate decision; pick it up when a consumer
+asks.
 
-🔴 **MEDIUM.** `SecretMetadata` has six getters and **zero** setters, and
-`secret_metadata_new` writes `0` to both `expires_at` (offset 16) and
-`owner` (offset 48). No code path in the library can give either a
-non-zero value, so `smeta_expires_at()` returns `0` for every secret in
-every version released to date.
+### F-021 — setters for previously unsettable fields ✅
 
-A consumer implementing rotation or expiry enforcement reads `0`,
-correctly interprets it as "no expiry set", and concludes the secret
-never expires — for every secret, permanently. In a secrets type that is
-a security-relevant footgun: the API advertises an expiry concept it
-cannot express. `owner` has the same shape, weakening any
-ownership-based check built on it.
+Shipped: **9 setters.** `smeta_set_expires_at` / `smeta_set_owner` on
+`SecretMetadata`, and the seven original `mcap_set_supports_*` flags on
+`ModelCapabilities` — closing the v1.3.0 backlog item in the same change
+so the library has one consistent answer on setter-less getters.
 
-Plan — pick one, do not do both:
-- **Setters** (`smeta_set_expires_at`, `smeta_set_owner`): additive,
-  smallest blast radius, keeps the constructor signature. Preferred.
-- **Wider constructor**: expresses the invariant better (metadata is
-  arguably immutable) but is a **breaking** signature change, so it
-  would need v2.0.0, not v1.4.0.
+Chose setters (additive) over a wider constructor signature (breaking,
+would have needed v2.0.0). Consumers should note that any expiry handling
+built against `smeta_expires_at` before 1.4.0 was reading a permanent `0`
+and was a no-op.
 
-Either way, note in the release that `smeta_expires_at` was previously
-always `0` — a consumer that "handled" expiry against it was a no-op and
-needs re-checking, which is a behavioural correction for them even though
-the agnostik change is additive.
+Surface 871 → **911** fns, zero removals; snapshot regenerated.
 
 ---
 

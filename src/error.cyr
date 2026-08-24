@@ -94,6 +94,25 @@ fn agnostik_err_kind_name(kind) {
     if (kind == STIK_ERR_IO)                 { return "i/o error"; }
     return "unknown error";
 }
+# Inverse of agnostik_err_kind_name. Exact match on what agnostik_err_kind_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# agnostik_err_kind_parse(agnostik_err_kind_name(v)) == v holds for every AgnostikErrorKind member.
+# `unknown error` is STIK_ERR_UNKNOWN's canonical name (it is produced by
+# agnostik_err_kind_name's fallback, not by an explicit arm), so it maps back here.
+fn agnostik_err_kind_parse(s: Str) {
+    if (str_eq_cstr(s, "agent not found") == 1) { return Ok(STIK_ERR_AGENT_NOT_FOUND); }
+    elif (str_eq_cstr(s, "permission denied") == 1) { return Ok(STIK_ERR_PERMISSION_DENIED); }
+    elif (str_eq_cstr(s, "config error") == 1) { return Ok(STIK_ERR_CONFIG_ERROR); }
+    elif (str_eq_cstr(s, "timeout") == 1) { return Ok(STIK_ERR_TIMEOUT); }
+    elif (str_eq_cstr(s, "resource exhausted") == 1) { return Ok(STIK_ERR_RESOURCE_EXHAUSTED); }
+    elif (str_eq_cstr(s, "invalid argument") == 1) { return Ok(STIK_ERR_INVALID_ARGUMENT); }
+    elif (str_eq_cstr(s, "not supported") == 1) { return Ok(STIK_ERR_NOT_SUPPORTED); }
+    elif (str_eq_cstr(s, "internal error") == 1) { return Ok(STIK_ERR_INTERNAL); }
+    elif (str_eq_cstr(s, "serialization error") == 1) { return Ok(STIK_ERR_SERIALIZATION); }
+    elif (str_eq_cstr(s, "i/o error") == 1) { return Ok(STIK_ERR_IO); }
+    elif (str_eq_cstr(s, "unknown error") == 1) { return Ok(STIK_ERR_UNKNOWN); }
+    return stik_err_invalid_argument(str_from("unknown AgnostikErrorKind name"));
+}
 fn agnostik_err_print(e) {
     var kind = agnostik_err_kind(e);
     var name = agnostik_err_kind_name(kind);

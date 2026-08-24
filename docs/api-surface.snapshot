@@ -47,7 +47,9 @@ agent::agent_pool_new/2
 agent::agent_rate_limit_new/0
 agent::agent_stats_new/0
 agent::agent_status_name/1
+agent::agent_status_parse/1
 agent::agent_type_name/1
+agent::agent_type_parse/1
 agent::ainfo_id/1
 agent::ainfo_name/1
 agent::ainfo_status/1
@@ -209,7 +211,9 @@ audit::as_verify_chain/1
 audit::as_verify_entry/2
 audit::audit_entry_new/4
 audit::audit_result_name/1
+audit::audit_result_parse/1
 audit::audit_severity_name/1
+audit::audit_severity_parse/1
 audit::audit_sink_new/2
 audit::audit_sink_set_query/2
 audit::audit_sink_set_seal/2
@@ -226,6 +230,7 @@ audit::retpol_archive/1
 audit::retpol_max_days/1
 audit::retpol_min_days/1
 classification::classification_level_name/1
+classification::classification_level_parse/1
 classification::classification_result_new/1
 classification::cresult_auto_level/1
 classification::cresult_confidence/1
@@ -234,6 +239,7 @@ classification::cresult_level/1
 classification::cresult_pii/1
 classification::cresult_rules/1
 classification::pii_kind_name/1
+classification::pii_kind_parse/1
 config::EdgeResourceOverrides_from_json/1
 config::EdgeResourceOverrides_to_json/1
 config::acfg_components/1
@@ -246,6 +252,7 @@ config::acfg_set_profile/2
 config::agnos_config_new/0
 config::edge_overrides_new/0
 config::env_profile_name/1
+config::env_profile_parse/1
 config::eovr_max_agents/1
 config::eovr_max_cpu/1
 config::eovr_max_memory/1
@@ -262,6 +269,7 @@ error::agnostik_err_code/1
 error::agnostik_err_is_retriable/1
 error::agnostik_err_kind/1
 error::agnostik_err_kind_name/1
+error::agnostik_err_kind_parse/1
 error::agnostik_err_message/1
 error::agnostik_err_new/2
 error::agnostik_err_print/1
@@ -330,9 +338,13 @@ hardware::asum_by_vendor/2
 hardware::asum_devices/1
 hardware::asum_total_vram/1
 hardware::device_family_name/1
+hardware::device_family_parse/1
 hardware::device_health_name/1
+hardware::device_health_parse/1
 hardware::device_vendor_name/1
+hardware::device_vendor_parse/1
 hardware::memory_type_name/1
+hardware::memory_type_parse/1
 llm::TokenUsage_from_json/1
 llm::TokenUsage_to_json/1
 llm::batch_request_new/2
@@ -364,6 +376,7 @@ llm::embresp_embeddings/1
 llm::embresp_model/1
 llm::embresp_usage/1
 llm::finish_reason_name/1
+llm::finish_reason_parse/1
 llm::inference_request_new/1
 llm::inference_response_new/1
 llm::ireq_max_tokens/1
@@ -394,6 +407,7 @@ llm::iresp_set_id/2
 llm::iresp_tool_calls/1
 llm::iresp_usage/1
 llm::llm_provider_name/1
+llm::llm_provider_parse/1
 llm::logprob_entry_new/2
 llm::lpe_logprob/1
 llm::lpe_token/1
@@ -406,9 +420,16 @@ llm::mcap_provider/1
 llm::mcap_set_context_window/2
 llm::mcap_set_display_name/2
 llm::mcap_set_max_output/2
+llm::mcap_set_supports_audio/2
 llm::mcap_set_supports_caching/2
+llm::mcap_set_supports_citations/2
 llm::mcap_set_supports_parallel_tool_calls/2
+llm::mcap_set_supports_streaming/2
+llm::mcap_set_supports_structured/2
+llm::mcap_set_supports_thinking/2
+llm::mcap_set_supports_tools/2
 llm::mcap_set_supports_video_input/2
+llm::mcap_set_supports_vision/2
 llm::mcap_supports_audio/1
 llm::mcap_supports_caching/1
 llm::mcap_supports_citations/1
@@ -421,6 +442,7 @@ llm::mcap_supports_video_input/1
 llm::mcap_supports_vision/1
 llm::message_new/1
 llm::message_role_name/1
+llm::message_role_parse/1
 llm::message_text/2
 llm::model_capabilities_new/2
 llm::msg_content/1
@@ -506,6 +528,7 @@ secrets::secret_destroy/1
 secrets::secret_expose/1
 secrets::secret_is_empty/1
 secrets::secret_kind_name/1
+secrets::secret_kind_parse/1
 secrets::secret_len/1
 secrets::secret_metadata_new/2
 secrets::secret_new/1
@@ -518,6 +541,8 @@ secrets::smeta_expires_at/1
 secrets::smeta_kind/1
 secrets::smeta_name/1
 secrets::smeta_owner/1
+secrets::smeta_set_expires_at/2
+secrets::smeta_set_owner/2
 secrets::smeta_tags/1
 secrets::ss_delete/2
 secrets::ss_get/2
@@ -555,6 +580,7 @@ security::encst_set_size_mb/2
 security::encst_size_mb/1
 security::filesystem_rule_new/2
 security::fs_access_name/1
+security::fs_access_parse/1
 security::fsrule_access/1
 security::fsrule_noexec/1
 security::fsrule_path/1
@@ -577,9 +603,11 @@ security::llrs_fs_rules/1
 security::llrs_net_rules/1
 security::llrs_scoped/1
 security::mount_propagation_name/1
+security::mount_propagation_parse/1
 security::namespace_config_new/0
 security::namespace_entry_new/1
 security::net_access_name/1
+security::net_access_parse/1
 security::netpol_inbound_ports/1
 security::netpol_outbound_hosts/1
 security::netpol_outbound_ports/1
@@ -604,12 +632,15 @@ security::pcond_operator/1
 security::pcond_value/1
 security::permission_condition_new/3
 security::permission_name/1
+security::permission_parse/1
 security::policy_effect_name/1
+security::policy_effect_parse/1
 security::rlimit_hard/1
 security::rlimit_new/3
 security::rlimit_soft/1
 security::rlimit_type/1
 security::role_name/1
+security::role_parse/1
 security::role_permission_new/1
 security::rperm_actions/1
 security::rperm_conditions/1
@@ -645,9 +676,12 @@ security::scrule_action/1
 security::scrule_args/1
 security::scrule_names/1
 security::seccomp_action_name/1
+security::seccomp_action_parse/1
 security::seccomp_arch_name/1
+security::seccomp_arch_parse/1
 security::seccomp_arg_new/4
 security::seccomp_arg_op_name/1
+security::seccomp_arg_op_parse/1
 security::seccomp_errno/1
 security::seccomp_profile_new/1
 security::seccomp_rule_new/1
@@ -703,6 +737,7 @@ telemetry::iscope_schema_url/1
 telemetry::iscope_version/1
 telemetry::log_record_new/2
 telemetry::log_severity_name/1
+telemetry::log_severity_parse/1
 telemetry::logrec_attributes/1
 telemetry::logrec_body/1
 telemetry::logrec_resource/1
@@ -762,6 +797,7 @@ telemetry::span_id_new/0
 telemetry::span_id_to_str/1
 telemetry::span_kind/1
 telemetry::span_kind_name/1
+telemetry::span_kind_parse/1
 telemetry::span_link_new/2
 telemetry::span_links/1
 telemetry::span_name/1
@@ -776,6 +812,7 @@ telemetry::span_started_at/1
 telemetry::span_status/1
 telemetry::span_status_error/1
 telemetry::span_status_name/1
+telemetry::span_status_parse/1
 telemetry::span_trace_id/1
 telemetry::tctx_child/1
 telemetry::tctx_from_traceparent/1
@@ -821,7 +858,9 @@ types::component_config_name/1
 types::component_config_new/2
 types::component_config_settings/1
 types::message_type_name/1
+types::message_type_parse/1
 types::system_status_name/1
+types::system_status_parse/1
 types::user_id_eq/2
 types::user_id_from_str/1
 types::user_id_high/1
@@ -855,6 +894,7 @@ validation::iscore_sql/1
 validation::iscore_xss/1
 validation::validation_result_new/2
 validation::validation_severity_name/1
+validation::validation_severity_parse/1
 validation::validation_warning_new/3
 validation::vresult_block_reason/1
 validation::vresult_blocked/1

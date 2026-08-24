@@ -1,0 +1,1026 @@
+# tests/tcyr/test_v140_enum_parse.tcyr
+#
+# v1.4.0 contract completeness. See docs/audit/2026-08-24-audit.md.
+#
+# F-018  Every enum carrying a `*_name()` now has a `*_parse()` inverse.
+#        Before v1.4.0 the library had 31 enum `_name` functions and
+#        ZERO enum `_parse`, so the CLAUDE.md roundtrip guarantee held
+#        for no enum at all and each of the eleven consumers hand-rolled
+#        its own string->enum mapping.
+#
+#        This file is deliberately exhaustive and mechanically derived:
+#        it asserts `parse(name(v)) == v` for EVERY member of EVERY such
+#        enum, plus a rejection case per enum. The reason a 31-enum gap
+#        survived eight releases is that nothing checked it, so the
+#        invariant is pinned here rather than left to per-enum spot
+#        tests. Adding an enum member without extending its `_name` and
+#        `_parse` should fail here.
+#
+#        Note the seven members whose canonical name comes from their
+#        `_name` fallback rather than an explicit arm (STIK_ERR_UNKNOWN,
+#        HEALTH_UNKNOWN, VENDOR_CUSTOM, LLM_CUSTOM, MEM_UNKNOWN,
+#        PII_CUSTOM, STATUS_UNKNOWN). Their `_parse` maps the fallback
+#        string back, so the roundtrip is total; the other 24 enums
+#        reject their fallback string, since no member owns it.
+#
+# F-021  `SecretMetadata.expires_at` / `.owner` and the seven original
+#        `mcap_supports_*` flags had getters but no setters, so they
+#        could only ever read 0. Setters added; exercised below.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# --- AgentStatus: 9 members ---
+fn test_agent_status_roundtrip() {
+    var r = 0;
+    r = agent_status_parse(str_from(agent_status_name(AGENT_PENDING)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_PENDING: parses");
+    assert_eq(payload(r), AGENT_PENDING, "AgentStatus/AGENT_PENDING: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_STARTING)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_STARTING: parses");
+    assert_eq(payload(r), AGENT_STARTING, "AgentStatus/AGENT_STARTING: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_RUNNING)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_RUNNING: parses");
+    assert_eq(payload(r), AGENT_RUNNING, "AgentStatus/AGENT_RUNNING: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_PAUSED)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_PAUSED: parses");
+    assert_eq(payload(r), AGENT_PAUSED, "AgentStatus/AGENT_PAUSED: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_STOPPING)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_STOPPING: parses");
+    assert_eq(payload(r), AGENT_STOPPING, "AgentStatus/AGENT_STOPPING: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_STOPPED)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_STOPPED: parses");
+    assert_eq(payload(r), AGENT_STOPPED, "AgentStatus/AGENT_STOPPED: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_RESTARTING)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_RESTARTING: parses");
+    assert_eq(payload(r), AGENT_RESTARTING, "AgentStatus/AGENT_RESTARTING: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_TERMINATED)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_TERMINATED: parses");
+    assert_eq(payload(r), AGENT_TERMINATED, "AgentStatus/AGENT_TERMINATED: roundtrips");
+    r = agent_status_parse(str_from(agent_status_name(AGENT_FAILED)));
+    assert_eq(is_ok(r), 1, "AgentStatus/AGENT_FAILED: parses");
+    assert_eq(payload(r), AGENT_FAILED, "AgentStatus/AGENT_FAILED: roundtrips");
+    r = agent_status_parse(str_from("__not_a_agent_status__"));
+    assert_eq(is_ok(r), 0, "AgentStatus: unknown string rejected");
+    r = agent_status_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "AgentStatus: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- AgentType: 3 members ---
+fn test_agent_type_roundtrip() {
+    var r = 0;
+    r = agent_type_parse(str_from(agent_type_name(AGENT_TYPE_SYSTEM)));
+    assert_eq(is_ok(r), 1, "AgentType/AGENT_TYPE_SYSTEM: parses");
+    assert_eq(payload(r), AGENT_TYPE_SYSTEM, "AgentType/AGENT_TYPE_SYSTEM: roundtrips");
+    r = agent_type_parse(str_from(agent_type_name(AGENT_TYPE_USER)));
+    assert_eq(is_ok(r), 1, "AgentType/AGENT_TYPE_USER: parses");
+    assert_eq(payload(r), AGENT_TYPE_USER, "AgentType/AGENT_TYPE_USER: roundtrips");
+    r = agent_type_parse(str_from(agent_type_name(AGENT_TYPE_SERVICE)));
+    assert_eq(is_ok(r), 1, "AgentType/AGENT_TYPE_SERVICE: parses");
+    assert_eq(payload(r), AGENT_TYPE_SERVICE, "AgentType/AGENT_TYPE_SERVICE: roundtrips");
+    r = agent_type_parse(str_from("__not_a_agent_type__"));
+    assert_eq(is_ok(r), 0, "AgentType: unknown string rejected");
+    r = agent_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "AgentType: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- AgnostikErrorKind: 11 members ---
+fn test_agnostik_err_kind_roundtrip() {
+    var r = 0;
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_AGENT_NOT_FOUND)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_AGENT_NOT_FOUND: parses");
+    assert_eq(payload(r), STIK_ERR_AGENT_NOT_FOUND, "AgnostikErrorKind/STIK_ERR_AGENT_NOT_FOUND: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_PERMISSION_DENIED)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_PERMISSION_DENIED: parses");
+    assert_eq(payload(r), STIK_ERR_PERMISSION_DENIED, "AgnostikErrorKind/STIK_ERR_PERMISSION_DENIED: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_CONFIG_ERROR)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_CONFIG_ERROR: parses");
+    assert_eq(payload(r), STIK_ERR_CONFIG_ERROR, "AgnostikErrorKind/STIK_ERR_CONFIG_ERROR: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_TIMEOUT)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_TIMEOUT: parses");
+    assert_eq(payload(r), STIK_ERR_TIMEOUT, "AgnostikErrorKind/STIK_ERR_TIMEOUT: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_RESOURCE_EXHAUSTED)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_RESOURCE_EXHAUSTED: parses");
+    assert_eq(payload(r), STIK_ERR_RESOURCE_EXHAUSTED, "AgnostikErrorKind/STIK_ERR_RESOURCE_EXHAUSTED: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_INVALID_ARGUMENT)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_INVALID_ARGUMENT: parses");
+    assert_eq(payload(r), STIK_ERR_INVALID_ARGUMENT, "AgnostikErrorKind/STIK_ERR_INVALID_ARGUMENT: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_NOT_SUPPORTED)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_NOT_SUPPORTED: parses");
+    assert_eq(payload(r), STIK_ERR_NOT_SUPPORTED, "AgnostikErrorKind/STIK_ERR_NOT_SUPPORTED: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_INTERNAL)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_INTERNAL: parses");
+    assert_eq(payload(r), STIK_ERR_INTERNAL, "AgnostikErrorKind/STIK_ERR_INTERNAL: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_SERIALIZATION)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_SERIALIZATION: parses");
+    assert_eq(payload(r), STIK_ERR_SERIALIZATION, "AgnostikErrorKind/STIK_ERR_SERIALIZATION: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_IO)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_IO: parses");
+    assert_eq(payload(r), STIK_ERR_IO, "AgnostikErrorKind/STIK_ERR_IO: roundtrips");
+    r = agnostik_err_kind_parse(str_from(agnostik_err_kind_name(STIK_ERR_UNKNOWN)));
+    assert_eq(is_ok(r), 1, "AgnostikErrorKind/STIK_ERR_UNKNOWN: parses");
+    assert_eq(payload(r), STIK_ERR_UNKNOWN, "AgnostikErrorKind/STIK_ERR_UNKNOWN: roundtrips");
+    r = agnostik_err_kind_parse(str_from("__not_a_agnostik_err_kind__"));
+    assert_eq(is_ok(r), 0, "AgnostikErrorKind: unknown string rejected");
+    return 0;
+}
+
+# --- AuditResult: 3 members ---
+fn test_audit_result_roundtrip() {
+    var r = 0;
+    r = audit_result_parse(str_from(audit_result_name(AUDIT_SUCCESS)));
+    assert_eq(is_ok(r), 1, "AuditResult/AUDIT_SUCCESS: parses");
+    assert_eq(payload(r), AUDIT_SUCCESS, "AuditResult/AUDIT_SUCCESS: roundtrips");
+    r = audit_result_parse(str_from(audit_result_name(AUDIT_FAILURE)));
+    assert_eq(is_ok(r), 1, "AuditResult/AUDIT_FAILURE: parses");
+    assert_eq(payload(r), AUDIT_FAILURE, "AuditResult/AUDIT_FAILURE: roundtrips");
+    r = audit_result_parse(str_from(audit_result_name(AUDIT_DENIED)));
+    assert_eq(is_ok(r), 1, "AuditResult/AUDIT_DENIED: parses");
+    assert_eq(payload(r), AUDIT_DENIED, "AuditResult/AUDIT_DENIED: roundtrips");
+    r = audit_result_parse(str_from("__not_a_audit_result__"));
+    assert_eq(is_ok(r), 0, "AuditResult: unknown string rejected");
+    r = audit_result_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "AuditResult: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- AuditSeverity: 5 members ---
+fn test_audit_severity_roundtrip() {
+    var r = 0;
+    r = audit_severity_parse(str_from(audit_severity_name(AUDIT_DEBUG)));
+    assert_eq(is_ok(r), 1, "AuditSeverity/AUDIT_DEBUG: parses");
+    assert_eq(payload(r), AUDIT_DEBUG, "AuditSeverity/AUDIT_DEBUG: roundtrips");
+    r = audit_severity_parse(str_from(audit_severity_name(AUDIT_INFO)));
+    assert_eq(is_ok(r), 1, "AuditSeverity/AUDIT_INFO: parses");
+    assert_eq(payload(r), AUDIT_INFO, "AuditSeverity/AUDIT_INFO: roundtrips");
+    r = audit_severity_parse(str_from(audit_severity_name(AUDIT_WARNING)));
+    assert_eq(is_ok(r), 1, "AuditSeverity/AUDIT_WARNING: parses");
+    assert_eq(payload(r), AUDIT_WARNING, "AuditSeverity/AUDIT_WARNING: roundtrips");
+    r = audit_severity_parse(str_from(audit_severity_name(AUDIT_ERROR)));
+    assert_eq(is_ok(r), 1, "AuditSeverity/AUDIT_ERROR: parses");
+    assert_eq(payload(r), AUDIT_ERROR, "AuditSeverity/AUDIT_ERROR: roundtrips");
+    r = audit_severity_parse(str_from(audit_severity_name(AUDIT_CRITICAL)));
+    assert_eq(is_ok(r), 1, "AuditSeverity/AUDIT_CRITICAL: parses");
+    assert_eq(payload(r), AUDIT_CRITICAL, "AuditSeverity/AUDIT_CRITICAL: roundtrips");
+    r = audit_severity_parse(str_from("__not_a_audit_severity__"));
+    assert_eq(is_ok(r), 0, "AuditSeverity: unknown string rejected");
+    r = audit_severity_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "AuditSeverity: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- ClassificationLevel: 4 members ---
+fn test_classification_level_roundtrip() {
+    var r = 0;
+    r = classification_level_parse(str_from(classification_level_name(CLASS_PUBLIC)));
+    assert_eq(is_ok(r), 1, "ClassificationLevel/CLASS_PUBLIC: parses");
+    assert_eq(payload(r), CLASS_PUBLIC, "ClassificationLevel/CLASS_PUBLIC: roundtrips");
+    r = classification_level_parse(str_from(classification_level_name(CLASS_INTERNAL)));
+    assert_eq(is_ok(r), 1, "ClassificationLevel/CLASS_INTERNAL: parses");
+    assert_eq(payload(r), CLASS_INTERNAL, "ClassificationLevel/CLASS_INTERNAL: roundtrips");
+    r = classification_level_parse(str_from(classification_level_name(CLASS_CONFIDENTIAL)));
+    assert_eq(is_ok(r), 1, "ClassificationLevel/CLASS_CONFIDENTIAL: parses");
+    assert_eq(payload(r), CLASS_CONFIDENTIAL, "ClassificationLevel/CLASS_CONFIDENTIAL: roundtrips");
+    r = classification_level_parse(str_from(classification_level_name(CLASS_RESTRICTED)));
+    assert_eq(is_ok(r), 1, "ClassificationLevel/CLASS_RESTRICTED: parses");
+    assert_eq(payload(r), CLASS_RESTRICTED, "ClassificationLevel/CLASS_RESTRICTED: roundtrips");
+    r = classification_level_parse(str_from("__not_a_classification_level__"));
+    assert_eq(is_ok(r), 0, "ClassificationLevel: unknown string rejected");
+    r = classification_level_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "ClassificationLevel: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- DeviceFamily: 5 members ---
+fn test_device_family_roundtrip() {
+    var r = 0;
+    r = device_family_parse(str_from(device_family_name(DEV_GPU)));
+    assert_eq(is_ok(r), 1, "DeviceFamily/DEV_GPU: parses");
+    assert_eq(payload(r), DEV_GPU, "DeviceFamily/DEV_GPU: roundtrips");
+    r = device_family_parse(str_from(device_family_name(DEV_TPU)));
+    assert_eq(is_ok(r), 1, "DeviceFamily/DEV_TPU: parses");
+    assert_eq(payload(r), DEV_TPU, "DeviceFamily/DEV_TPU: roundtrips");
+    r = device_family_parse(str_from(device_family_name(DEV_NPU)));
+    assert_eq(is_ok(r), 1, "DeviceFamily/DEV_NPU: parses");
+    assert_eq(payload(r), DEV_NPU, "DeviceFamily/DEV_NPU: roundtrips");
+    r = device_family_parse(str_from(device_family_name(DEV_AI_ASIC)));
+    assert_eq(is_ok(r), 1, "DeviceFamily/DEV_AI_ASIC: parses");
+    assert_eq(payload(r), DEV_AI_ASIC, "DeviceFamily/DEV_AI_ASIC: roundtrips");
+    r = device_family_parse(str_from(device_family_name(DEV_CPU)));
+    assert_eq(is_ok(r), 1, "DeviceFamily/DEV_CPU: parses");
+    assert_eq(payload(r), DEV_CPU, "DeviceFamily/DEV_CPU: roundtrips");
+    r = device_family_parse(str_from("__not_a_device_family__"));
+    assert_eq(is_ok(r), 0, "DeviceFamily: unknown string rejected");
+    r = device_family_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "DeviceFamily: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- DeviceHealth: 4 members ---
+fn test_device_health_roundtrip() {
+    var r = 0;
+    r = device_health_parse(str_from(device_health_name(HEALTH_OK)));
+    assert_eq(is_ok(r), 1, "DeviceHealth/HEALTH_OK: parses");
+    assert_eq(payload(r), HEALTH_OK, "DeviceHealth/HEALTH_OK: roundtrips");
+    r = device_health_parse(str_from(device_health_name(HEALTH_DEGRADED)));
+    assert_eq(is_ok(r), 1, "DeviceHealth/HEALTH_DEGRADED: parses");
+    assert_eq(payload(r), HEALTH_DEGRADED, "DeviceHealth/HEALTH_DEGRADED: roundtrips");
+    r = device_health_parse(str_from(device_health_name(HEALTH_FAILED)));
+    assert_eq(is_ok(r), 1, "DeviceHealth/HEALTH_FAILED: parses");
+    assert_eq(payload(r), HEALTH_FAILED, "DeviceHealth/HEALTH_FAILED: roundtrips");
+    r = device_health_parse(str_from(device_health_name(HEALTH_UNKNOWN)));
+    assert_eq(is_ok(r), 1, "DeviceHealth/HEALTH_UNKNOWN: parses");
+    assert_eq(payload(r), HEALTH_UNKNOWN, "DeviceHealth/HEALTH_UNKNOWN: roundtrips");
+    r = device_health_parse(str_from("__not_a_device_health__"));
+    assert_eq(is_ok(r), 0, "DeviceHealth: unknown string rejected");
+    return 0;
+}
+
+# --- DeviceVendor: 9 members ---
+fn test_device_vendor_roundtrip() {
+    var r = 0;
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_NVIDIA)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_NVIDIA: parses");
+    assert_eq(payload(r), VENDOR_NVIDIA, "DeviceVendor/VENDOR_NVIDIA: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_AMD)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_AMD: parses");
+    assert_eq(payload(r), VENDOR_AMD, "DeviceVendor/VENDOR_AMD: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_INTEL)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_INTEL: parses");
+    assert_eq(payload(r), VENDOR_INTEL, "DeviceVendor/VENDOR_INTEL: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_APPLE)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_APPLE: parses");
+    assert_eq(payload(r), VENDOR_APPLE, "DeviceVendor/VENDOR_APPLE: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_GOOGLE)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_GOOGLE: parses");
+    assert_eq(payload(r), VENDOR_GOOGLE, "DeviceVendor/VENDOR_GOOGLE: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_QUALCOMM)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_QUALCOMM: parses");
+    assert_eq(payload(r), VENDOR_QUALCOMM, "DeviceVendor/VENDOR_QUALCOMM: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_HABANA)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_HABANA: parses");
+    assert_eq(payload(r), VENDOR_HABANA, "DeviceVendor/VENDOR_HABANA: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_AWS)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_AWS: parses");
+    assert_eq(payload(r), VENDOR_AWS, "DeviceVendor/VENDOR_AWS: roundtrips");
+    r = device_vendor_parse(str_from(device_vendor_name(VENDOR_CUSTOM)));
+    assert_eq(is_ok(r), 1, "DeviceVendor/VENDOR_CUSTOM: parses");
+    assert_eq(payload(r), VENDOR_CUSTOM, "DeviceVendor/VENDOR_CUSTOM: roundtrips");
+    r = device_vendor_parse(str_from("__not_a_device_vendor__"));
+    assert_eq(is_ok(r), 0, "DeviceVendor: unknown string rejected");
+    return 0;
+}
+
+# --- EnvironmentProfile: 6 members ---
+fn test_env_profile_roundtrip() {
+    var r = 0;
+    r = env_profile_parse(str_from(env_profile_name(ENV_DEVELOPMENT)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_DEVELOPMENT: parses");
+    assert_eq(payload(r), ENV_DEVELOPMENT, "EnvironmentProfile/ENV_DEVELOPMENT: roundtrips");
+    r = env_profile_parse(str_from(env_profile_name(ENV_TESTING)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_TESTING: parses");
+    assert_eq(payload(r), ENV_TESTING, "EnvironmentProfile/ENV_TESTING: roundtrips");
+    r = env_profile_parse(str_from(env_profile_name(ENV_STAGING)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_STAGING: parses");
+    assert_eq(payload(r), ENV_STAGING, "EnvironmentProfile/ENV_STAGING: roundtrips");
+    r = env_profile_parse(str_from(env_profile_name(ENV_CANARY)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_CANARY: parses");
+    assert_eq(payload(r), ENV_CANARY, "EnvironmentProfile/ENV_CANARY: roundtrips");
+    r = env_profile_parse(str_from(env_profile_name(ENV_PRODUCTION)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_PRODUCTION: parses");
+    assert_eq(payload(r), ENV_PRODUCTION, "EnvironmentProfile/ENV_PRODUCTION: roundtrips");
+    r = env_profile_parse(str_from(env_profile_name(ENV_EDGE)));
+    assert_eq(is_ok(r), 1, "EnvironmentProfile/ENV_EDGE: parses");
+    assert_eq(payload(r), ENV_EDGE, "EnvironmentProfile/ENV_EDGE: roundtrips");
+    r = env_profile_parse(str_from("__not_a_env_profile__"));
+    assert_eq(is_ok(r), 0, "EnvironmentProfile: unknown string rejected");
+    r = env_profile_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "EnvironmentProfile: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- FinishReason: 6 members ---
+fn test_finish_reason_roundtrip() {
+    var r = 0;
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_STOP)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_STOP: parses");
+    assert_eq(payload(r), FINISH_STOP, "FinishReason/FINISH_STOP: roundtrips");
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_LENGTH)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_LENGTH: parses");
+    assert_eq(payload(r), FINISH_LENGTH, "FinishReason/FINISH_LENGTH: roundtrips");
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_CONTENT_FILTER)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_CONTENT_FILTER: parses");
+    assert_eq(payload(r), FINISH_CONTENT_FILTER, "FinishReason/FINISH_CONTENT_FILTER: roundtrips");
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_TOOL_USE)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_TOOL_USE: parses");
+    assert_eq(payload(r), FINISH_TOOL_USE, "FinishReason/FINISH_TOOL_USE: roundtrips");
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_ERROR)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_ERROR: parses");
+    assert_eq(payload(r), FINISH_ERROR, "FinishReason/FINISH_ERROR: roundtrips");
+    r = finish_reason_parse(str_from(finish_reason_name(FINISH_RECITATION)));
+    assert_eq(is_ok(r), 1, "FinishReason/FINISH_RECITATION: parses");
+    assert_eq(payload(r), FINISH_RECITATION, "FinishReason/FINISH_RECITATION: roundtrips");
+    r = finish_reason_parse(str_from("__not_a_finish_reason__"));
+    assert_eq(is_ok(r), 0, "FinishReason: unknown string rejected");
+    r = finish_reason_parse(str_from("unknown"));
+    assert_eq(is_ok(r), 0, "FinishReason: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- FsAccess: 3 members ---
+fn test_fs_access_roundtrip() {
+    var r = 0;
+    r = fs_access_parse(str_from(fs_access_name(FS_NO_ACCESS)));
+    assert_eq(is_ok(r), 1, "FsAccess/FS_NO_ACCESS: parses");
+    assert_eq(payload(r), FS_NO_ACCESS, "FsAccess/FS_NO_ACCESS: roundtrips");
+    r = fs_access_parse(str_from(fs_access_name(FS_READ_ONLY)));
+    assert_eq(is_ok(r), 1, "FsAccess/FS_READ_ONLY: parses");
+    assert_eq(payload(r), FS_READ_ONLY, "FsAccess/FS_READ_ONLY: roundtrips");
+    r = fs_access_parse(str_from(fs_access_name(FS_READ_WRITE)));
+    assert_eq(is_ok(r), 1, "FsAccess/FS_READ_WRITE: parses");
+    assert_eq(payload(r), FS_READ_WRITE, "FsAccess/FS_READ_WRITE: roundtrips");
+    r = fs_access_parse(str_from("__not_a_fs_access__"));
+    assert_eq(is_ok(r), 0, "FsAccess: unknown string rejected");
+    r = fs_access_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "FsAccess: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- LlmProvider: 18 members ---
+fn test_llm_provider_roundtrip() {
+    var r = 0;
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_OLLAMA)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_OLLAMA: parses");
+    assert_eq(payload(r), LLM_OLLAMA, "LlmProvider/LLM_OLLAMA: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_LLAMA_CPP)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_LLAMA_CPP: parses");
+    assert_eq(payload(r), LLM_LLAMA_CPP, "LlmProvider/LLM_LLAMA_CPP: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_OPENAI)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_OPENAI: parses");
+    assert_eq(payload(r), LLM_OPENAI, "LlmProvider/LLM_OPENAI: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_ANTHROPIC)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_ANTHROPIC: parses");
+    assert_eq(payload(r), LLM_ANTHROPIC, "LlmProvider/LLM_ANTHROPIC: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_GOOGLE)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_GOOGLE: parses");
+    assert_eq(payload(r), LLM_GOOGLE, "LlmProvider/LLM_GOOGLE: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_DEEPSEEK)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_DEEPSEEK: parses");
+    assert_eq(payload(r), LLM_DEEPSEEK, "LlmProvider/LLM_DEEPSEEK: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_MISTRAL)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_MISTRAL: parses");
+    assert_eq(payload(r), LLM_MISTRAL, "LlmProvider/LLM_MISTRAL: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_GROK)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_GROK: parses");
+    assert_eq(payload(r), LLM_GROK, "LlmProvider/LLM_GROK: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_GROQ)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_GROQ: parses");
+    assert_eq(payload(r), LLM_GROQ, "LlmProvider/LLM_GROQ: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_OPENROUTER)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_OPENROUTER: parses");
+    assert_eq(payload(r), LLM_OPENROUTER, "LlmProvider/LLM_OPENROUTER: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_LMSTUDIO)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_LMSTUDIO: parses");
+    assert_eq(payload(r), LLM_LMSTUDIO, "LlmProvider/LLM_LMSTUDIO: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_LOCALAI)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_LOCALAI: parses");
+    assert_eq(payload(r), LLM_LOCALAI, "LlmProvider/LLM_LOCALAI: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_TOGETHER)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_TOGETHER: parses");
+    assert_eq(payload(r), LLM_TOGETHER, "LlmProvider/LLM_TOGETHER: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_FIREWORKS)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_FIREWORKS: parses");
+    assert_eq(payload(r), LLM_FIREWORKS, "LlmProvider/LLM_FIREWORKS: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_BEDROCK)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_BEDROCK: parses");
+    assert_eq(payload(r), LLM_BEDROCK, "LlmProvider/LLM_BEDROCK: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_VERTEX)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_VERTEX: parses");
+    assert_eq(payload(r), LLM_VERTEX, "LlmProvider/LLM_VERTEX: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_COHERE)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_COHERE: parses");
+    assert_eq(payload(r), LLM_COHERE, "LlmProvider/LLM_COHERE: roundtrips");
+    r = llm_provider_parse(str_from(llm_provider_name(LLM_CUSTOM)));
+    assert_eq(is_ok(r), 1, "LlmProvider/LLM_CUSTOM: parses");
+    assert_eq(payload(r), LLM_CUSTOM, "LlmProvider/LLM_CUSTOM: roundtrips");
+    r = llm_provider_parse(str_from("__not_a_llm_provider__"));
+    assert_eq(is_ok(r), 0, "LlmProvider: unknown string rejected");
+    return 0;
+}
+
+# --- LogSeverity: 6 members ---
+fn test_log_severity_roundtrip() {
+    var r = 0;
+    r = log_severity_parse(str_from(log_severity_name(LOG_TRACE)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_TRACE: parses");
+    assert_eq(payload(r), LOG_TRACE, "LogSeverity/LOG_TRACE: roundtrips");
+    r = log_severity_parse(str_from(log_severity_name(LOG_DEBUG)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_DEBUG: parses");
+    assert_eq(payload(r), LOG_DEBUG, "LogSeverity/LOG_DEBUG: roundtrips");
+    r = log_severity_parse(str_from(log_severity_name(LOG_INFO)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_INFO: parses");
+    assert_eq(payload(r), LOG_INFO, "LogSeverity/LOG_INFO: roundtrips");
+    r = log_severity_parse(str_from(log_severity_name(LOG_WARN)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_WARN: parses");
+    assert_eq(payload(r), LOG_WARN, "LogSeverity/LOG_WARN: roundtrips");
+    r = log_severity_parse(str_from(log_severity_name(LOG_ERROR)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_ERROR: parses");
+    assert_eq(payload(r), LOG_ERROR, "LogSeverity/LOG_ERROR: roundtrips");
+    r = log_severity_parse(str_from(log_severity_name(LOG_FATAL)));
+    assert_eq(is_ok(r), 1, "LogSeverity/LOG_FATAL: parses");
+    assert_eq(payload(r), LOG_FATAL, "LogSeverity/LOG_FATAL: roundtrips");
+    r = log_severity_parse(str_from("__not_a_log_severity__"));
+    assert_eq(is_ok(r), 0, "LogSeverity: unknown string rejected");
+    r = log_severity_parse(str_from("UNKNOWN"));
+    assert_eq(is_ok(r), 0, "LogSeverity: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- MemoryType: 12 members ---
+fn test_memory_type_roundtrip() {
+    var r = 0;
+    r = memory_type_parse(str_from(memory_type_name(MEM_GDDR5)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_GDDR5: parses");
+    assert_eq(payload(r), MEM_GDDR5, "MemoryType/MEM_GDDR5: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_GDDR6)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_GDDR6: parses");
+    assert_eq(payload(r), MEM_GDDR6, "MemoryType/MEM_GDDR6: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_GDDR6X)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_GDDR6X: parses");
+    assert_eq(payload(r), MEM_GDDR6X, "MemoryType/MEM_GDDR6X: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_HBM2)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_HBM2: parses");
+    assert_eq(payload(r), MEM_HBM2, "MemoryType/MEM_HBM2: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_HBM2E)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_HBM2E: parses");
+    assert_eq(payload(r), MEM_HBM2E, "MemoryType/MEM_HBM2E: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_HBM3)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_HBM3: parses");
+    assert_eq(payload(r), MEM_HBM3, "MemoryType/MEM_HBM3: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_LPDDR4)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_LPDDR4: parses");
+    assert_eq(payload(r), MEM_LPDDR4, "MemoryType/MEM_LPDDR4: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_LPDDR5)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_LPDDR5: parses");
+    assert_eq(payload(r), MEM_LPDDR5, "MemoryType/MEM_LPDDR5: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_LPDDR5X)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_LPDDR5X: parses");
+    assert_eq(payload(r), MEM_LPDDR5X, "MemoryType/MEM_LPDDR5X: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_DDR4)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_DDR4: parses");
+    assert_eq(payload(r), MEM_DDR4, "MemoryType/MEM_DDR4: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_DDR5)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_DDR5: parses");
+    assert_eq(payload(r), MEM_DDR5, "MemoryType/MEM_DDR5: roundtrips");
+    r = memory_type_parse(str_from(memory_type_name(MEM_UNKNOWN)));
+    assert_eq(is_ok(r), 1, "MemoryType/MEM_UNKNOWN: parses");
+    assert_eq(payload(r), MEM_UNKNOWN, "MemoryType/MEM_UNKNOWN: roundtrips");
+    r = memory_type_parse(str_from("__not_a_memory_type__"));
+    assert_eq(is_ok(r), 0, "MemoryType: unknown string rejected");
+    return 0;
+}
+
+# --- MessageRole: 4 members ---
+fn test_message_role_roundtrip() {
+    var r = 0;
+    r = message_role_parse(str_from(message_role_name(ROLE_SYSTEM)));
+    assert_eq(is_ok(r), 1, "MessageRole/ROLE_SYSTEM: parses");
+    assert_eq(payload(r), ROLE_SYSTEM, "MessageRole/ROLE_SYSTEM: roundtrips");
+    r = message_role_parse(str_from(message_role_name(ROLE_USER)));
+    assert_eq(is_ok(r), 1, "MessageRole/ROLE_USER: parses");
+    assert_eq(payload(r), ROLE_USER, "MessageRole/ROLE_USER: roundtrips");
+    r = message_role_parse(str_from(message_role_name(ROLE_ASSISTANT)));
+    assert_eq(is_ok(r), 1, "MessageRole/ROLE_ASSISTANT: parses");
+    assert_eq(payload(r), ROLE_ASSISTANT, "MessageRole/ROLE_ASSISTANT: roundtrips");
+    r = message_role_parse(str_from(message_role_name(ROLE_TOOL)));
+    assert_eq(is_ok(r), 1, "MessageRole/ROLE_TOOL: parses");
+    assert_eq(payload(r), ROLE_TOOL, "MessageRole/ROLE_TOOL: roundtrips");
+    r = message_role_parse(str_from("__not_a_message_role__"));
+    assert_eq(is_ok(r), 0, "MessageRole: unknown string rejected");
+    r = message_role_parse(str_from("unknown"));
+    assert_eq(is_ok(r), 0, "MessageRole: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- MessageType: 4 members ---
+fn test_message_type_roundtrip() {
+    var r = 0;
+    r = message_type_parse(str_from(message_type_name(MSG_COMMAND)));
+    assert_eq(is_ok(r), 1, "MessageType/MSG_COMMAND: parses");
+    assert_eq(payload(r), MSG_COMMAND, "MessageType/MSG_COMMAND: roundtrips");
+    r = message_type_parse(str_from(message_type_name(MSG_RESPONSE)));
+    assert_eq(is_ok(r), 1, "MessageType/MSG_RESPONSE: parses");
+    assert_eq(payload(r), MSG_RESPONSE, "MessageType/MSG_RESPONSE: roundtrips");
+    r = message_type_parse(str_from(message_type_name(MSG_EVENT)));
+    assert_eq(is_ok(r), 1, "MessageType/MSG_EVENT: parses");
+    assert_eq(payload(r), MSG_EVENT, "MessageType/MSG_EVENT: roundtrips");
+    r = message_type_parse(str_from(message_type_name(MSG_HEARTBEAT)));
+    assert_eq(is_ok(r), 1, "MessageType/MSG_HEARTBEAT: parses");
+    assert_eq(payload(r), MSG_HEARTBEAT, "MessageType/MSG_HEARTBEAT: roundtrips");
+    r = message_type_parse(str_from("__not_a_message_type__"));
+    assert_eq(is_ok(r), 0, "MessageType: unknown string rejected");
+    r = message_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "MessageType: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- MountPropagation: 4 members ---
+fn test_mount_propagation_roundtrip() {
+    var r = 0;
+    r = mount_propagation_parse(str_from(mount_propagation_name(MOUNT_PRIVATE)));
+    assert_eq(is_ok(r), 1, "MountPropagation/MOUNT_PRIVATE: parses");
+    assert_eq(payload(r), MOUNT_PRIVATE, "MountPropagation/MOUNT_PRIVATE: roundtrips");
+    r = mount_propagation_parse(str_from(mount_propagation_name(MOUNT_SHARED)));
+    assert_eq(is_ok(r), 1, "MountPropagation/MOUNT_SHARED: parses");
+    assert_eq(payload(r), MOUNT_SHARED, "MountPropagation/MOUNT_SHARED: roundtrips");
+    r = mount_propagation_parse(str_from(mount_propagation_name(MOUNT_SLAVE)));
+    assert_eq(is_ok(r), 1, "MountPropagation/MOUNT_SLAVE: parses");
+    assert_eq(payload(r), MOUNT_SLAVE, "MountPropagation/MOUNT_SLAVE: roundtrips");
+    r = mount_propagation_parse(str_from(mount_propagation_name(MOUNT_UNBINDABLE)));
+    assert_eq(is_ok(r), 1, "MountPropagation/MOUNT_UNBINDABLE: parses");
+    assert_eq(payload(r), MOUNT_UNBINDABLE, "MountPropagation/MOUNT_UNBINDABLE: roundtrips");
+    r = mount_propagation_parse(str_from("__not_a_mount_propagation__"));
+    assert_eq(is_ok(r), 0, "MountPropagation: unknown string rejected");
+    r = mount_propagation_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "MountPropagation: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- NetworkAccess: 4 members ---
+fn test_net_access_roundtrip() {
+    var r = 0;
+    r = net_access_parse(str_from(net_access_name(NET_NONE)));
+    assert_eq(is_ok(r), 1, "NetworkAccess/NET_NONE: parses");
+    assert_eq(payload(r), NET_NONE, "NetworkAccess/NET_NONE: roundtrips");
+    r = net_access_parse(str_from(net_access_name(NET_LOCALHOST_ONLY)));
+    assert_eq(is_ok(r), 1, "NetworkAccess/NET_LOCALHOST_ONLY: parses");
+    assert_eq(payload(r), NET_LOCALHOST_ONLY, "NetworkAccess/NET_LOCALHOST_ONLY: roundtrips");
+    r = net_access_parse(str_from(net_access_name(NET_RESTRICTED)));
+    assert_eq(is_ok(r), 1, "NetworkAccess/NET_RESTRICTED: parses");
+    assert_eq(payload(r), NET_RESTRICTED, "NetworkAccess/NET_RESTRICTED: roundtrips");
+    r = net_access_parse(str_from(net_access_name(NET_FULL)));
+    assert_eq(is_ok(r), 1, "NetworkAccess/NET_FULL: parses");
+    assert_eq(payload(r), NET_FULL, "NetworkAccess/NET_FULL: roundtrips");
+    r = net_access_parse(str_from("__not_a_net_access__"));
+    assert_eq(is_ok(r), 0, "NetworkAccess: unknown string rejected");
+    r = net_access_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "NetworkAccess: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- Permission: 6 members ---
+fn test_permission_roundtrip() {
+    var r = 0;
+    r = permission_parse(str_from(permission_name(PERM_FILE_READ)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_FILE_READ: parses");
+    assert_eq(payload(r), PERM_FILE_READ, "Permission/PERM_FILE_READ: roundtrips");
+    r = permission_parse(str_from(permission_name(PERM_FILE_WRITE)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_FILE_WRITE: parses");
+    assert_eq(payload(r), PERM_FILE_WRITE, "Permission/PERM_FILE_WRITE: roundtrips");
+    r = permission_parse(str_from(permission_name(PERM_NETWORK_ACCESS)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_NETWORK_ACCESS: parses");
+    assert_eq(payload(r), PERM_NETWORK_ACCESS, "Permission/PERM_NETWORK_ACCESS: roundtrips");
+    r = permission_parse(str_from(permission_name(PERM_PROCESS_SPAWN)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_PROCESS_SPAWN: parses");
+    assert_eq(payload(r), PERM_PROCESS_SPAWN, "Permission/PERM_PROCESS_SPAWN: roundtrips");
+    r = permission_parse(str_from(permission_name(PERM_LLM_INFERENCE)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_LLM_INFERENCE: parses");
+    assert_eq(payload(r), PERM_LLM_INFERENCE, "Permission/PERM_LLM_INFERENCE: roundtrips");
+    r = permission_parse(str_from(permission_name(PERM_AUDIT_READ)));
+    assert_eq(is_ok(r), 1, "Permission/PERM_AUDIT_READ: parses");
+    assert_eq(payload(r), PERM_AUDIT_READ, "Permission/PERM_AUDIT_READ: roundtrips");
+    r = permission_parse(str_from("__not_a_permission__"));
+    assert_eq(is_ok(r), 0, "Permission: unknown string rejected");
+    r = permission_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "Permission: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- PiiKind: 19 members ---
+fn test_pii_kind_roundtrip() {
+    var r = 0;
+    r = pii_kind_parse(str_from(pii_kind_name(PII_EMAIL)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_EMAIL: parses");
+    assert_eq(payload(r), PII_EMAIL, "PiiKind/PII_EMAIL: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_PHONE)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_PHONE: parses");
+    assert_eq(payload(r), PII_PHONE, "PiiKind/PII_PHONE: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_SSN)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_SSN: parses");
+    assert_eq(payload(r), PII_SSN, "PiiKind/PII_SSN: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_CREDIT_CARD)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_CREDIT_CARD: parses");
+    assert_eq(payload(r), PII_CREDIT_CARD, "PiiKind/PII_CREDIT_CARD: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_IP_ADDRESS)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_IP_ADDRESS: parses");
+    assert_eq(payload(r), PII_IP_ADDRESS, "PiiKind/PII_IP_ADDRESS: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_PASSPORT)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_PASSPORT: parses");
+    assert_eq(payload(r), PII_PASSPORT, "PiiKind/PII_PASSPORT: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_DRIVERS_LICENSE)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_DRIVERS_LICENSE: parses");
+    assert_eq(payload(r), PII_DRIVERS_LICENSE, "PiiKind/PII_DRIVERS_LICENSE: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_DATE_OF_BIRTH)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_DATE_OF_BIRTH: parses");
+    assert_eq(payload(r), PII_DATE_OF_BIRTH, "PiiKind/PII_DATE_OF_BIRTH: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_FULL_NAME)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_FULL_NAME: parses");
+    assert_eq(payload(r), PII_FULL_NAME, "PiiKind/PII_FULL_NAME: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_STREET_ADDRESS)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_STREET_ADDRESS: parses");
+    assert_eq(payload(r), PII_STREET_ADDRESS, "PiiKind/PII_STREET_ADDRESS: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_BANK_ACCOUNT)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_BANK_ACCOUNT: parses");
+    assert_eq(payload(r), PII_BANK_ACCOUNT, "PiiKind/PII_BANK_ACCOUNT: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_TAX_ID)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_TAX_ID: parses");
+    assert_eq(payload(r), PII_TAX_ID, "PiiKind/PII_TAX_ID: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_NATIONAL_ID)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_NATIONAL_ID: parses");
+    assert_eq(payload(r), PII_NATIONAL_ID, "PiiKind/PII_NATIONAL_ID: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_MEDICAL_RECORD)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_MEDICAL_RECORD: parses");
+    assert_eq(payload(r), PII_MEDICAL_RECORD, "PiiKind/PII_MEDICAL_RECORD: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_BIOMETRIC_DATA)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_BIOMETRIC_DATA: parses");
+    assert_eq(payload(r), PII_BIOMETRIC_DATA, "PiiKind/PII_BIOMETRIC_DATA: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_GENETIC)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_GENETIC: parses");
+    assert_eq(payload(r), PII_GENETIC, "PiiKind/PII_GENETIC: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_BIOMETRIC_TEMPLATE)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_BIOMETRIC_TEMPLATE: parses");
+    assert_eq(payload(r), PII_BIOMETRIC_TEMPLATE, "PiiKind/PII_BIOMETRIC_TEMPLATE: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_PRECISE_GEOLOCATION)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_PRECISE_GEOLOCATION: parses");
+    assert_eq(payload(r), PII_PRECISE_GEOLOCATION, "PiiKind/PII_PRECISE_GEOLOCATION: roundtrips");
+    r = pii_kind_parse(str_from(pii_kind_name(PII_CUSTOM)));
+    assert_eq(is_ok(r), 1, "PiiKind/PII_CUSTOM: parses");
+    assert_eq(payload(r), PII_CUSTOM, "PiiKind/PII_CUSTOM: roundtrips");
+    r = pii_kind_parse(str_from("__not_a_pii_kind__"));
+    assert_eq(is_ok(r), 0, "PiiKind: unknown string rejected");
+    return 0;
+}
+
+# --- PolicyEffect: 3 members ---
+fn test_policy_effect_roundtrip() {
+    var r = 0;
+    r = policy_effect_parse(str_from(policy_effect_name(POLICY_ALLOW)));
+    assert_eq(is_ok(r), 1, "PolicyEffect/POLICY_ALLOW: parses");
+    assert_eq(payload(r), POLICY_ALLOW, "PolicyEffect/POLICY_ALLOW: roundtrips");
+    r = policy_effect_parse(str_from(policy_effect_name(POLICY_DENY)));
+    assert_eq(is_ok(r), 1, "PolicyEffect/POLICY_DENY: parses");
+    assert_eq(payload(r), POLICY_DENY, "PolicyEffect/POLICY_DENY: roundtrips");
+    r = policy_effect_parse(str_from(policy_effect_name(POLICY_AUDIT)));
+    assert_eq(is_ok(r), 1, "PolicyEffect/POLICY_AUDIT: parses");
+    assert_eq(payload(r), POLICY_AUDIT, "PolicyEffect/POLICY_AUDIT: roundtrips");
+    r = policy_effect_parse(str_from("__not_a_policy_effect__"));
+    assert_eq(is_ok(r), 0, "PolicyEffect: unknown string rejected");
+    r = policy_effect_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "PolicyEffect: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- Role: 5 members ---
+fn test_role_roundtrip() {
+    var r = 0;
+    r = role_parse(str_from(role_name(ROLE_ADMIN)));
+    assert_eq(is_ok(r), 1, "Role/ROLE_ADMIN: parses");
+    assert_eq(payload(r), ROLE_ADMIN, "Role/ROLE_ADMIN: roundtrips");
+    r = role_parse(str_from(role_name(ROLE_OPERATOR)));
+    assert_eq(is_ok(r), 1, "Role/ROLE_OPERATOR: parses");
+    assert_eq(payload(r), ROLE_OPERATOR, "Role/ROLE_OPERATOR: roundtrips");
+    r = role_parse(str_from(role_name(ROLE_AUDITOR)));
+    assert_eq(is_ok(r), 1, "Role/ROLE_AUDITOR: parses");
+    assert_eq(payload(r), ROLE_AUDITOR, "Role/ROLE_AUDITOR: roundtrips");
+    r = role_parse(str_from(role_name(ROLE_VIEWER)));
+    assert_eq(is_ok(r), 1, "Role/ROLE_VIEWER: parses");
+    assert_eq(payload(r), ROLE_VIEWER, "Role/ROLE_VIEWER: roundtrips");
+    r = role_parse(str_from(role_name(ROLE_SERVICE)));
+    assert_eq(is_ok(r), 1, "Role/ROLE_SERVICE: parses");
+    assert_eq(payload(r), ROLE_SERVICE, "Role/ROLE_SERVICE: roundtrips");
+    r = role_parse(str_from("__not_a_role__"));
+    assert_eq(is_ok(r), 0, "Role: unknown string rejected");
+    r = role_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "Role: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SeccompAction: 6 members ---
+fn test_seccomp_action_roundtrip() {
+    var r = 0;
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_ALLOW)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_ALLOW: parses");
+    assert_eq(payload(r), SECCOMP_ALLOW, "SeccompAction/SECCOMP_ALLOW: roundtrips");
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_KILL)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_KILL: parses");
+    assert_eq(payload(r), SECCOMP_KILL, "SeccompAction/SECCOMP_KILL: roundtrips");
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_KILL_PROCESS)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_KILL_PROCESS: parses");
+    assert_eq(payload(r), SECCOMP_KILL_PROCESS, "SeccompAction/SECCOMP_KILL_PROCESS: roundtrips");
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_TRAP)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_TRAP: parses");
+    assert_eq(payload(r), SECCOMP_TRAP, "SeccompAction/SECCOMP_TRAP: roundtrips");
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_LOG)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_LOG: parses");
+    assert_eq(payload(r), SECCOMP_LOG, "SeccompAction/SECCOMP_LOG: roundtrips");
+    r = seccomp_action_parse(str_from(seccomp_action_name(SECCOMP_NOTIFY)));
+    assert_eq(is_ok(r), 1, "SeccompAction/SECCOMP_NOTIFY: parses");
+    assert_eq(payload(r), SECCOMP_NOTIFY, "SeccompAction/SECCOMP_NOTIFY: roundtrips");
+    r = seccomp_action_parse(str_from("__not_a_seccomp_action__"));
+    assert_eq(is_ok(r), 0, "SeccompAction: unknown string rejected");
+    r = seccomp_action_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SeccompAction: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SeccompArch: 17 members ---
+fn test_seccomp_arch_roundtrip() {
+    var r = 0;
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_X86)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_X86: parses");
+    assert_eq(payload(r), ARCH_X86, "SeccompArch/ARCH_X86: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_X86_64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_X86_64: parses");
+    assert_eq(payload(r), ARCH_X86_64, "SeccompArch/ARCH_X86_64: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_X32)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_X32: parses");
+    assert_eq(payload(r), ARCH_X32, "SeccompArch/ARCH_X32: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_ARM)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_ARM: parses");
+    assert_eq(payload(r), ARCH_ARM, "SeccompArch/ARCH_ARM: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_AARCH64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_AARCH64: parses");
+    assert_eq(payload(r), ARCH_AARCH64, "SeccompArch/ARCH_AARCH64: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPS)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPS: parses");
+    assert_eq(payload(r), ARCH_MIPS, "SeccompArch/ARCH_MIPS: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPS64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPS64: parses");
+    assert_eq(payload(r), ARCH_MIPS64, "SeccompArch/ARCH_MIPS64: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPS64N32)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPS64N32: parses");
+    assert_eq(payload(r), ARCH_MIPS64N32, "SeccompArch/ARCH_MIPS64N32: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPSEL)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPSEL: parses");
+    assert_eq(payload(r), ARCH_MIPSEL, "SeccompArch/ARCH_MIPSEL: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPSEL64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPSEL64: parses");
+    assert_eq(payload(r), ARCH_MIPSEL64, "SeccompArch/ARCH_MIPSEL64: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_MIPSEL64N32)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_MIPSEL64N32: parses");
+    assert_eq(payload(r), ARCH_MIPSEL64N32, "SeccompArch/ARCH_MIPSEL64N32: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_PPC)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_PPC: parses");
+    assert_eq(payload(r), ARCH_PPC, "SeccompArch/ARCH_PPC: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_PPC64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_PPC64: parses");
+    assert_eq(payload(r), ARCH_PPC64, "SeccompArch/ARCH_PPC64: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_PPC64LE)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_PPC64LE: parses");
+    assert_eq(payload(r), ARCH_PPC64LE, "SeccompArch/ARCH_PPC64LE: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_S390)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_S390: parses");
+    assert_eq(payload(r), ARCH_S390, "SeccompArch/ARCH_S390: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_S390X)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_S390X: parses");
+    assert_eq(payload(r), ARCH_S390X, "SeccompArch/ARCH_S390X: roundtrips");
+    r = seccomp_arch_parse(str_from(seccomp_arch_name(ARCH_RISCV64)));
+    assert_eq(is_ok(r), 1, "SeccompArch/ARCH_RISCV64: parses");
+    assert_eq(payload(r), ARCH_RISCV64, "SeccompArch/ARCH_RISCV64: roundtrips");
+    r = seccomp_arch_parse(str_from("__not_a_seccomp_arch__"));
+    assert_eq(is_ok(r), 0, "SeccompArch: unknown string rejected");
+    r = seccomp_arch_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SeccompArch: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SeccompArgOp: 7 members ---
+fn test_seccomp_arg_op_roundtrip() {
+    var r = 0;
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_NOT_EQUAL)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_NOT_EQUAL: parses");
+    assert_eq(payload(r), ARG_NOT_EQUAL, "SeccompArgOp/ARG_NOT_EQUAL: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_LESS_THAN)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_LESS_THAN: parses");
+    assert_eq(payload(r), ARG_LESS_THAN, "SeccompArgOp/ARG_LESS_THAN: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_LESS_EQUAL)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_LESS_EQUAL: parses");
+    assert_eq(payload(r), ARG_LESS_EQUAL, "SeccompArgOp/ARG_LESS_EQUAL: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_EQUAL)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_EQUAL: parses");
+    assert_eq(payload(r), ARG_EQUAL, "SeccompArgOp/ARG_EQUAL: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_GREATER_EQUAL)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_GREATER_EQUAL: parses");
+    assert_eq(payload(r), ARG_GREATER_EQUAL, "SeccompArgOp/ARG_GREATER_EQUAL: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_GREATER_THAN)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_GREATER_THAN: parses");
+    assert_eq(payload(r), ARG_GREATER_THAN, "SeccompArgOp/ARG_GREATER_THAN: roundtrips");
+    r = seccomp_arg_op_parse(str_from(seccomp_arg_op_name(ARG_MASKED_EQUAL)));
+    assert_eq(is_ok(r), 1, "SeccompArgOp/ARG_MASKED_EQUAL: parses");
+    assert_eq(payload(r), ARG_MASKED_EQUAL, "SeccompArgOp/ARG_MASKED_EQUAL: roundtrips");
+    r = seccomp_arg_op_parse(str_from("__not_a_seccomp_arg_op__"));
+    assert_eq(is_ok(r), 0, "SeccompArgOp: unknown string rejected");
+    r = seccomp_arg_op_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SeccompArgOp: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SecretKind: 6 members ---
+fn test_secret_kind_roundtrip() {
+    var r = 0;
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_OPAQUE)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_OPAQUE: parses");
+    assert_eq(payload(r), SECRET_OPAQUE, "SecretKind/SECRET_OPAQUE: roundtrips");
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_API_KEY)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_API_KEY: parses");
+    assert_eq(payload(r), SECRET_API_KEY, "SecretKind/SECRET_API_KEY: roundtrips");
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_PASSWORD)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_PASSWORD: parses");
+    assert_eq(payload(r), SECRET_PASSWORD, "SecretKind/SECRET_PASSWORD: roundtrips");
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_CERTIFICATE)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_CERTIFICATE: parses");
+    assert_eq(payload(r), SECRET_CERTIFICATE, "SecretKind/SECRET_CERTIFICATE: roundtrips");
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_SSH_KEY)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_SSH_KEY: parses");
+    assert_eq(payload(r), SECRET_SSH_KEY, "SecretKind/SECRET_SSH_KEY: roundtrips");
+    r = secret_kind_parse(str_from(secret_kind_name(SECRET_TOKEN)));
+    assert_eq(is_ok(r), 1, "SecretKind/SECRET_TOKEN: parses");
+    assert_eq(payload(r), SECRET_TOKEN, "SecretKind/SECRET_TOKEN: roundtrips");
+    r = secret_kind_parse(str_from("__not_a_secret_kind__"));
+    assert_eq(is_ok(r), 0, "SecretKind: unknown string rejected");
+    r = secret_kind_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SecretKind: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SpanKind: 5 members ---
+fn test_span_kind_roundtrip() {
+    var r = 0;
+    r = span_kind_parse(str_from(span_kind_name(SPAN_INTERNAL)));
+    assert_eq(is_ok(r), 1, "SpanKind/SPAN_INTERNAL: parses");
+    assert_eq(payload(r), SPAN_INTERNAL, "SpanKind/SPAN_INTERNAL: roundtrips");
+    r = span_kind_parse(str_from(span_kind_name(SPAN_SERVER)));
+    assert_eq(is_ok(r), 1, "SpanKind/SPAN_SERVER: parses");
+    assert_eq(payload(r), SPAN_SERVER, "SpanKind/SPAN_SERVER: roundtrips");
+    r = span_kind_parse(str_from(span_kind_name(SPAN_CLIENT)));
+    assert_eq(is_ok(r), 1, "SpanKind/SPAN_CLIENT: parses");
+    assert_eq(payload(r), SPAN_CLIENT, "SpanKind/SPAN_CLIENT: roundtrips");
+    r = span_kind_parse(str_from(span_kind_name(SPAN_PRODUCER)));
+    assert_eq(is_ok(r), 1, "SpanKind/SPAN_PRODUCER: parses");
+    assert_eq(payload(r), SPAN_PRODUCER, "SpanKind/SPAN_PRODUCER: roundtrips");
+    r = span_kind_parse(str_from(span_kind_name(SPAN_CONSUMER)));
+    assert_eq(is_ok(r), 1, "SpanKind/SPAN_CONSUMER: parses");
+    assert_eq(payload(r), SPAN_CONSUMER, "SpanKind/SPAN_CONSUMER: roundtrips");
+    r = span_kind_parse(str_from("__not_a_span_kind__"));
+    assert_eq(is_ok(r), 0, "SpanKind: unknown string rejected");
+    r = span_kind_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SpanKind: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SpanStatus: 3 members ---
+fn test_span_status_roundtrip() {
+    var r = 0;
+    r = span_status_parse(str_from(span_status_name(SPAN_UNSET)));
+    assert_eq(is_ok(r), 1, "SpanStatus/SPAN_UNSET: parses");
+    assert_eq(payload(r), SPAN_UNSET, "SpanStatus/SPAN_UNSET: roundtrips");
+    r = span_status_parse(str_from(span_status_name(SPAN_OK)));
+    assert_eq(is_ok(r), 1, "SpanStatus/SPAN_OK: parses");
+    assert_eq(payload(r), SPAN_OK, "SpanStatus/SPAN_OK: roundtrips");
+    r = span_status_parse(str_from(span_status_name(SPAN_ERROR)));
+    assert_eq(is_ok(r), 1, "SpanStatus/SPAN_ERROR: parses");
+    assert_eq(payload(r), SPAN_ERROR, "SpanStatus/SPAN_ERROR: roundtrips");
+    r = span_status_parse(str_from("__not_a_span_status__"));
+    assert_eq(is_ok(r), 0, "SpanStatus: unknown string rejected");
+    r = span_status_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "SpanStatus: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- SystemStatus: 4 members ---
+fn test_system_status_roundtrip() {
+    var r = 0;
+    r = system_status_parse(str_from(system_status_name(STATUS_HEALTHY)));
+    assert_eq(is_ok(r), 1, "SystemStatus/STATUS_HEALTHY: parses");
+    assert_eq(payload(r), STATUS_HEALTHY, "SystemStatus/STATUS_HEALTHY: roundtrips");
+    r = system_status_parse(str_from(system_status_name(STATUS_DEGRADED)));
+    assert_eq(is_ok(r), 1, "SystemStatus/STATUS_DEGRADED: parses");
+    assert_eq(payload(r), STATUS_DEGRADED, "SystemStatus/STATUS_DEGRADED: roundtrips");
+    r = system_status_parse(str_from(system_status_name(STATUS_CRITICAL)));
+    assert_eq(is_ok(r), 1, "SystemStatus/STATUS_CRITICAL: parses");
+    assert_eq(payload(r), STATUS_CRITICAL, "SystemStatus/STATUS_CRITICAL: roundtrips");
+    r = system_status_parse(str_from(system_status_name(STATUS_UNKNOWN)));
+    assert_eq(is_ok(r), 1, "SystemStatus/STATUS_UNKNOWN: parses");
+    assert_eq(payload(r), STATUS_UNKNOWN, "SystemStatus/STATUS_UNKNOWN: roundtrips");
+    r = system_status_parse(str_from("__not_a_system_status__"));
+    assert_eq(is_ok(r), 0, "SystemStatus: unknown string rejected");
+    return 0;
+}
+
+# --- ValidationSeverity: 3 members ---
+fn test_validation_severity_roundtrip() {
+    var r = 0;
+    r = validation_severity_parse(str_from(validation_severity_name(VSEV_LOW)));
+    assert_eq(is_ok(r), 1, "ValidationSeverity/VSEV_LOW: parses");
+    assert_eq(payload(r), VSEV_LOW, "ValidationSeverity/VSEV_LOW: roundtrips");
+    r = validation_severity_parse(str_from(validation_severity_name(VSEV_MEDIUM)));
+    assert_eq(is_ok(r), 1, "ValidationSeverity/VSEV_MEDIUM: parses");
+    assert_eq(payload(r), VSEV_MEDIUM, "ValidationSeverity/VSEV_MEDIUM: roundtrips");
+    r = validation_severity_parse(str_from(validation_severity_name(VSEV_HIGH)));
+    assert_eq(is_ok(r), 1, "ValidationSeverity/VSEV_HIGH: parses");
+    assert_eq(payload(r), VSEV_HIGH, "ValidationSeverity/VSEV_HIGH: roundtrips");
+    r = validation_severity_parse(str_from("__not_a_validation_severity__"));
+    assert_eq(is_ok(r), 0, "ValidationSeverity: unknown string rejected");
+    r = validation_severity_parse(str_from("Unknown"));
+    assert_eq(is_ok(r), 0, "ValidationSeverity: fallback string owned by no member -> Err");
+    return 0;
+}
+
+# --- F-021: previously unsettable fields ---
+fn test_f021_secret_metadata_setters() {
+    var m = secret_metadata_new(str_from("db-password"), SECRET_PASSWORD);
+    assert_eq(smeta_expires_at(m), 0, "F-021: expires_at starts 0");
+    assert_eq(smeta_owner(m), 0, "F-021: owner starts 0");
+    smeta_set_expires_at(m, 1893456000);
+    assert_eq(smeta_expires_at(m), 1893456000, "F-021: expires_at now settable");
+    smeta_set_owner(m, str_from("billing-svc"));
+    assert_eq(str_eq(smeta_owner(m), str_from("billing-svc")), 1, "F-021: owner now settable");
+    return 0;
+}
+
+fn test_f021_mcap_flag_setters() {
+    var m = model_capabilities_new(str_from("claude-opus-5"), LLM_ANTHROPIC);
+    assert_eq(mcap_supports_vision(m), 0, "F-021: vision starts 0");
+    assert_eq(mcap_supports_tools(m), 0, "F-021: tools starts 0");
+    assert_eq(mcap_supports_structured(m), 0, "F-021: structured starts 0");
+    assert_eq(mcap_supports_streaming(m), 0, "F-021: streaming starts 0");
+    assert_eq(mcap_supports_thinking(m), 0, "F-021: thinking starts 0");
+    assert_eq(mcap_supports_audio(m), 0, "F-021: audio starts 0");
+    assert_eq(mcap_supports_citations(m), 0, "F-021: citations starts 0");
+    mcap_set_supports_vision(m, 1);
+    mcap_set_supports_tools(m, 1);
+    mcap_set_supports_structured(m, 1);
+    mcap_set_supports_streaming(m, 1);
+    mcap_set_supports_thinking(m, 1);
+    mcap_set_supports_audio(m, 1);
+    mcap_set_supports_citations(m, 1);
+    assert_eq(mcap_supports_vision(m), 1, "F-021: vision now settable");
+    assert_eq(mcap_supports_tools(m), 1, "F-021: tools now settable");
+    assert_eq(mcap_supports_structured(m), 1, "F-021: structured now settable");
+    assert_eq(mcap_supports_streaming(m), 1, "F-021: streaming now settable");
+    assert_eq(mcap_supports_thinking(m), 1, "F-021: thinking now settable");
+    assert_eq(mcap_supports_audio(m), 1, "F-021: audio now settable");
+    assert_eq(mcap_supports_citations(m), 1, "F-021: citations now settable");
+    return 0;
+}
+
+fn main() {
+    println("=== agnostik v1.4.0 enum parse roundtrip (F-018) + setters (F-021) ===");
+    test_agent_status_roundtrip();
+    test_agent_type_roundtrip();
+    test_agnostik_err_kind_roundtrip();
+    test_audit_result_roundtrip();
+    test_audit_severity_roundtrip();
+    test_classification_level_roundtrip();
+    test_device_family_roundtrip();
+    test_device_health_roundtrip();
+    test_device_vendor_roundtrip();
+    test_env_profile_roundtrip();
+    test_finish_reason_roundtrip();
+    test_fs_access_roundtrip();
+    test_llm_provider_roundtrip();
+    test_log_severity_roundtrip();
+    test_memory_type_roundtrip();
+    test_message_role_roundtrip();
+    test_message_type_roundtrip();
+    test_mount_propagation_roundtrip();
+    test_net_access_roundtrip();
+    test_permission_roundtrip();
+    test_pii_kind_roundtrip();
+    test_policy_effect_roundtrip();
+    test_role_roundtrip();
+    test_seccomp_action_roundtrip();
+    test_seccomp_arch_roundtrip();
+    test_seccomp_arg_op_roundtrip();
+    test_secret_kind_roundtrip();
+    test_span_kind_roundtrip();
+    test_span_status_roundtrip();
+    test_system_status_roundtrip();
+    test_validation_severity_roundtrip();
+    test_f021_secret_metadata_setters();
+    test_f021_mcap_flag_setters();
+    println("");
+    return assert_summary();
+}

@@ -277,11 +277,35 @@ fn agent_status_name(s) {
     elif (s == AGENT_FAILED)         { return "Failed"; }
     return "Unknown";
 }
+# Inverse of agent_status_name. Exact match on what agent_status_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# agent_status_parse(agent_status_name(v)) == v holds for every AgentStatus member.
+fn agent_status_parse(s: Str) {
+    if (str_eq_cstr(s, "Pending") == 1) { return Ok(AGENT_PENDING); }
+    elif (str_eq_cstr(s, "Starting") == 1) { return Ok(AGENT_STARTING); }
+    elif (str_eq_cstr(s, "Running") == 1) { return Ok(AGENT_RUNNING); }
+    elif (str_eq_cstr(s, "Paused") == 1) { return Ok(AGENT_PAUSED); }
+    elif (str_eq_cstr(s, "Stopping") == 1) { return Ok(AGENT_STOPPING); }
+    elif (str_eq_cstr(s, "Stopped") == 1) { return Ok(AGENT_STOPPED); }
+    elif (str_eq_cstr(s, "Restarting") == 1) { return Ok(AGENT_RESTARTING); }
+    elif (str_eq_cstr(s, "Terminated") == 1) { return Ok(AGENT_TERMINATED); }
+    elif (str_eq_cstr(s, "Failed") == 1) { return Ok(AGENT_FAILED); }
+    return stik_err_invalid_argument(str_from("unknown AgentStatus name"));
+}
 fn agent_type_name(t) {
     if (t == AGENT_TYPE_SYSTEM)      { return "System"; }
     elif (t == AGENT_TYPE_USER)      { return "User"; }
     elif (t == AGENT_TYPE_SERVICE)   { return "Service"; }
     return "Unknown";
+}
+# Inverse of agent_type_name. Exact match on what agent_type_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# agent_type_parse(agent_type_name(v)) == v holds for every AgentType member.
+fn agent_type_parse(s: Str) {
+    if (str_eq_cstr(s, "System") == 1) { return Ok(AGENT_TYPE_SYSTEM); }
+    elif (str_eq_cstr(s, "User") == 1) { return Ok(AGENT_TYPE_USER); }
+    elif (str_eq_cstr(s, "Service") == 1) { return Ok(AGENT_TYPE_SERVICE); }
+    return stik_err_invalid_argument(str_from("unknown AgentType name"));
 }
 enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST; }
 fn agent_message_new(sender, receiver, payload_str: Str) {

@@ -561,9 +561,31 @@ fn message_type_name(t) {
     elif (t == MSG_HEARTBEAT)    { return "Heartbeat"; }
     return "Unknown";
 }
+# Inverse of message_type_name. Exact match on what message_type_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# message_type_parse(message_type_name(v)) == v holds for every MessageType member.
+fn message_type_parse(s: Str) {
+    if (str_eq_cstr(s, "Command") == 1) { return Ok(MSG_COMMAND); }
+    elif (str_eq_cstr(s, "Response") == 1) { return Ok(MSG_RESPONSE); }
+    elif (str_eq_cstr(s, "Event") == 1) { return Ok(MSG_EVENT); }
+    elif (str_eq_cstr(s, "Heartbeat") == 1) { return Ok(MSG_HEARTBEAT); }
+    return stik_err_invalid_argument(str_from("unknown MessageType name"));
+}
 fn system_status_name(s) {
     if (s == STATUS_HEALTHY)     { return "Healthy"; }
     elif (s == STATUS_DEGRADED)  { return "Degraded"; }
     elif (s == STATUS_CRITICAL)  { return "Critical"; }
     return "Unknown";
+}
+# Inverse of system_status_name. Exact match on what system_status_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# system_status_parse(system_status_name(v)) == v holds for every SystemStatus member.
+# `Unknown` is STATUS_UNKNOWN's canonical name (it is produced by
+# system_status_name's fallback, not by an explicit arm), so it maps back here.
+fn system_status_parse(s: Str) {
+    if (str_eq_cstr(s, "Healthy") == 1) { return Ok(STATUS_HEALTHY); }
+    elif (str_eq_cstr(s, "Degraded") == 1) { return Ok(STATUS_DEGRADED); }
+    elif (str_eq_cstr(s, "Critical") == 1) { return Ok(STATUS_CRITICAL); }
+    elif (str_eq_cstr(s, "Unknown") == 1) { return Ok(STATUS_UNKNOWN); }
+    return stik_err_invalid_argument(str_from("unknown SystemStatus name"));
 }

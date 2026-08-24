@@ -7,6 +7,17 @@ fn device_family_name(f) {
     elif (f == DEV_CPU)        { return "CPU"; }
     return "Unknown";
 }
+# Inverse of device_family_name. Exact match on what device_family_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# device_family_parse(device_family_name(v)) == v holds for every DeviceFamily member.
+fn device_family_parse(s: Str) {
+    if (str_eq_cstr(s, "GPU") == 1) { return Ok(DEV_GPU); }
+    elif (str_eq_cstr(s, "TPU") == 1) { return Ok(DEV_TPU); }
+    elif (str_eq_cstr(s, "NPU") == 1) { return Ok(DEV_NPU); }
+    elif (str_eq_cstr(s, "AI_ASIC") == 1) { return Ok(DEV_AI_ASIC); }
+    elif (str_eq_cstr(s, "CPU") == 1) { return Ok(DEV_CPU); }
+    return stik_err_invalid_argument(str_from("unknown DeviceFamily name"));
+}
 enum DeviceVendor {
     VENDOR_NVIDIA;
     VENDOR_AMD;
@@ -29,12 +40,41 @@ fn device_vendor_name(v) {
     elif (v == VENDOR_AWS)      { return "AWS"; }
     return "Custom";
 }
+# Inverse of device_vendor_name. Exact match on what device_vendor_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# device_vendor_parse(device_vendor_name(v)) == v holds for every DeviceVendor member.
+# `Custom` is VENDOR_CUSTOM's canonical name (it is produced by
+# device_vendor_name's fallback, not by an explicit arm), so it maps back here.
+fn device_vendor_parse(s: Str) {
+    if (str_eq_cstr(s, "Nvidia") == 1) { return Ok(VENDOR_NVIDIA); }
+    elif (str_eq_cstr(s, "AMD") == 1) { return Ok(VENDOR_AMD); }
+    elif (str_eq_cstr(s, "Intel") == 1) { return Ok(VENDOR_INTEL); }
+    elif (str_eq_cstr(s, "Apple") == 1) { return Ok(VENDOR_APPLE); }
+    elif (str_eq_cstr(s, "Google") == 1) { return Ok(VENDOR_GOOGLE); }
+    elif (str_eq_cstr(s, "Qualcomm") == 1) { return Ok(VENDOR_QUALCOMM); }
+    elif (str_eq_cstr(s, "Habana") == 1) { return Ok(VENDOR_HABANA); }
+    elif (str_eq_cstr(s, "AWS") == 1) { return Ok(VENDOR_AWS); }
+    elif (str_eq_cstr(s, "Custom") == 1) { return Ok(VENDOR_CUSTOM); }
+    return stik_err_invalid_argument(str_from("unknown DeviceVendor name"));
+}
 enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
 fn device_health_name(h) {
     if (h == HEALTH_OK)            { return "Ok"; }
     elif (h == HEALTH_DEGRADED)    { return "Degraded"; }
     elif (h == HEALTH_FAILED)      { return "Failed"; }
     return "Unknown";
+}
+# Inverse of device_health_name. Exact match on what device_health_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# device_health_parse(device_health_name(v)) == v holds for every DeviceHealth member.
+# `Unknown` is HEALTH_UNKNOWN's canonical name (it is produced by
+# device_health_name's fallback, not by an explicit arm), so it maps back here.
+fn device_health_parse(s: Str) {
+    if (str_eq_cstr(s, "Ok") == 1) { return Ok(HEALTH_OK); }
+    elif (str_eq_cstr(s, "Degraded") == 1) { return Ok(HEALTH_DEGRADED); }
+    elif (str_eq_cstr(s, "Failed") == 1) { return Ok(HEALTH_FAILED); }
+    elif (str_eq_cstr(s, "Unknown") == 1) { return Ok(HEALTH_UNKNOWN); }
+    return stik_err_invalid_argument(str_from("unknown DeviceHealth name"));
 }
 enum MemoryType {
     MEM_GDDR5;
@@ -63,6 +103,26 @@ fn memory_type_name(t) {
     elif (t == MEM_DDR4)       { return "DDR4"; }
     elif (t == MEM_DDR5)       { return "DDR5"; }
     return "Unknown";
+}
+# Inverse of memory_type_name. Exact match on what memory_type_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# memory_type_parse(memory_type_name(v)) == v holds for every MemoryType member.
+# `Unknown` is MEM_UNKNOWN's canonical name (it is produced by
+# memory_type_name's fallback, not by an explicit arm), so it maps back here.
+fn memory_type_parse(s: Str) {
+    if (str_eq_cstr(s, "GDDR5") == 1) { return Ok(MEM_GDDR5); }
+    elif (str_eq_cstr(s, "GDDR6") == 1) { return Ok(MEM_GDDR6); }
+    elif (str_eq_cstr(s, "GDDR6X") == 1) { return Ok(MEM_GDDR6X); }
+    elif (str_eq_cstr(s, "HBM2") == 1) { return Ok(MEM_HBM2); }
+    elif (str_eq_cstr(s, "HBM2e") == 1) { return Ok(MEM_HBM2E); }
+    elif (str_eq_cstr(s, "HBM3") == 1) { return Ok(MEM_HBM3); }
+    elif (str_eq_cstr(s, "LPDDR4") == 1) { return Ok(MEM_LPDDR4); }
+    elif (str_eq_cstr(s, "LPDDR5") == 1) { return Ok(MEM_LPDDR5); }
+    elif (str_eq_cstr(s, "LPDDR5X") == 1) { return Ok(MEM_LPDDR5X); }
+    elif (str_eq_cstr(s, "DDR4") == 1) { return Ok(MEM_DDR4); }
+    elif (str_eq_cstr(s, "DDR5") == 1) { return Ok(MEM_DDR5); }
+    elif (str_eq_cstr(s, "Unknown") == 1) { return Ok(MEM_UNKNOWN); }
+    return stik_err_invalid_argument(str_from("unknown MemoryType name"));
 }
 # v1.1.1: widened to i8 (each field is a 0/1 boolean). 72 B → 9 B per
 # instance. Existing accessor + setter signatures preserved; the

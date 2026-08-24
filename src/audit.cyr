@@ -13,6 +13,17 @@ fn audit_severity_name(s) {
     elif (s == AUDIT_CRITICAL) { return "Critical"; }
     return "Unknown";
 }
+# Inverse of audit_severity_name. Exact match on what audit_severity_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# audit_severity_parse(audit_severity_name(v)) == v holds for every AuditSeverity member.
+fn audit_severity_parse(s: Str) {
+    if (str_eq_cstr(s, "Debug") == 1) { return Ok(AUDIT_DEBUG); }
+    elif (str_eq_cstr(s, "Info") == 1) { return Ok(AUDIT_INFO); }
+    elif (str_eq_cstr(s, "Warning") == 1) { return Ok(AUDIT_WARNING); }
+    elif (str_eq_cstr(s, "Error") == 1) { return Ok(AUDIT_ERROR); }
+    elif (str_eq_cstr(s, "Critical") == 1) { return Ok(AUDIT_CRITICAL); }
+    return stik_err_invalid_argument(str_from("unknown AuditSeverity name"));
+}
 enum AuditResult {
     AUDIT_SUCCESS;
     AUDIT_FAILURE;
@@ -23,6 +34,15 @@ fn audit_result_name(r) {
     elif (r == AUDIT_FAILURE) { return "Failure"; }
     elif (r == AUDIT_DENIED)  { return "Denied"; }
     return "Unknown";
+}
+# Inverse of audit_result_name. Exact match on what audit_result_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# audit_result_parse(audit_result_name(v)) == v holds for every AuditResult member.
+fn audit_result_parse(s: Str) {
+    if (str_eq_cstr(s, "Success") == 1) { return Ok(AUDIT_SUCCESS); }
+    elif (str_eq_cstr(s, "Failure") == 1) { return Ok(AUDIT_FAILURE); }
+    elif (str_eq_cstr(s, "Denied") == 1) { return Ok(AUDIT_DENIED); }
+    return stik_err_invalid_argument(str_from("unknown AuditResult name"));
 }
 var GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 # Lazily build the genesis-hash Str once. audit_entry_new and

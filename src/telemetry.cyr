@@ -77,6 +77,15 @@ fn span_status_name(s) {
     elif (s == SPAN_ERROR)     { return "Error"; }
     return "Unknown";
 }
+# Inverse of span_status_name. Exact match on what span_status_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# span_status_parse(span_status_name(v)) == v holds for every SpanStatus member.
+fn span_status_parse(s: Str) {
+    if (str_eq_cstr(s, "Unset") == 1) { return Ok(SPAN_UNSET); }
+    elif (str_eq_cstr(s, "Ok") == 1) { return Ok(SPAN_OK); }
+    elif (str_eq_cstr(s, "Error") == 1) { return Ok(SPAN_ERROR); }
+    return stik_err_invalid_argument(str_from("unknown SpanStatus name"));
+}
 fn span_status_error(message: Str) {
     return tagged_new(SPAN_ERROR, message);
 }
@@ -94,6 +103,17 @@ fn span_kind_name(k) {
     elif (k == SPAN_PRODUCER)    { return "Producer"; }
     elif (k == SPAN_CONSUMER)    { return "Consumer"; }
     return "Unknown";
+}
+# Inverse of span_kind_name. Exact match on what span_kind_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# span_kind_parse(span_kind_name(v)) == v holds for every SpanKind member.
+fn span_kind_parse(s: Str) {
+    if (str_eq_cstr(s, "Internal") == 1) { return Ok(SPAN_INTERNAL); }
+    elif (str_eq_cstr(s, "Server") == 1) { return Ok(SPAN_SERVER); }
+    elif (str_eq_cstr(s, "Client") == 1) { return Ok(SPAN_CLIENT); }
+    elif (str_eq_cstr(s, "Producer") == 1) { return Ok(SPAN_PRODUCER); }
+    elif (str_eq_cstr(s, "Consumer") == 1) { return Ok(SPAN_CONSUMER); }
+    return stik_err_invalid_argument(str_from("unknown SpanKind name"));
 }
 enum EventType {
     EVT_AGENT_STARTED;
@@ -130,6 +150,18 @@ fn log_severity_name(s) {
     elif (s == LOG_ERROR) { return "ERROR"; }
     elif (s == LOG_FATAL) { return "FATAL"; }
     return "UNKNOWN";
+}
+# Inverse of log_severity_name. Exact match on what log_severity_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# log_severity_parse(log_severity_name(v)) == v holds for every LogSeverity member.
+fn log_severity_parse(s: Str) {
+    if (str_eq_cstr(s, "TRACE") == 1) { return Ok(LOG_TRACE); }
+    elif (str_eq_cstr(s, "DEBUG") == 1) { return Ok(LOG_DEBUG); }
+    elif (str_eq_cstr(s, "INFO") == 1) { return Ok(LOG_INFO); }
+    elif (str_eq_cstr(s, "WARN") == 1) { return Ok(LOG_WARN); }
+    elif (str_eq_cstr(s, "ERROR") == 1) { return Ok(LOG_ERROR); }
+    elif (str_eq_cstr(s, "FATAL") == 1) { return Ok(LOG_FATAL); }
+    return stik_err_invalid_argument(str_from("unknown LogSeverity name"));
 }
 fn resource_new(name: Str, version: Str, instance_id: Str) {
     var r = alloc(40);

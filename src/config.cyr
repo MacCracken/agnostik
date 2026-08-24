@@ -15,6 +15,18 @@ fn env_profile_name(p) {
     if (p == ENV_EDGE)        { return "Edge"; }
     return "Unknown";
 }
+# Inverse of env_profile_name. Exact match on what env_profile_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# env_profile_parse(env_profile_name(v)) == v holds for every EnvironmentProfile member.
+fn env_profile_parse(s: Str) {
+    if (str_eq_cstr(s, "Development") == 1) { return Ok(ENV_DEVELOPMENT); }
+    elif (str_eq_cstr(s, "Testing") == 1) { return Ok(ENV_TESTING); }
+    elif (str_eq_cstr(s, "Staging") == 1) { return Ok(ENV_STAGING); }
+    elif (str_eq_cstr(s, "Canary") == 1) { return Ok(ENV_CANARY); }
+    elif (str_eq_cstr(s, "Production") == 1) { return Ok(ENV_PRODUCTION); }
+    elif (str_eq_cstr(s, "Edge") == 1) { return Ok(ENV_EDGE); }
+    return stik_err_invalid_argument(str_from("unknown EnvironmentProfile name"));
+}
 fn agnos_config_new() {
     var c = alloc(40);
     store64(c, ENV_DEVELOPMENT);

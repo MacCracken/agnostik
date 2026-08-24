@@ -11,14 +11,15 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.3.6
+- **Current**: 1.4.0
 - **Toolchain**: Cyrius `6.5.35` (pinned in `cyrius.cyml`)
-- **Tests**: 886 assertions across 16 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
-  clean; api-surface gate locked at 871 public fns
+- **Tests**: 1,367 assertions across 17 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
+  clean; api-surface gate locked at 911 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
-  2026-08-24 (P(-1) sweep, F-014..F-021 — 4 repaired, 2 pinned to
-  v1.4.0). Cadence: every minor cut, plus each P(-1) pass.
+  2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
+  contract gaps shipped in v1.4.0). Cadence: every minor cut, plus each
+  P(-1) pass.
 - **Per-parser fuzz**: 8 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
 
@@ -76,7 +77,7 @@ ResourceLimits_to_json(rl, j);                        # `{"max_memory":268435456
 cyrius lib sync                                       # copy version-pinned stdlib snapshot into lib/ (6.4.x+: declared subset by default, --full for all)
 cyrius deps                                           # resolve git deps into lib/ (stdlib comes from lib sync)
 cyrius build src/main.cyr build/agnostik              # compile the test harness
-for t in tests/tcyr/*.tcyr; do cyrius test "$t"; done # 886/886
+for t in tests/tcyr/*.tcyr; do cyrius test "$t"; done # 1367/1367
 cyrius bench tests/bcyr/agnostik.bcyr                 # 25 benchmarks
 scripts/bench-regression.sh                           # vs baseline in history.csv
 scripts/api-surface.sh check                          # diff vs committed snapshot

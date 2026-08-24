@@ -2,6 +2,79 @@
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-08-24
+
+### Added
+
+- **F-018 — every enum carrying a `*_name()` now has a `*_parse()`
+  inverse.** 31 new functions, one per enum, covering **204 members**.
+  Before this release the library had 31 enum `_name` functions and
+  **zero** enum `_parse`, so the CLAUDE.md contract — *"All public enums
+  must have `*_name()` (string representation) and `*_parse(s)`
+  (roundtrip)"* — held for no enum at all, and each of the eleven
+  consumers had to hand-roll its own string→enum mapping. That is the
+  exact duplication agnostik exists to prevent, and divergent hand-rolled
+  mappings are how two components come to disagree about what
+  `"restricted"` means.
+
+  Design decisions worth knowing:
+  - **Exact match, no coercion.** Each `*_parse` accepts precisely what
+    its `*_name` emits — no case-folding, no whitespace trimming, no
+    aliases. An unrecognised string returns
+    `Err(STIK_ERR_INVALID_ARGUMENT)` rather than defaulting to a sentinel
+    variant, so a typo in a config file surfaces instead of silently
+    becoming `Unknown`.
+  - **Seven members are named by their `_name` *fallback*, not an
+    explicit arm** — `STIK_ERR_UNKNOWN`, `HEALTH_UNKNOWN`,
+    `VENDOR_CUSTOM`, `LLM_CUSTOM`, `MEM_UNKNOWN`, `PII_CUSTOM`,
+    `STATUS_UNKNOWN`. For those enums the fallback string maps back to
+    that member, which makes the roundtrip **total**. The other 24 enums
+    *reject* their fallback string, because no member owns it —
+    `span_kind_parse("Unknown")` is an error, not `SPAN_INTERNAL`.
+  - Returns `Result`, per the zero-panic rule.
+
+- **F-021 — nine previously unsettable fields got setters.**
+  `smeta_set_expires_at` / `smeta_set_owner` on `SecretMetadata`, and the
+  seven original `mcap_set_supports_*` flags on `ModelCapabilities`
+  (`vision`, `tools`, `structured`, `streaming`, `thinking`, `audio`,
+  `citations`). All nine had getters with no setter and were never written
+  after construction, so every one of them read `0` in every release up to
+  and including 1.3.7.
+
+  The `SecretMetadata` half is the security-relevant one: a consumer
+  implementing rotation or expiry enforcement read `smeta_expires_at()`,
+  correctly interpreted `0` as "no expiry set", and concluded the secret
+  never expires — for every secret, permanently. **If you built expiry
+  handling against `smeta_expires_at` before 1.4.0, it was a no-op and
+  needs re-checking.** The seven `mcap_supports_*` flags are the benign
+  end of the same defect class; they are fixed together so the library
+  gives one consistent answer on setter-less getters rather than two.
+
+  Additive only — no constructor signature changed.
+
+### Testing
+
+- New `tests/tcyr/test_v140_enum_parse.tcyr` (+481 assertions, 886 →
+  **1,367** across 17 files). This is deliberately exhaustive and
+  mechanically derived rather than a set of spot checks: it asserts
+  `parse(name(v)) == v` for **every member of every one of the 31 enums**,
+  plus a rejection case per enum, plus a fallback-string case per enum
+  proving the 24-vs-7 split above. Adding an enum member without
+  extending its `_name`/`_parse` fails here.
+
+  This matters as much as the 31 functions. The reason a 31-enum,
+  zero-parser gap survived eight releases is that **nothing checked it** —
+  so the invariant is now pinned by a test instead of by discipline.
+
+### Changed
+
+- **Public API surface 871 → 911 fns** (+40: 31 `*_parse` + 9 setters),
+  zero removals. `docs/api-surface.snapshot` regenerated and committed
+  alongside. Additive only, hence a minor rather than a major — no
+  existing signature, wire format or struct layout changed.
+
+## [1.3.7] - 2026-08-24
+
 ### Security
 
 - **F-014 (MEDIUM) — `_fill_random`'s error sentinel neither exited its

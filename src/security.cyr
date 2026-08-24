@@ -449,6 +449,18 @@ fn permission_name(p) {
     elif (p == PERM_AUDIT_READ)      { return "AuditRead"; }
     return "Unknown";
 }
+# Inverse of permission_name. Exact match on what permission_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# permission_parse(permission_name(v)) == v holds for every Permission member.
+fn permission_parse(s: Str) {
+    if (str_eq_cstr(s, "FileRead") == 1) { return Ok(PERM_FILE_READ); }
+    elif (str_eq_cstr(s, "FileWrite") == 1) { return Ok(PERM_FILE_WRITE); }
+    elif (str_eq_cstr(s, "NetworkAccess") == 1) { return Ok(PERM_NETWORK_ACCESS); }
+    elif (str_eq_cstr(s, "ProcessSpawn") == 1) { return Ok(PERM_PROCESS_SPAWN); }
+    elif (str_eq_cstr(s, "LlmInference") == 1) { return Ok(PERM_LLM_INFERENCE); }
+    elif (str_eq_cstr(s, "AuditRead") == 1) { return Ok(PERM_AUDIT_READ); }
+    return stik_err_invalid_argument(str_from("unknown Permission name"));
+}
 fn role_name(r) {
     if (r == ROLE_ADMIN)    { return "Admin"; }
     elif (r == ROLE_OPERATOR) { return "Operator"; }
@@ -457,11 +469,31 @@ fn role_name(r) {
     elif (r == ROLE_SERVICE)  { return "Service"; }
     return "Unknown";
 }
+# Inverse of role_name. Exact match on what role_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# role_parse(role_name(v)) == v holds for every Role member.
+fn role_parse(s: Str) {
+    if (str_eq_cstr(s, "Admin") == 1) { return Ok(ROLE_ADMIN); }
+    elif (str_eq_cstr(s, "Operator") == 1) { return Ok(ROLE_OPERATOR); }
+    elif (str_eq_cstr(s, "Auditor") == 1) { return Ok(ROLE_AUDITOR); }
+    elif (str_eq_cstr(s, "Viewer") == 1) { return Ok(ROLE_VIEWER); }
+    elif (str_eq_cstr(s, "Service") == 1) { return Ok(ROLE_SERVICE); }
+    return stik_err_invalid_argument(str_from("unknown Role name"));
+}
 fn fs_access_name(a) {
     if (a == FS_NO_ACCESS)    { return "NoAccess"; }
     elif (a == FS_READ_ONLY)  { return "ReadOnly"; }
     elif (a == FS_READ_WRITE) { return "ReadWrite"; }
     return "Unknown";
+}
+# Inverse of fs_access_name. Exact match on what fs_access_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# fs_access_parse(fs_access_name(v)) == v holds for every FsAccess member.
+fn fs_access_parse(s: Str) {
+    if (str_eq_cstr(s, "NoAccess") == 1) { return Ok(FS_NO_ACCESS); }
+    elif (str_eq_cstr(s, "ReadOnly") == 1) { return Ok(FS_READ_ONLY); }
+    elif (str_eq_cstr(s, "ReadWrite") == 1) { return Ok(FS_READ_WRITE); }
+    return stik_err_invalid_argument(str_from("unknown FsAccess name"));
 }
 fn net_access_name(a) {
     if (a == NET_NONE)           { return "None"; }
@@ -469,6 +501,16 @@ fn net_access_name(a) {
     elif (a == NET_RESTRICTED)   { return "Restricted"; }
     elif (a == NET_FULL)         { return "Full"; }
     return "Unknown";
+}
+# Inverse of net_access_name. Exact match on what net_access_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# net_access_parse(net_access_name(v)) == v holds for every NetworkAccess member.
+fn net_access_parse(s: Str) {
+    if (str_eq_cstr(s, "None") == 1) { return Ok(NET_NONE); }
+    elif (str_eq_cstr(s, "LocalhostOnly") == 1) { return Ok(NET_LOCALHOST_ONLY); }
+    elif (str_eq_cstr(s, "Restricted") == 1) { return Ok(NET_RESTRICTED); }
+    elif (str_eq_cstr(s, "Full") == 1) { return Ok(NET_FULL); }
+    return stik_err_invalid_argument(str_from("unknown NetworkAccess name"));
 }
 fn seccomp_action_name(a) {
     if (a == SECCOMP_ALLOW)        { return "Allow"; }
@@ -479,6 +521,18 @@ fn seccomp_action_name(a) {
     elif (a == SECCOMP_NOTIFY)     { return "Notify"; }
     return "Unknown";
 }
+# Inverse of seccomp_action_name. Exact match on what seccomp_action_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# seccomp_action_parse(seccomp_action_name(v)) == v holds for every SeccompAction member.
+fn seccomp_action_parse(s: Str) {
+    if (str_eq_cstr(s, "Allow") == 1) { return Ok(SECCOMP_ALLOW); }
+    elif (str_eq_cstr(s, "Kill") == 1) { return Ok(SECCOMP_KILL); }
+    elif (str_eq_cstr(s, "KillProcess") == 1) { return Ok(SECCOMP_KILL_PROCESS); }
+    elif (str_eq_cstr(s, "Trap") == 1) { return Ok(SECCOMP_TRAP); }
+    elif (str_eq_cstr(s, "Log") == 1) { return Ok(SECCOMP_LOG); }
+    elif (str_eq_cstr(s, "Notify") == 1) { return Ok(SECCOMP_NOTIFY); }
+    return stik_err_invalid_argument(str_from("unknown SeccompAction name"));
+}
 fn seccomp_arg_op_name(o) {
     if (o == ARG_NOT_EQUAL)      { return "NotEqual"; }
     elif (o == ARG_LESS_THAN)    { return "LessThan"; }
@@ -488,6 +542,19 @@ fn seccomp_arg_op_name(o) {
     elif (o == ARG_GREATER_THAN) { return "GreaterThan"; }
     elif (o == ARG_MASKED_EQUAL) { return "MaskedEqual"; }
     return "Unknown";
+}
+# Inverse of seccomp_arg_op_name. Exact match on what seccomp_arg_op_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# seccomp_arg_op_parse(seccomp_arg_op_name(v)) == v holds for every SeccompArgOp member.
+fn seccomp_arg_op_parse(s: Str) {
+    if (str_eq_cstr(s, "NotEqual") == 1) { return Ok(ARG_NOT_EQUAL); }
+    elif (str_eq_cstr(s, "LessThan") == 1) { return Ok(ARG_LESS_THAN); }
+    elif (str_eq_cstr(s, "LessEqual") == 1) { return Ok(ARG_LESS_EQUAL); }
+    elif (str_eq_cstr(s, "Equal") == 1) { return Ok(ARG_EQUAL); }
+    elif (str_eq_cstr(s, "GreaterEqual") == 1) { return Ok(ARG_GREATER_EQUAL); }
+    elif (str_eq_cstr(s, "GreaterThan") == 1) { return Ok(ARG_GREATER_THAN); }
+    elif (str_eq_cstr(s, "MaskedEqual") == 1) { return Ok(ARG_MASKED_EQUAL); }
+    return stik_err_invalid_argument(str_from("unknown SeccompArgOp name"));
 }
 fn seccomp_arch_name(a) {
     if (a == ARCH_X86)          { return "x86"; }
@@ -509,6 +576,29 @@ fn seccomp_arch_name(a) {
     elif (a == ARCH_RISCV64)    { return "riscv64"; }
     return "Unknown";
 }
+# Inverse of seccomp_arch_name. Exact match on what seccomp_arch_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# seccomp_arch_parse(seccomp_arch_name(v)) == v holds for every SeccompArch member.
+fn seccomp_arch_parse(s: Str) {
+    if (str_eq_cstr(s, "x86") == 1) { return Ok(ARCH_X86); }
+    elif (str_eq_cstr(s, "x86_64") == 1) { return Ok(ARCH_X86_64); }
+    elif (str_eq_cstr(s, "x32") == 1) { return Ok(ARCH_X32); }
+    elif (str_eq_cstr(s, "arm") == 1) { return Ok(ARCH_ARM); }
+    elif (str_eq_cstr(s, "aarch64") == 1) { return Ok(ARCH_AARCH64); }
+    elif (str_eq_cstr(s, "mips") == 1) { return Ok(ARCH_MIPS); }
+    elif (str_eq_cstr(s, "mips64") == 1) { return Ok(ARCH_MIPS64); }
+    elif (str_eq_cstr(s, "mips64n32") == 1) { return Ok(ARCH_MIPS64N32); }
+    elif (str_eq_cstr(s, "mipsel") == 1) { return Ok(ARCH_MIPSEL); }
+    elif (str_eq_cstr(s, "mipsel64") == 1) { return Ok(ARCH_MIPSEL64); }
+    elif (str_eq_cstr(s, "mipsel64n32") == 1) { return Ok(ARCH_MIPSEL64N32); }
+    elif (str_eq_cstr(s, "ppc") == 1) { return Ok(ARCH_PPC); }
+    elif (str_eq_cstr(s, "ppc64") == 1) { return Ok(ARCH_PPC64); }
+    elif (str_eq_cstr(s, "ppc64le") == 1) { return Ok(ARCH_PPC64LE); }
+    elif (str_eq_cstr(s, "s390") == 1) { return Ok(ARCH_S390); }
+    elif (str_eq_cstr(s, "s390x") == 1) { return Ok(ARCH_S390X); }
+    elif (str_eq_cstr(s, "riscv64") == 1) { return Ok(ARCH_RISCV64); }
+    return stik_err_invalid_argument(str_from("unknown SeccompArch name"));
+}
 fn mount_propagation_name(p) {
     if (p == MOUNT_PRIVATE)      { return "Private"; }
     elif (p == MOUNT_SHARED)     { return "Shared"; }
@@ -516,9 +606,28 @@ fn mount_propagation_name(p) {
     elif (p == MOUNT_UNBINDABLE) { return "Unbindable"; }
     return "Unknown";
 }
+# Inverse of mount_propagation_name. Exact match on what mount_propagation_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# mount_propagation_parse(mount_propagation_name(v)) == v holds for every MountPropagation member.
+fn mount_propagation_parse(s: Str) {
+    if (str_eq_cstr(s, "Private") == 1) { return Ok(MOUNT_PRIVATE); }
+    elif (str_eq_cstr(s, "Shared") == 1) { return Ok(MOUNT_SHARED); }
+    elif (str_eq_cstr(s, "Slave") == 1) { return Ok(MOUNT_SLAVE); }
+    elif (str_eq_cstr(s, "Unbindable") == 1) { return Ok(MOUNT_UNBINDABLE); }
+    return stik_err_invalid_argument(str_from("unknown MountPropagation name"));
+}
 fn policy_effect_name(e) {
     if (e == POLICY_ALLOW) { return "Allow"; }
     elif (e == POLICY_DENY)  { return "Deny"; }
     elif (e == POLICY_AUDIT) { return "Audit"; }
     return "Unknown";
+}
+# Inverse of policy_effect_name. Exact match on what policy_effect_name emits; an
+# unrecognised string is an error rather than a silent default, so
+# policy_effect_parse(policy_effect_name(v)) == v holds for every PolicyEffect member.
+fn policy_effect_parse(s: Str) {
+    if (str_eq_cstr(s, "Allow") == 1) { return Ok(POLICY_ALLOW); }
+    elif (str_eq_cstr(s, "Deny") == 1) { return Ok(POLICY_DENY); }
+    elif (str_eq_cstr(s, "Audit") == 1) { return Ok(POLICY_AUDIT); }
+    return stik_err_invalid_argument(str_from("unknown PolicyEffect name"));
 }
