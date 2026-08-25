@@ -5,10 +5,40 @@
 
 ## Version
 
-**1.4.0** — Contract completeness minor on top of 1.3.7, closing the two
-gaps the 2026-08-24 P(-1) audit found and deliberately held out of that
-patch because both are **additive public API**. Report:
-[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md).
+**1.5.0** — Security minor. `enum LinuxCapability`'s values are Linux
+capability numbers again, and the enum gains the `_name`/`_parse` pair the
+F-018 contract requires. A minor rather than a patch because it adds public
+API, which this repo ships in minors only.
+
+These values are not ordinals: consumers build masks with `1 << cap` and
+hand them to `capset(2)` / `PR_CAPBSET_DROP`, so a value that disagrees with
+`include/uapi/linux/capability.h` silently operates on a **different
+capability than the operator named**. Two compounding defects: `CAP_MAC_OVERRIDE`
+(32) and `CAP_MAC_ADMIN` (33) were **absent entirely**, shifting every
+capability above 31 down by two (`CAP_SYSLOG` resolved to the kernel's
+`CAP_MAC_ADMIN`, `CAP_BPF` to `CAP_BLOCK_SUSPEND`, `CAP_CHECKPOINT_RESTORE`
+to `CAP_AUDIT_READ`); and `CAP_AUDIT_READ`/`CAP_AUDIT_CONTROL` were
+transposed, so both were wrong even below the shift. "Drop everything except
+`CAP_SYSLOG`" really retained `CAP_MAC_ADMIN`. Values are now explicit
+rather than implicit ordinals so a future insertion cannot renumber the tail
+again, and `CAP_LAST_CAP` is exported.
+
+Surfaced from **kybernet 1.5.2**, which makes per-service capability policy
+real and feeds these numbers straight to `capset(2)`. **argonaut** defines an
+enum with the same name and the same member names, so a consumer linking both
+— kybernet does — got whichever came last in the include chain; argonaut's
+was also wrong and is corrected in lockstep at its **1.11.0** to these same
+values, which makes the duplicate definition value-identical and removes a
+standing wall of `duplicate symbol ... redefined with conflicting value`
+build warnings.
+
+`capability_name` / `capability_parse` use the lowercase `cap_` spelling
+`capsh(1)`, `getcap(8)` and `capability(7)` use, so a config file written
+against Linux documentation parses without translation. Exact match; an
+unrecognised name errors rather than defaulting, because the failure mode of
+a silent default here is retaining a capability the operator asked to drop.
+
+### 1.4.0 (previous)
 
 **F-018** — the library had 31 enum `*_name()` functions and **zero**
 enum `*_parse()`, so the CLAUDE.md roundtrip contract held for no enum at
@@ -47,8 +77,9 @@ this at "54 `*_name()` functions". That grep conflated real enum name
 functions with 20 struct-field accessors also called `*_name`
 (`span_name`, `smeta_name`, `topic_name`, …). Re-extracted properly: 31
 enum name functions / 204 members. A further **27 declared enums have no
-`*_name()` at all** — mostly bitflag sets like `LinuxCapability` (39
-values) — and were deliberately left out of scope.
+`*_name()` at all** — mostly bitflag sets — and were deliberately left out
+of scope. (`LinuxCapability`, 41 values, came off that list at **v1.5.0**
+when kybernet needed capability names parseable from config; 26 remain.)
 
 **1.3.7** — P(-1) hardening sweep per CLAUDE.md §P(-1); first full source
 audit since v1.3.0, since 1.3.5/1.3.6 were toolchain-only. Six findings
@@ -599,7 +630,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 |-----------------------|-----------|------------------------------------|
 | Source LOC (src/)     | ~3,180    | down from 7,121 LOC Rust; −2 KB binary at 1.3.0 from copy-loop/ladder removal |
 | Module count          | 12        |                                    |
-| Test files            | 17        | tests/tcyr/ (+test_v137_hardening at v1.3.7, +test_v140_enum_parse at v1.4.0) |
+| Test files            | 18        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0) |
 | Test assertions       | 1,367     | 0 failed; +481 exhaustive enum-parse roundtrip at v1.4.0 (886 at v1.3.7; 858 through v1.3.6; 851 through v1.2.3) |
 | Benchmarks            | 25        | `tests/bcyr/agnostik.bcyr` — gained the missing `src/proto.cyr` include at 1.3.6 |
 | Test binary           | 629,032 B | `build/agnostik`. DCE and plain builds are now byte-identical (see Toolchain — DCE NOP-fills in place, it does not shrink). History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0 from chrono+proto surface; ~304 KB at 1.2.1; ~306 KB / 313,344 B at 1.2.3 across the 6.0.x boundary; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (6.2.11 NOPs in place + ~119 KB `bayan`); 350,016 B at 1.3.4 (6.4.62, −43 KB, leaner NOP-fill); 413,512 B at 1.3.5 (6.5.27); **629,032 B at 1.3.6** on the 6.5.35 pin, **+215,520 B** — 6.5.3x folds a 361-fn PDF subsystem into `bayan`, all NOPed, none reachable |

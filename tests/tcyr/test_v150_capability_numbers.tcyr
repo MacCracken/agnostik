@@ -1,4 +1,4 @@
-# test_v141_capability_numbers.tcyr — LinuxCapability values ARE kernel
+# test_v150_capability_numbers.tcyr — LinuxCapability values ARE kernel
 # capability numbers, plus the name/parse roundtrip.
 #
 # These are not ordinals. Consumers build masks with `1 << cap` and hand
@@ -6,7 +6,7 @@
 # include/uapi/linux/capability.h silently operates on a DIFFERENT
 # capability than the operator named.
 #
-# Pre-1.4.1 the enum omitted CAP_MAC_OVERRIDE (32) and CAP_MAC_ADMIN (33)
+# Pre-1.5.0 the enum omitted CAP_MAC_OVERRIDE (32) and CAP_MAC_ADMIN (33)
 # entirely, shifting everything above 31 down by two, and transposed
 # CAP_AUDIT_READ / CAP_AUDIT_CONTROL. "Drop all but CAP_SYSLOG" really kept
 # CAP_MAC_ADMIN.
@@ -25,7 +25,7 @@ include "src/lib.cyr"
 
 fn main() {
     alloc_init();
-    println("--- v1.4.1 capability numbers ---");
+    println("--- v1.5.0 capability numbers ---");
 
     # --- spot-check the boundaries and the previously-wrong tail ---
     assert_eq(CAP_CHOWN, 0, "cap_chown = 0");
@@ -40,7 +40,7 @@ fn main() {
     assert_eq(CAP_SYS_TIME, 25, "cap_sys_time = 25");
     assert_eq(CAP_MKNOD, 27, "cap_mknod = 27");
 
-    # The tail that was wrong before 1.4.1.
+    # The tail that was wrong before 1.5.0.
     assert_eq(CAP_AUDIT_WRITE, 29, "cap_audit_write = 29");
     assert_eq(CAP_AUDIT_CONTROL, 30, "cap_audit_control = 30");
     assert_eq(CAP_SETFCAP, 31, "cap_setfcap = 31");

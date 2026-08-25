@@ -2,10 +2,12 @@
 
 ## [Unreleased]
 
-## [1.4.1] - 2026-08-25
+## [1.5.0] - 2026-08-25
 
-**`LinuxCapability` values are kernel capability numbers again.** Security
-fix. Additive otherwise.
+**`LinuxCapability` values are kernel capability numbers again, and the enum
+gains name/parse.** Security fix plus new public surface — a minor, not a
+patch: agnostik ships API additions in minors only (1.4.0 was the 31
+`*_parse` inverses), and every patch in the 1.3.x line is fixes-only.
 
 ### Fixed — the enum disagreed with the kernel above CAP_LEASE
 
@@ -28,6 +30,10 @@ Two defects, compounding:
 Values are now explicit rather than implicit ordinals, so a future insertion
 cannot renumber the tail again, and `CAP_LAST_CAP` is exported.
 
+This is a **behaviour change for any consumer that stored or persisted the
+old numbers**. Nothing in-tree does; the values were only ever correct by
+accident below `CAP_LEASE` (28), and wrong above it.
+
 Found from kybernet, whose 1.5.2 makes per-service capability policy real —
 its privilege drop feeds these numbers straight to `capset(2)`. argonaut
 defines an enum with the same name and member names, so a consumer linking
@@ -44,9 +50,54 @@ value-identical and harmless.
   failure mode of a silent default here is retaining a capability the
   operator asked to drop. Completes the F-018 contract for this enum.
 
+### Performance
+
+Benchmark gate: **25 checked, 0 new, 0 regressions** (`scripts/bench-regression.sh`,
+thresholds 50% ns-bracket / 80% us-bracket). Baseline appended to
+`docs/benchmarks/history.csv`.
+
+This release touches one enum's values and adds two pure string-comparison
+functions, so no benchmark should move for a structural reason — and none
+does. The whole table drifts a few percent upward, which is the single-run
+bounce CLAUDE.md documents (±20–30% on load), not a change in the code
+under test.
+
+| benchmark | baseline | current | delta |
+|---|---:|---:|---:|
+| accelerator_device_full | 111 | 143 | +28.8% |
+| message_build_3turn | 344 | 406 | +18.0% |
+| sandbox_config_default | 27 | 31 | +14.8% |
+| security_context_full | 628 | 714 | +13.7% |
+| injection_scores_from_json | 276 | 300 | +8.7% |
+| trace_context_new | 1064 | 1144 | +7.5% |
+| token_usage_update | 27 | 29 | +7.4% |
+| agent_stats_from_json | 259 | 278 | +7.3% |
+| agent_id_to_str | 671 | 719 | +7.2% |
+| resource_limits_from_json | 417 | 447 | +7.2% |
+| agent_id_new | 525 | 561 | +6.9% |
+| injection_scores_to_json | 732 | 780 | +6.6% |
+| resource_limits_to_json | 938 | 993 | +5.9% |
+| agent_stats_to_json | 650 | 685 | +5.4% |
+| audit_entry_full | 2171 | 2284 | +5.2% |
+| agent_id_roundtrip | 953 | 1002 | +5.1% |
+| trace_context_child | 538 | 562 | +4.5% |
+| token_usage_from_json | 388 | 405 | +4.4% |
+| inference_request_full | 388 | 403 | +3.9% |
+| accel_flags_from_json | 657 | 679 | +3.3% |
+| accel_flags_to_json | 1534 | 1584 | +3.3% |
+| token_usage_to_json | 836 | 861 | +3.0% |
+| version_roundtrip | 263 | 271 | +3.0% |
+| traceparent_format | 1761 | 1799 | +2.2% |
+| version_to_str | 113 | 113 | 0.0% |
+
+The two largest movers are the two smallest absolute figures in the set —
+`accelerator_device_full` at 111 ns and `sandbox_config_default` at 27 ns —
+where a few nanoseconds of jitter is a double-digit percentage. Neither is
+on a path this release modified.
+
 ### Tests
 
-`tests/tcyr/test_v141_capability_numbers.tcyr` (35 assertions): every
+`tests/tcyr/test_v150_capability_numbers.tcyr` (35 assertions): every
 boundary value against the kernel table, explicit assertions on the tail
 that was wrong, distinctness checks for the shift class, and a
 `parse(name(v)) == v` roundtrip across all 41 members.

@@ -20,7 +20,7 @@ agnostik (Cyrius)
 ├── src/security.cyr   — SandboxConfig, Permission, NetworkAccess, NetworkPolicy,
 │                        CgroupLimits, NamespaceConfig, IdMapping,
 │                        LandlockRuleset, LandlockFsAccess, LandlockNetAccess,
-│                        LinuxCapability (39 variants), CapabilitySet, SystemFeature,
+│                        LinuxCapability (41 variants), CapabilitySet, SystemFeature,
 │                        SeccompProfile, SeccompArch, SeccompArg, SeccompArgOp,
 │                        MountPropagation, SandboxCapabilities, SeccompMode,
 │                        Role, RolePermission, TokenPayload, AuthContext,

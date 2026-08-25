@@ -6,7 +6,7 @@ type: state
 
 # Documentation Health — agnostik
 
-> **Last refresh**: 2026-08-24 (three releases cut same day. **v1.3.6** toolchain `6.5.27` → `6.5.35` + post-tag CI format-gate fix; **v1.3.7** P(-1) hardening sweep (audit report `docs/audit/2026-08-24-audit.md`, F-014..F-021, `test_v137_hardening.tcyr`); **v1.4.0** contract completeness (F-018 31 `*_parse` / 204 members, F-021 9 setters, `test_v140_enum_parse.tcyr` 481 assertions, api-surface 871 → 911). CHANGELOG stamped for all three; state.md Version/Stats/Recent-releases rewritten; roadmap Status + v1.4.0 section marked SHIPPED and two v1.3.0 backlog items resolved; README Status/Audits; audit doc corrected (the "54 `*_name()`" figure conflated 31 enum name fns with 20 struct-field accessors).) | **Refresh cadence**: when docs are touched, update the affected row.
+> **Last refresh**: 2026-08-25 (**v1.5.0** security minor — `enum LinuxCapability` values corrected to kernel capability numbers (`CAP_MAC_OVERRIDE`/`CAP_MAC_ADMIN` were absent, shifting the tail by two; `CAP_AUDIT_READ`/`CAP_AUDIT_CONTROL` transposed), plus `capability_name`/`capability_parse` completing F-018 for that enum. `test_v150_capability_numbers.tcyr` (35 assertions); api-surface 911 → 913. Surfaced from kybernet 1.5.2; argonaut 1.11.0 corrects its same-named enum in lockstep. CHANGELOG stamped with the mandatory Performance delta table (25 checked, 0 regressions); state.md Version/Stats rewritten.) | **Refresh cadence**: when docs are touched, update the affected row.
 > **Scope**: This repo only (`agnostik`) — root-level files (README, CHANGELOG, CLAUDE.md, etc.) plus the entire `docs/` tree. Cross-repo Cyrius pin/version drift lives in [`development/state.md`](development/state.md), not here.
 
 This is a **ledger**, not a one-time audit. Rewrite-in-place as docs change. The doc surface is small (~22 files) but every file is load-bearing — agnostik is the type vocabulary every AGNOS component depends on, and stale type docs propagate downstream.
@@ -175,4 +175,4 @@ This file's refresh cadence is **opportunistic** (touched when other docs are to
 
 ---
 
-*Last refresh: 2026-08-24 (v1.3.6 + v1.3.7 + v1.4.0 cut same day — CI fmt-gate fix, P(-1) audit report + hardening tests, then 31 enum `*_parse` / 9 setters with an exhaustive roundtrip suite and api-surface 871 → 911. CHANGELOG/VERSION stamped, state.md and roadmap rewritten, audit doc enum counts corrected.) Refresh in place when docs are touched.*
+*Last refresh: 2026-08-25 (v1.5.0 — LinuxCapability kernel-number fix + capability_name/parse, api-surface 911 → 913. Previously: v1.3.6 + v1.3.7 + v1.4.0 cut same day — CI fmt-gate fix, P(-1) audit report + hardening tests, then 31 enum `*_parse` / 9 setters with an exhaustive roundtrip suite and api-surface 871 → 911. CHANGELOG/VERSION stamped, state.md and roadmap rewritten, audit doc enum counts corrected.) Refresh in place when docs are touched.*

@@ -11,10 +11,10 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.4.0
+- **Current**: 1.5.0
 - **Toolchain**: Cyrius `6.5.35` (pinned in `cyrius.cyml`)
-- **Tests**: 1,367 assertions across 17 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
-  clean; api-surface gate locked at 911 public fns
+- **Tests**: 1,402 assertions across 18 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
+  clean; api-surface gate locked at 913 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
   2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
@@ -35,7 +35,7 @@ snapshot, [`CHANGELOG.md`](CHANGELOG.md) for release notes,
 | `types.cyr` | `AgentId` / `UserId` (UUID v4), `Version` (SemVer), `Capabilities`, `MessageType`, `SystemStatus`, `ComponentConfig`. Hosts the JSON parser primitives (`_json_int`/`_json_str`/`_json_find_value`) with `\uXXXX` Unicode + UTF-8 surrogate-pair decoding (v1.0.7). |
 | `proto.cyr` | Protobuf wire-format helpers — varint, tag, length-delimited, fixed64, nested-message. Foundation for OTLP encoders (v1.2.0). |
 | `agent.cyr` | `AgentConfig`, `AgentManifest`, `AgentStatus`, `ResourceLimits`, `HealthCheck`, `LifecycleHooks`, `AgentPool`, `Topic`, `Subscription`, `AgentMessage`. |
-| `security.cyr` | `SandboxConfig`, RBAC (`Role`, `TokenPayload`, `AuthContext`), `CgroupLimits`, `NamespaceConfig`, `LandlockRuleset`, `LinuxCapability` (39), `CapabilitySet`, `SeccompProfile`. |
+| `security.cyr` | `SandboxConfig`, RBAC (`Role`, `TokenPayload`, `AuthContext`), `CgroupLimits`, `NamespaceConfig`, `LandlockRuleset`, `LinuxCapability` (41), `CapabilitySet`, `SeccompProfile`. |
 | `telemetry.cyr` | `TraceContext` (W3C), `Span`, `MetricDataPoint`, `LogRecord`, `Resource`, `InstrumentationScope`, `Baggage`, `Exemplar`. Traits: `SpanCollector`, `MetricSink`, `TextMapPropagator`, `TextMapCarrier`. **OTLP wire encoder** for `Span` (v1.2.0). |
 | `audit.cyr` | `AuditEntry` with HMAC-SHA256 integrity-chain shape, `AuditSeverity`, `AuditSink` trait. |
 | `llm.cyr` | `LlmProvider` (18 variants — major hosted providers + 5 added in v1.1.0), `Message`, `ContentBlock` (8 kinds), `ToolDefinition`/`ToolCall`/`ToolResult`, `SamplingParams`, `InferenceRequest`/`InferenceResponse`, `StreamEvent`, `ModelCapabilities` (15 flags incl. video / caching / parallel-tool-calls). |

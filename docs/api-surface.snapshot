@@ -552,6 +552,8 @@ security::auth_context_new/2
 security::authctx_agent_id/1
 security::authctx_permissions/1
 security::authctx_role/1
+security::capability_name/1
+security::capability_parse/1
 security::capability_set_new/0
 security::capset_ambient/1
 security::capset_bounding/1

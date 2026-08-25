@@ -2,9 +2,17 @@
 
 ## Status
 
-**v1.4.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), **1,367 test assertions across 17 `.tcyr` files**, 25
+**v1.5.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), **1,402 test assertions across 18 `.tcyr` files**, 25
 benchmarks, zero external dependencies, Cyrius `6.5.35`.
+
+v1.5.0 is a security minor: `enum LinuxCapability`'s values are Linux
+capability numbers again. They are fed to `capset(2)` via `1 << cap`, and
+the enum omitted `CAP_MAC_OVERRIDE`/`CAP_MAC_ADMIN` (shifting its tail by
+two) and transposed `CAP_AUDIT_READ`/`CAP_AUDIT_CONTROL`. Adds
+`capability_name`/`capability_parse`, completing F-018 for that enum.
+Surfaced from kybernet 1.5.2; argonaut 1.11.0 corrects its same-named enum
+in lockstep.
 
 v1.4.0 closed the two contract gaps the 2026-08-24 P(-1) audit found:
 **F-018** (31 enums had `*_name()` and **zero** `*_parse()`, so the
@@ -215,11 +223,17 @@ Correction recorded during implementation: the audit's first draft said
 `smeta_name`, …). The real figure is 31 enum name functions / 204
 members.
 
-**Still open (deliberately out of scope):** 27 declared enums have no
-`*_name()` *or* `*_parse()` — mostly bitflag/constant sets like
-`LinuxCapability` (39 values) where a string name may not be meaningful.
-Whether they need one is a separate decision; pick it up when a consumer
-asks.
+**Still open (deliberately out of scope):** 26 declared enums have no
+`*_name()` *or* `*_parse()` — mostly bitflag/constant sets where a string
+name may not be meaningful. Whether they need one is a separate decision;
+pick it up when a consumer asks.
+
+`LinuxCapability` (41 values) came off that list at **v1.5.0**: a consumer
+did ask. kybernet needed per-service capability policy expressed as config
+data, which means parsing capability names, so it got `capability_name` /
+`capability_parse` — the lowercase `cap_` spelling `capsh(1)` and
+`capability(7)` use. That release also corrected the enum's values, which
+were not kernel capability numbers.
 
 ### F-021 — setters for previously unsettable fields ✅
 
