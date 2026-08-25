@@ -565,6 +565,9 @@ security::cglim_cpu_weight/1
 security::cglim_memory_high/1
 security::cglim_memory_max/1
 security::cglim_pids_max/1
+security::cglim_set_cpu_max/2
+security::cglim_set_cpu_weight/2
+security::cglim_set_memory_high/2
 security::cglim_set_memory_max/2
 security::cglim_set_pids_max/2
 security::cgroup_limits_new/0

@@ -357,6 +357,29 @@ fn test_integration() {
     cglim_set_pids_max(cg, 100);
     assert_eq(cglim_memory_max(cg), 2147483648, "cg mem 2GB");
     assert_eq(cglim_pids_max(cg), 100, "cg pids 100");
+
+    # 1.5.1: the other three fields had accessors but no setters. Each must
+    # land on its OWN offset — memory_high@8, cpu_max@16, cpu_weight@32 —
+    # with a gap at 24 that nothing writes. Set all five and read all five
+    # back, so a wrong offset shows up as a collision rather than passing.
+    cglim_set_memory_high(cg, 1610612736);
+    cglim_set_cpu_max(cg, 200000);
+    cglim_set_cpu_weight(cg, 250);
+    assert_eq(cglim_memory_high(cg), 1610612736, "cg mem_high 1.5GB");
+    assert_eq(cglim_cpu_max(cg), 200000, "cg cpu_max 200000");
+    assert_eq(cglim_cpu_weight(cg), 250, "cg cpu_weight 250");
+    assert_eq(cglim_memory_max(cg), 2147483648, "cg mem_max unchanged by new setters");
+    assert_eq(cglim_pids_max(cg), 100, "cg pids_max unchanged by new setters");
+
+    # A fresh cgroup_limits must be all zero — 0 is the "unset" sentinel
+    # every consumer keys on, so a non-zero default would silently apply a
+    # limit nobody configured.
+    var cg0 = cgroup_limits_new();
+    assert_eq(cglim_memory_max(cg0), 0, "cg fresh mem_max 0");
+    assert_eq(cglim_memory_high(cg0), 0, "cg fresh mem_high 0");
+    assert_eq(cglim_cpu_max(cg0), 0, "cg fresh cpu_max 0");
+    assert_eq(cglim_cpu_weight(cg0), 0, "cg fresh cpu_weight 0");
+    assert_eq(cglim_pids_max(cg0), 0, "cg fresh pids_max 0");
     # --- telemetry ---
     # W3C flags
     var ctx = trace_context_new();

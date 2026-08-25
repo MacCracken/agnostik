@@ -2,6 +2,38 @@
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-08-24
+
+**`cgroup_limits` gains the three missing setters.** Additive; no layout
+change. 223 → 233 assertions, 0 failures.
+
+### Added — `cglim_set_memory_high` / `cglim_set_cpu_max` / `cglim_set_cpu_weight`
+
+`cgroup_limits` has five fields and five accessors, but shipped setters for
+only two of them (`memory_max`, `pids_max`). A consumer populating the
+struct from config had to reach for raw `store64(c + 8, v)` — which puts
+agnostik's field offsets into the consumer's source and turns any future
+reordering into a silent wrong-field write. That is precisely the hazard
+the setters exist to prevent, and the offsets here are not obvious: there
+is an unused gap at +24 between `cpu_max` (+16) and `cpu_weight` (+32).
+
+Surfaced by kybernet 1.5.5, which parses per-service limits from
+`/etc/kybernet/config.json` into this struct and needs all five.
+
+The new tests set all five fields to distinct values and read all five
+back, so a wrong offset shows up as a collision rather than passing; they
+also pin `cgroup_limits_new()` as all-zero, since 0 is the "unset" sentinel
+every consumer keys on and a non-zero default would silently apply a limit
+nobody configured.
+
+### Performance
+
+`scripts/bench-regression.sh`: 25 checked, 0 new, **0 regressions**. No
+benchmark touches the new setters; movement is run-to-run noise, the
+largest being `trace_context_child` +10.1% and `sandbox_config_default`
+−11.8%, both well inside their thresholds.
+
+
 ## [1.5.0] - 2026-08-25
 
 **`LinuxCapability` values are kernel capability numbers again, and the enum

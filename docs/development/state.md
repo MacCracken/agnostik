@@ -5,6 +5,17 @@
 
 ## Version
 
+**1.5.1** — Additive patch. `cgroup_limits` gains
+`cglim_set_memory_high` / `cglim_set_cpu_max` / `cglim_set_cpu_weight`, the
+three of five fields that had accessors but no setter. Without them a
+consumer had to write raw `store64(c + N, v)` offsets into its own source —
+the hazard setters exist to prevent, and the offsets are not obvious (an
+unused gap sits at +24, between `cpu_max` at +16 and `cpu_weight` at +32).
+Surfaced by kybernet 1.5.5, which parses per-service cgroup limits from
+config into this struct and needs all five. No layout change; every existing
+consumer is unaffected. 223 → **233 assertions**, 0 failures; api-surface
+snapshot 916 public fns; bench gate 25 checked, 0 regressions.
+
 **1.5.0** — Security minor. `enum LinuxCapability`'s values are Linux
 capability numbers again, and the enum gains the `_name`/`_parse` pair the
 F-018 contract requires. A minor rather than a patch because it adds public
