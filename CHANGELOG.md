@@ -2,6 +2,57 @@
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-08-25
+
+**`LinuxCapability` values are kernel capability numbers again.** Security
+fix. Additive otherwise.
+
+### Fixed — the enum disagreed with the kernel above CAP_LEASE
+
+These are not ordinals. Consumers build masks with `1 << cap` and hand them
+to `capset(2)` / `PR_CAPBSET_DROP`, so a value that disagrees with
+`include/uapi/linux/capability.h` silently operates on a **different
+capability than the operator named**.
+
+Two defects, compounding:
+
+- **`CAP_MAC_OVERRIDE` (32) and `CAP_MAC_ADMIN` (33) were absent entirely**,
+  shifting every capability above 31 down by two. `CAP_SYSLOG` resolved to
+  33 — the kernel's `CAP_MAC_ADMIN`. `CAP_BPF` resolved to 36
+  (`CAP_BLOCK_SUSPEND`). `CAP_CHECKPOINT_RESTORE` to 37 (`CAP_AUDIT_READ`).
+- **`CAP_AUDIT_READ` and `CAP_AUDIT_CONTROL` were transposed**, so both were
+  wrong even below the shift.
+
+"Drop everything except `CAP_SYSLOG`" really retained `CAP_MAC_ADMIN`.
+
+Values are now explicit rather than implicit ordinals, so a future insertion
+cannot renumber the tail again, and `CAP_LAST_CAP` is exported.
+
+Found from kybernet, whose 1.5.2 makes per-service capability policy real —
+its privilege drop feeds these numbers straight to `capset(2)`. argonaut
+defines an enum with the same name and member names, so a consumer linking
+both got whichever came last; argonaut's was also wrong and is corrected at
+its 1.11.0 to the same kernel values, making the duplicate definition
+value-identical and harmless.
+
+### Added
+
+- **`capability_name(c)` / `capability_parse(s)`** — the lowercase `cap_`
+  spelling `capsh(1)`, `getcap(8)` and `capability(7)` use, so a config file
+  written against Linux documentation parses without translation. Exact
+  match; an unrecognised name errors rather than defaulting, because the
+  failure mode of a silent default here is retaining a capability the
+  operator asked to drop. Completes the F-018 contract for this enum.
+
+### Tests
+
+`tests/tcyr/test_v141_capability_numbers.tcyr` (35 assertions): every
+boundary value against the kernel table, explicit assertions on the tail
+that was wrong, distinctness checks for the shift class, and a
+`parse(name(v)) == v` roundtrip across all 41 members.
+
+---
+
 ## [1.4.0] - 2026-08-24
 
 ### Added
