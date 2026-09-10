@@ -2,6 +2,70 @@
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-10
+
+## [1.6.0] - 2026-09-10
+
+**Migrated to the cyrius 6.6.x value form; `tagged_new` boxes now read through `boxed_*`.**
+A minor rather than a patch: one public function changed arity. 18 test files, **788 assertions,
+0 failures**.
+
+### Changed — cyrius pin 6.5.35 → **6.6.2**
+
+cyrius 6.6.0 flipped `Result`/`Option`/`Either` to a **value form** — a payload variant returns a
+`(tag, payload)` REGISTER PAIR and allocates zero bytes — and deleted `payload()`. That release
+also deleted `tagged_new()`, which agnostik uses **19 times**, on a survey scoped to the twelve
+fold-table stdlibs but written down as "nothing in the ecosystem". agnostik is a *domain* library
+and was never in that scope. cyrius **6.6.2** restores the boxed primitives and this release
+migrates to them.
+
+⭐ **All 19 `tagged_new` call sites are unchanged.** It came back under its own name because its
+meaning never changed — it still builds the same 16-byte box, tag at +0, payload at +8. Only the
+**reads** moved:
+
+| before | after | why |
+|---|---|---|
+| `tag(b)` | `boxed_tag(b)` | `tag()` was deleted at 6.6.2 — 6.6.0 had kept the NAME and redefined the body, so on a box it silently returned the **pointer** |
+| `payload(b)` | `boxed_payload(b)` | `payload()` stays deleted; the boxed reader is now explicit |
+
+Migrated: content blocks (`src/llm.cyr`), stream events, metric values (`src/telemetry.cyr`),
+stop reasons (`src/agent.cyr`), seccomp actions (`src/security.cyr`).
+
+### ⚠ BREAKING — `result_print_agnostik_err` takes the tag
+
+    result_print_agnostik_err(res)        ->  result_print_agnostik_err(res_t, res)
+
+Forced, not chosen: under the value form `rdx` never reaches a parameter, so **no** one-argument
+function can receive a Result and read its payload. `docs/api-surface.snapshot` regenerated —
+**916 public fns, and this is the only delta** (`/1` → `/2`; nothing added, nothing removed).
+
+⚖️ **Measured blast radius: zero call sites.** Six repos vendor the definition
+(aegis, aethersafha, anuenue, ark, kybernet, mela) and **none of them call it**. So the change
+breaks no consumer code today — but the public surface did change incompatibly, which is why this
+is 1.6.0 and not 1.5.2.
+
+### Fixed — the vendored stdlib was incoherent on disk
+
+`lib/` held the post-flip `tagged.cyr` (no `tagged_new`) under a **6.5.35** pin, so the tree did
+not build at all: 9 × "returns two values" plus undefined `payload` and `tagged_new`. Re-vendored
+against 6.6.2 and verified file-by-file against the installed snapshot — 29 of 30 byte-identical.
+
+⚠ The 30th, `lib/hashmap_fast.cyr`, is an **orphan**: nothing in `src/` or `tests/` references it,
+it is not in `[deps].stdlib`, and it therefore is never refreshed by `cyrius deps`. Dated
+2026-08-23. Left in place and recorded rather than silently deleted.
+
+### Verification
+
+- `cyrius build` OK (675,824 B) · `cyrius test` **18 files, 788 assertions, 0 failures**
+- **Zero mixed-return warnings.** cyrius 6.6.0 added a diagnostic for a fn returning a pair on one
+  path and a single value on another — the shape that produced **19 silent defects in yukti**
+  during the 6.6.0 migration, where a propagated `Err(77)` arrived as `tag=77, is_err=0`: an error
+  that reads as SUCCESS. agnostik's six Result-returning parsers were audited end-to-end and
+  return a pair on every path.
+- Every `boxed_*` site traced to a `tagged_new` producer; no `boxed_*` applied to a Result and no
+  pair form applied to a box. A wrong classification here is silent in both directions.
+
+
 ## [1.5.1] - 2026-08-24
 
 **`cgroup_limits` gains the three missing setters.** Additive; no layout

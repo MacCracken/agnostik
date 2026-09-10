@@ -273,7 +273,7 @@ error::agnostik_err_kind_parse/1
 error::agnostik_err_message/1
 error::agnostik_err_new/2
 error::agnostik_err_print/1
-error::result_print_agnostik_err/1
+error::result_print_agnostik_err/2
 error::stik_err_agent_not_found/1
 error::stik_err_config_error/1
 error::stik_err_internal/1

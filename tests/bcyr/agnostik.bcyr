@@ -31,7 +31,7 @@ fn _b_agent_id_to_str() { agent_id_to_str(agent_id_new()); return 0; }
 fn _b_agent_id_roundtrip() { agent_id_from_str(agent_id_to_str(agent_id_new())); return 0; }
 fn _b_version_to_str() { version_to_str(version_new(0, 90, 0)); return 0; }
 var _bench_vs = 0;
-fn _b_version_roundtrip() { version_to_str(payload(version_from_str(_bench_vs))); return 0; }
+fn _b_version_roundtrip() { var ver_t, ver = version_from_str(_bench_vs); version_to_str(ver); return 0; }
 fn _b_traceparent() { tctx_to_traceparent(trace_context_new()); return 0; }
 fn _b_inference_request() {
     var r = inference_request_new(str_from("llama3"));

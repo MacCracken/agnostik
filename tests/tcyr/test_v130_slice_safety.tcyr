@@ -40,9 +40,9 @@ fn test_f013_version_slice_no_separator() {
     while (k < 20) { store8(buf + k, 57); k = k + 1; }  # '9' filler, no NUL
     store8(buf + 20, 45);  # stray '-' well past the logical end
     store8(buf + 21, 0);
-    var r = version_from_str(str_new(buf, 5));   # logical "1.2.3"
-    assert_eq(is_ok(r), 1, "F-013: sliced 1.2.3 parses Ok");
-    var v = payload(r);
+    var r_t, r = version_from_str(str_new(buf, 5));   # logical "1.2.3"
+    assert_eq(is_ok(r_t), 1, "F-013: sliced 1.2.3 parses Ok");
+    var v = r;
     assert_eq(version_major(v), 1, "F-013: major 1");
     assert_eq(version_minor(v), 2, "F-013: minor 2");
     assert_eq(version_patch(v), 3, "F-013: patch 3 (not over-read filler)");
@@ -64,9 +64,9 @@ fn test_f013_in_slice_separator_honored() {
     var k = 7;
     while (k < 24) { store8(buf + k, 57); k = k + 1; }  # filler past slen
     store8(buf + 24, 0);
-    var r = version_from_str(str_new(buf, 7));   # logical "1.2.3-9"
-    assert_eq(is_ok(r), 1, "F-013: sliced prerelease parses Ok");
-    var v = payload(r);
+    var r_t, r = version_from_str(str_new(buf, 7));   # logical "1.2.3-9"
+    assert_eq(is_ok(r_t), 1, "F-013: sliced prerelease parses Ok");
+    var v = r;
     assert_eq(version_patch(v), 3, "F-013: patch 3 with in-slice separator");
     assert(version_prerelease(v) != 0, "F-013: prerelease captured");
     return 0;

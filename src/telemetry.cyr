@@ -565,8 +565,8 @@ fn idesc_kind(d) { return load64(d + 24); }
 enum MetricValueType { MV_INT; MV_FLOAT; MV_HISTOGRAM; MV_EXP_HISTOGRAM; }
 fn metric_int(val)   { return tagged_new(MV_INT, val); }
 fn metric_float(val) { return tagged_new(MV_FLOAT, val); }
-fn metric_value_type(mv) { return tag(mv); }
-fn metric_value_val(mv)  { return payload(mv); }
+fn metric_value_type(mv) { return boxed_tag(mv); }
+fn metric_value_val(mv)  { return boxed_payload(mv); }
 fn metric_data_point_new(inst_name: Str, mv) {
     var dp = alloc(48);
     store64(dp, inst_name);

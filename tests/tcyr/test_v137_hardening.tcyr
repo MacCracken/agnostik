@@ -161,9 +161,9 @@ fn test_f017_json_unicode_escape_still_case_insensitive() {
 fn test_f019_user_id_roundtrip() {
     var id = user_id_new();
     var s = user_id_to_str(id);
-    var r = user_id_from_str(s);
-    assert_eq(is_ok(r), 1, "F-019: user_id_from_str accepts its own output");
-    var back = payload(r);
+    var r_t, r = user_id_from_str(s);
+    assert_eq(is_ok(r_t), 1, "F-019: user_id_from_str accepts its own output");
+    var back = r;
     assert_eq(user_id_eq(id, back), 1, "F-019: user_id roundtrip preserves value");
     assert_eq(str_eq(user_id_to_str(back), s), 1, "F-019: user_id re-format is stable");
     return 0;
@@ -178,9 +178,9 @@ fn test_f019_user_id_rejects_garbage() {
 # --- sanity: the canonical spec example is unaffected ------------------
 fn test_canonical_traceparent_still_parses() {
     var s = str_from("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
-    var r = tctx_from_traceparent(s);
-    assert_eq(is_ok(r), 1, "canonical traceparent accepted");
-    var ctx = payload(r);
+    var r_t, r = tctx_from_traceparent(s);
+    assert_eq(is_ok(r_t), 1, "canonical traceparent accepted");
+    var ctx = r;
     assert_eq(tctx_trace_flags(ctx), 1, "canonical flags = 01");
     assert_eq(tctx_is_sampled(ctx), 1, "canonical is sampled");
     return 0;
@@ -189,7 +189,7 @@ fn test_canonical_traceparent_still_parses() {
 # Roundtrip through the formatter must survive the new validation.
 fn test_traceparent_format_roundtrip_still_holds() {
     var s = str_from("00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
-    var ctx = payload(tctx_from_traceparent(s));
+    var ctx_t, ctx = tctx_from_traceparent(s);
     assert_eq(str_eq(tctx_to_traceparent(ctx), s), 1, "traceparent roundtrip stable");
     return 0;
 }

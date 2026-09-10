@@ -136,8 +136,8 @@ fn content_citation(source: Str, text: Str) {
     store64(cit + 8, text);
     return tagged_new(CB_CITATION, cit);
 }
-fn content_block_type(cb)    { return tag(cb); }
-fn content_block_payload(cb) { return payload(cb); }
+fn content_block_type(cb)    { return boxed_tag(cb); }
+fn content_block_payload(cb) { return boxed_payload(cb); }
 enum CacheControl { CACHE_EPHEMERAL; }
 enum FinishReason {
     FINISH_STOP;

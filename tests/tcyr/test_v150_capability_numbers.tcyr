@@ -66,9 +66,9 @@ fn main() {
     var roundtrips = 0;
     while (i <= CAP_LAST_CAP) {
         var nm = capability_name(i);
-        var r = capability_parse(str_from(nm));
-        if (is_ok(r) == 1) {
-            if (payload(r) == i) { roundtrips = roundtrips + 1; }
+        var r_t, r = capability_parse(str_from(nm));
+        if (is_ok(r_t) == 1) {
+            if (r == i) { roundtrips = roundtrips + 1; }
         }
         i = i + 1;
     }
@@ -77,15 +77,21 @@ fn main() {
     # Canonical spelling is the lowercase cap_ form used by capsh(1) and
     # capability(7), so a config written against Linux docs parses as-is.
     assert(str_eq_cstr(str_from(capability_name(CAP_SYS_ADMIN)), "cap_sys_admin") == 1, "name spelling");
-    assert_eq(payload(capability_parse(str_from("cap_net_bind_service"))), 10, "parse by kernel name");
+    var nbs_t, nbs = capability_parse(str_from("cap_net_bind_service"));
+    assert_eq(nbs, 10, "parse by kernel name");
 
     # Unrecognised names must error, never default — the failure mode of a
     # silent default is retaining a capability the operator asked to drop.
-    assert(is_err_result(capability_parse(str_from("CAP_SYS_ADMIN"))) == 1, "rejects uppercase");
-    assert(is_err_result(capability_parse(str_from("sys_admin"))) == 1, "rejects missing prefix");
-    assert(is_err_result(capability_parse(str_from("cap_not_a_thing"))) == 1, "rejects unknown");
-    assert(is_err_result(capability_parse(str_from(""))) == 1, "rejects empty");
-    assert(is_err_result(capability_parse(str_from("unknown"))) == 1, "rejects _name fallback");
+    var upper_t, upper = capability_parse(str_from("CAP_SYS_ADMIN"));
+    assert(is_err_result(upper_t) == 1, "rejects uppercase");
+    var noprefix_t, noprefix = capability_parse(str_from("sys_admin"));
+    assert(is_err_result(noprefix_t) == 1, "rejects missing prefix");
+    var nothing_t, nothing = capability_parse(str_from("cap_not_a_thing"));
+    assert(is_err_result(nothing_t) == 1, "rejects unknown");
+    var empty_t, empty = capability_parse(str_from(""));
+    assert(is_err_result(empty_t) == 1, "rejects empty");
+    var fallback_t, fallback = capability_parse(str_from("unknown"));
+    assert(is_err_result(fallback_t) == 1, "rejects _name fallback");
 
     return assert_summary();
 }

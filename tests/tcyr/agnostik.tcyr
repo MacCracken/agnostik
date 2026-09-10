@@ -34,11 +34,11 @@ fn test_error() {
     assert_eq(agnostik_err_is_retriable(e), 1, "timeout retriable");
     var e2 = agnostik_err_new(STIK_ERR_PERMISSION_DENIED, str_from("shadow"));
     assert_eq(agnostik_err_is_retriable(e2), 0, "perm not retriable");
-    var ok = Ok(42);
-    assert_eq(is_ok(ok), 1, "Ok is ok");
-    assert_eq(payload(ok), 42, "Ok payload");
-    var err = stik_err_timeout();
-    assert_eq(is_ok(err), 0, "Err not ok");
+    var ok_t, ok = Ok(42);
+    assert_eq(is_ok(ok_t), 1, "Ok is ok");
+    assert_eq(ok, 42, "Ok payload");
+    var err_t, err = stik_err_timeout();
+    assert_eq(is_ok(err_t), 0, "Err not ok");
     return 0;
 }
 fn test_types() {
@@ -48,16 +48,16 @@ fn test_types() {
     assert_eq(agent_id_eq(id1, id2), 0, "id unique");
     var s = agent_id_to_str(id1);
     assert_eq(str_len(s), 36, "id str len");
-    var parsed = agent_id_from_str(s);
-    assert_eq(is_ok(parsed), 1, "id parse ok");
-    assert_eq(agent_id_eq(id1, payload(parsed)), 1, "id roundtrip");
+    var parsed_t, parsed = agent_id_from_str(s);
+    assert_eq(is_ok(parsed_t), 1, "id parse ok");
+    assert_eq(agent_id_eq(id1, parsed), 1, "id roundtrip");
     var v = version_new(1, 2, 3);
     assert_eq(version_major(v), 1, "ver major");
     var vs = version_to_str(v);
     assert_eq(str_eq(vs, str_from("1.2.3")), 1, "ver to_str");
-    var vr = version_from_str(str_from("0.90.0"));
-    assert_eq(is_ok(vr), 1, "ver parse ok");
-    assert_eq(version_minor(payload(vr)), 90, "ver minor 90");
+    var vr_t, vr = version_from_str(str_from("0.90.0"));
+    assert_eq(is_ok(vr_t), 1, "ver parse ok");
+    assert_eq(version_minor(vr), 90, "ver minor 90");
     var caps = capabilities_new();
     assert_eq(capabilities_gpu(caps), 0, "caps default");
     capabilities_set_gpu(caps, 1);
@@ -105,19 +105,19 @@ fn test_telemetry() {
     assert(LOG_TRACE < LOG_DEBUG, "trace<debug");
     assert(LOG_ERROR < LOG_FATAL, "error<fatal");
     # trace_id_from_str uppercase hex
-    var tid_upper = trace_id_from_str(str_from("0123456789ABCDEF0123456789ABCDEF"));
-    assert_eq(is_ok(tid_upper), 1, "tid upper hex");
+    var tid_upper_t, tid_upper = trace_id_from_str(str_from("0123456789ABCDEF0123456789ABCDEF"));
+    assert_eq(is_ok(tid_upper_t), 1, "tid upper hex");
     # span_id_from_str
     var sid = span_id_new();
     var sid_s = span_id_to_str(sid);
-    var sid_parsed = span_id_from_str(sid_s);
-    assert_eq(is_ok(sid_parsed), 1, "sid parse ok");
-    assert_eq(span_id_eq(sid, payload(sid_parsed)), 1, "sid roundtrip");
+    var sid_parsed_t, sid_parsed = span_id_from_str(sid_s);
+    assert_eq(is_ok(sid_parsed_t), 1, "sid parse ok");
+    assert_eq(span_id_eq(sid, sid_parsed), 1, "sid roundtrip");
     # traceparent roundtrip
     var tp2 = tctx_to_traceparent(ctx);
-    var tp_parsed = tctx_from_traceparent(tp2);
-    assert_eq(is_ok(tp_parsed), 1, "traceparent parse ok");
-    var tp_ctx = payload(tp_parsed);
+    var tp_parsed_t, tp_parsed = tctx_from_traceparent(tp2);
+    assert_eq(is_ok(tp_parsed_t), 1, "traceparent parse ok");
+    var tp_ctx = tp_parsed;
     assert_eq(trace_id_eq(tctx_trace_id(ctx), tctx_trace_id(tp_ctx)), 1, "tp trace_id");
     assert_eq(span_id_eq(tctx_span_id(ctx), tctx_span_id(tp_ctx)), 1, "tp span_id");
     assert_eq(tctx_trace_flags(tp_ctx), TRACE_FLAG_SAMPLED, "tp flags");
@@ -315,9 +315,9 @@ fn test_integration() {
     var v = version_new(1, 2, 3);
     var s = version_to_str(v);
     assert_eq(str_eq(s, str_from("1.2.3")), 1, "ver serde 1.2.3");
-    var parsed = version_from_str(s);
-    assert_eq(is_ok(parsed), 1, "ver serde parse ok");
-    var v2 = payload(parsed);
+    var parsed_t, parsed = version_from_str(s);
+    assert_eq(is_ok(parsed_t), 1, "ver serde parse ok");
+    var v2 = parsed;
     assert_eq(version_major(v2), 1, "ver serde major");
     assert_eq(version_minor(v2), 2, "ver serde minor");
     assert_eq(version_patch(v2), 3, "ver serde patch");

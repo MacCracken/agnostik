@@ -395,13 +395,13 @@ fn test_llm_rate_limit() {
 
 fn test_llm_streaming() {
     var sd = stream_delta(str_from("Hello"));
-    assert_eq(tag(sd), STREAM_DELTA, "stream delta tag");
+    assert_eq(boxed_tag(sd), STREAM_DELTA, "stream delta tag");
     var done = stream_done(FINISH_STOP);
-    assert_eq(tag(done), STREAM_DONE, "stream done tag");
+    assert_eq(boxed_tag(done), STREAM_DONE, "stream done tag");
     var err = stream_error(str_from("timeout"));
-    assert_eq(tag(err), STREAM_ERROR, "stream error tag");
+    assert_eq(boxed_tag(err), STREAM_ERROR, "stream error tag");
     var ping = stream_ping();
-    assert_eq(tag(ping), STREAM_PING, "stream ping tag");
+    assert_eq(boxed_tag(ping), STREAM_PING, "stream ping tag");
     return 0;
 }
 

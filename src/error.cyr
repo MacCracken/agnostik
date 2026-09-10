@@ -128,9 +128,9 @@ fn agnostik_err_print(e) {
     syscall(1, 2, "\n", 1);
     return 0;
 }
-fn result_print_agnostik_err(res) {
-    if (is_ok(res) == 1) { return 0; }
-    var e = payload(res);
+fn result_print_agnostik_err(res_t, res) {
+    if (is_ok(res_t) == 1) { return 0; }
+    var e = res;
     agnostik_err_print(e);
     return agnostik_err_code(e);
 }

@@ -137,8 +137,7 @@ fn test_f005_accept_reject_table() {
 }
 
 fn test_f005_canonical_parse() {
-    var r = version_from_str(str_from("1.2.3"));
-    var v = payload(r);
+    var v_t, v = version_from_str(str_from("1.2.3"));
     assert_eq(version_major(v), 1, "F-005: major");
     assert_eq(version_minor(v), 2, "F-005: minor");
     assert_eq(version_patch(v), 3, "F-005: patch");
