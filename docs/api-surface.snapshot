@@ -50,6 +50,7 @@ agent::agent_status_name/1
 agent::agent_status_parse/1
 agent::agent_type_name/1
 agent::agent_type_parse/1
+agent::agnostik_health_check_new/0
 agent::ainfo_id/1
 agent::ainfo_name/1
 agent::ainfo_status/1
@@ -91,7 +92,6 @@ agent::hc_interval/1
 agent::hc_probe_type/1
 agent::hc_retries/1
 agent::hc_timeout/1
-agent::health_check_new/0
 agent::label_selector_new/2
 agent::lhook_command/1
 agent::lhook_timeout/1
