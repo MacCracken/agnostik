@@ -70,7 +70,7 @@ fn test_agent() {
     var cfg = agent_config_new(str_from("test"));
     assert_eq(aconf_type(cfg), AGENT_TYPE_USER, "type User");
     assert_eq(aconf_restart_policy(cfg), RESTART_NEVER, "restart Never");
-    var hc = health_check_new();
+    var hc = agnostik_health_check_new();
     assert_eq(hc_interval(hc), 30, "hc interval");
     assert_eq(streq(agent_status_name(AGENT_RUNNING), "Running"), 1, "status name");
     return 0;

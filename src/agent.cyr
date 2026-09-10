@@ -85,7 +85,14 @@ fn rusage_memory(u)  { return load64(u); }
 fn rusage_cpu(u)     { return load64(u + 8); }
 fn rusage_fds(u)     { return load64(u + 16); }
 fn rusage_procs(u)   { return load64(u + 24); }
-fn health_check_new() {
+# ⚠ PREFIXED NAME, DELIBERATELY. `health_check_new` collided with argonaut's
+# `health_check_new(check_type, target, port, interval_ms, timeout_ms, retries)` —
+# a DIFFERENT type with the same name at a different arity. kybernet vendors both and
+# got "last definition wins": argonaut's loaded second, so this zero-argument call
+# landed on the six-argument body. Latent since agnostik 1.3.5; surfaced
+# by cyrius 6.6.2's arity-disagreement diagnostic. agnostik's is the one that moved
+# because it had exactly one caller and no external consumers.
+fn agnostik_health_check_new() {
     var h = alloc(40);
     store64(h, PROBE_LIVENESS_READINESS);
     store64(h + 8, 30);    # 30s interval

@@ -97,7 +97,7 @@ fn test_agent_stop_reason() {
 }
 
 fn test_agent_lifecycle() {
-    var hc = health_check_new();
+    var hc = agnostik_health_check_new();
     assert_eq(hc_probe_type(hc), PROBE_LIVENESS_READINESS, "hc default probe");
     assert_eq(hc_interval(hc), 30, "hc default interval");
     assert_eq(hc_timeout(hc), 5, "hc default timeout");

@@ -2,7 +2,45 @@
 
 ## [Unreleased]
 
-## [1.6.0] - 2026-09-10
+## [1.6.1] - 2026-09-10
+
+**A name collision that had been live and silent since 1.3.5.**
+
+### Fixed — `health_check_new` renamed to `agnostik_health_check_new`
+
+agnostik and **argonaut** both exported `health_check_new`, at different arities for different
+types: agnostik's is a zero-argument default constructor for a 40-byte probe descriptor
+(`hc_probe_type` / `hc_interval` / …); argonaut's is
+`health_check_new(check_type, target, port, interval_ms, timeout_ms, retries)` over its own
+`HealthCheck`.
+
+**kybernet** vendors both, and got "last definition wins". argonaut's loaded second and took the
+name, so agnostik's own zero-argument call landed on the six-argument body — reading six garbage
+registers and storing them as a probe descriptor. No diagnostic, at any cyrius version before
+6.6.2.
+
+kybernet is the only affected consumer. (stiva also has a `health_check_new`, but it is a third,
+independent one — arity 1, declared in its own `src/ansamblu.cyr`, and stiva depends on neither
+agnostik nor argonaut. Three definitions of the name exist across the ecosystem; only the two that
+get vendored together ever collided.)
+
+cyrius **6.6.2**'s arity-disagreement diagnostic is what surfaced it — it makes a same-name
+different-arity duplicate a hard error rather than a `last definition wins` warning. The
+collision itself dates to agnostik 1.3.5 (2026-08-24) and was live in every release since.
+
+⭐ **agnostik's side moved because it is the cheap one**: one caller (`src/main.cyr`) and no
+external consumers — nothing outside this repo ever called the zero-argument form. argonaut's
+name stays put, with its ~27 call sites across argonaut and kybernet unchanged.
+
+**Consumer impact: none unless you also vendor argonaut.** No agnostik consumer called the
+renamed function, so 1.6.0 pins that do not also depend on argonaut need no change.
+
+### Fixed — `scripts/version-bump.sh` advised a tag name that does not resolve
+
+The script's closing instructions said `git tag v${NEW_VERSION}`. Every one of agnostik's 20+
+tags is **bare** (`1.6.0`, not `v1.6.0`), and every consumer pins `tag = "1.6.0"`. Following the
+script's advice would have published a tag no `[deps.agnostik]` entry could resolve.
+
 
 ## [1.6.0] - 2026-09-10
 
