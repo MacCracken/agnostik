@@ -2,9 +2,9 @@
 # Audit 2026-04-26 F-001: removed xorshift state and the deterministic
 # fallback constant. UUIDs now draw fresh entropy per call.
 fn _fill_random(buf, n) {
-    # Primary: getrandom(2). Preferred over opening /dev/urandom because
-    # it works in sandboxed envs that block file IO and never returns
-    # short reads for buffers <= 256 B.
+    # getrandom(2), the only source. Preferred over opening /dev/urandom
+    # because it works in sandboxed envs that block file IO and never
+    # returns short reads for buffers <= 256 B.
     #
     # F-022 (audit 2026-09-23): reached through the stdlib's
     # sys_getrandom, never a raw syscall number. Each target's syscall
@@ -17,39 +17,23 @@ fn _fill_random(buf, n) {
     # whose peer defines no such constant.
     var got = sys_getrandom(buf, n, 0);
     if (got == n) { return 0; }
-    # Fallback: /dev/urandom for older kernels / restricted seccomp.
-    var fd = syscall(2, "/dev/urandom", 0, 0);
-    if (fd >= 0) {
-        # Loop in case the kernel returns a short read (rare for small n
-        # but legal per read(2)).
-        #
-        # F-014 (audit 2026-08-24): the read-failure branch used to set
-        # `off = 0 - 1` as a "give up" sentinel. Cyrius compares SIGNED,
-        # so `(0 - 1) < n` stays true and the loop ran again with
-        # `buf + (0 - 1)` and length `n - (0 - 1)` = n + 1 — a one-byte
-        # heap underflow write, and a non-terminating loop if the reads
-        # kept failing. `break` is unreliable in a while loop carrying
-        # `var` declarations, so exit via an explicit flag + continue and
-        # report success off the flag rather than off the offset.
-        var off = 0;
-        var failed = 0;
-        while (off < n) {
-            var r = syscall(0, fd, buf + off, n - off);
-            if (r <= 0) { failed = 1; off = n; continue; }
-            off = off + r;
-        }
-        syscall(3, fd);
-        if (failed == 0) { return 0; }
-    }
-    # Both sources failed. Identifier generation is security-critical
-    # (agent_id, session_id, trace_id back authorisation in aegis/sigil)
-    # so we fail loudly rather than degrade to a deterministic seed.
+    # F-023 (audit 2026-09-23): there is no /dev/urandom fallback. The
+    # one this replaced opened, read and closed by raw x86_64-linux
+    # numbers (2 / 0 / 3), which on agnos are getpid / exit / spawn, and
+    # neither agnos nor Windows has a /dev/urandom to open. sys_getrandom
+    # covers every target, so the fallback only served Linux < 3.17 and
+    # sandboxes that deny getrandom but still allow the open.
+    #
+    # Identifier generation is security-critical (agent_id, session_id,
+    # trace_id back authorisation in aegis/sigil), so we fail loudly
+    # rather than degrade to a deterministic seed. sys_write / sys_exit,
+    # not raw numbers: raw 60 is winsize on agnos, whose exit is #0.
     # F-012 (audit 2026-05-10): the byte-count was hardcoded 67 for a
     # 68-byte literal; the trailing newline silently dropped. Use
     # strlen() so the count tracks the literal.
-    var msg = "agnostik: CSPRNG unavailable (getrandom + /dev/urandom both failed)\n";
-    syscall(1, 2, msg, strlen(msg));
-    syscall(60, 70);
+    var msg = "agnostik: CSPRNG unavailable (getrandom failed)\n";
+    sys_write(2, msg, strlen(msg));
+    sys_exit(70);
     return 0 - 1;
 }
 fn agent_id_new() {

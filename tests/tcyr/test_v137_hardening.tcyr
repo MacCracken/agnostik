@@ -8,6 +8,9 @@
 #        one-byte heap underflow write — and never terminated if the reads
 #        kept failing. Exercised here through a faithful replica, since
 #        forcing a getrandom(2) failure from a test is not practical.
+#        F-023 (audit 2026-09-23) removed the fallback itself; the replica
+#        stays as a pin on the flag + continue loop exit and on the
+#        signed comparison the bug turned on.
 # F-015  tctx_from_traceparent accepted an all-zero trace-id and an
 #        all-zero parent-id. W3C Trace Context declares both invalid and
 #        requires implementations to ignore such a traceparent.

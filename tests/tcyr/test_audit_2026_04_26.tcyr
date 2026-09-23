@@ -19,8 +19,7 @@ include "src/lib.cyr"
 # ─── F-001: CSPRNG produces unique IDs
 # The pre-1.0 PRNG seeded a 64-bit xorshift state once and could
 # silently fall back to a hardcoded constant. After the fix, every
-# agent_id_new() call hits getrandom(2)/urandom and yields fresh
-# entropy.
+# agent_id_new() call hits getrandom(2) and yields fresh entropy.
 
 fn test_f001_agent_id_unique() {
     var a = agent_id_new();

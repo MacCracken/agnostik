@@ -211,19 +211,19 @@ Surfaced by the 6.6.6 pin and the cross-target syscall review. Full
 write-ups are in [`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md)
 and the CHANGELOG `[1.6.2]` sections.
 
-- **F-023 (LOW) — `_fill_random`'s fallback still uses raw x86_64-linux
-  syscall numbers.** Its `open` / `read` / `close` / `write` / `exit` are 2 /
-  0 / 3 / 1 / 60. aarch64 and Windows route them; on agnos they are getpid /
-  exit / spawn / write / winsize. After F-022 this path runs only if
-  `sys_getrandom` fails. There are two fixes, and choosing between them is the
-  work:
-  1. Route through `sys_read` / `sys_close` / `sys_write` / `sys_exit`, which
-     are uniform on every peer, plus an agnos arm for `sys_open`, whose
-     signature there is `(name, namelen, flags)`.
-  2. Drop the `/dev/urandom` fallback now that `sys_getrandom` covers every
-     target, keeping only the fail-loud path.
-  Either is a behaviour change for kernels without `getrandom(2)` (Linux
-  < 3.17), so it wants a minor, not a toolchain patch.
+- ~~**F-023 (LOW) — `_fill_random`'s fallback still uses raw x86_64-linux
+  syscall numbers.**~~ **RESOLVED under `[Unreleased]` — option 2.** Its
+  `open` / `read` / `close` / `write` / `exit` were 2 / 0 / 3 / 1 / 60, which
+  on agnos are getpid / exit / spawn / write / winsize; disassembling the
+  1.6.2 `--agnos` binary confirms the raw numbers went through unrouted. The
+  `/dev/urandom` fallback is removed and the fail-loud path calls
+  `sys_write` / `sys_exit`. Option 1 (route the fallback through the
+  wrappers, plus an agnos arm for `sys_open(name, namelen, flags)`) was not
+  taken: agnos and Windows have no `/dev/urandom`, so that arm could only
+  fail. As this entry predicted, it is a behaviour change: Linux < 3.17, and
+  sandboxes that deny `getrandom` but allow the open, now exit 70 on the
+  first ID. See the CHANGELOG `[Unreleased]` entry and the audit's
+  Resolution note.
 - **Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
   `resource_limits_from_json` run 500-iteration windows that sit near the
   ~222 µs bar (100 × (clock floor + tick) on this host). Only their slower

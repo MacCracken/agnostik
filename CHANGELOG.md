@@ -2,6 +2,112 @@
 
 ## [Unreleased]
 
+### Fixed — F-023: `_fill_random` no longer falls back to `/dev/urandom`
+
+F-022 (1.6.2) moved `_fill_random`'s primary path to `sys_getrandom`, but its `/dev/urandom`
+fallback and fail-loud exit still issued raw x86_64-linux syscall numbers: open 2, read 0, close 3,
+write 1, exit 60. aarch64 and Windows route those. The agnos target does not, and there they mean
+getpid, exit, spawn, write and winsize. The 1.6.2 `--agnos` binary confirms it: the old function
+loads 2, 0, 3, 1 and 60 straight into `syscall`. The path ran only if `sys_getrandom` failed.
+
+This takes the audit's option 2. The fallback is gone, and the fail-loud path goes through the
+stdlib wrappers: if `sys_getrandom` does not return `n`, `_fill_random` writes
+`agnostik: CSPRNG unavailable (getrandom failed)` to stderr with `sys_write` and exits 70 with
+`sys_exit`. In the new `--agnos` binary `_fill_random` issues no syscall of its own; it reaches
+getrandom #45, write #1 and exit #0 through the wrappers.
+
+Option 1, routing the fallback through the wrappers plus an agnos arm for
+`sys_open(name, namelen, flags)`, was not taken. `sys_getrandom` is defined on every target, and
+neither agnos nor Windows has a `/dev/urandom` to open, so that arm could only ever fail. It would
+also have put the first `#ifdef` into `src/` and `dist/agnostik.cyr`. `src/` now opens no files, and
+its only raw syscalls are `error.cyr`'s four stderr writes, which the audit found correct on every
+target.
+
+⚠ **Behaviour change.** Two environments that used to get IDs from the fallback now exit 70 on the
+first one:
+
+- Linux kernels older than 3.17 (2014), which have no `getrandom(2)`.
+- Sandboxes whose seccomp policy denies `getrandom` but still allows opening `/dev/urandom`.
+
+This was run, not inferred. On x86_64, under a seccomp filter that fails `getrandom` with `ENOSYS`,
+a probe calling `agent_id_new()` three times printed three IDs and exited 0 before the change (the
+fallback served them). After it, the probe prints the message and exits 70; a `qemu-x86_64 -strace`
+of that run shows `getrandom = -ENOSYS`, `write(2, …, 48)` and `exit(70)`, with no `open`. The
+message text changed too; it read `(getrandom + /dev/urandom both failed)`.
+
+**Unchanged:** the success path (the same `sys_getrandom` call and compare), exit code 70, and the
+Linux exit semantics — `sys_exit` is `exit(2)`, as the raw 60 was. No public API, struct-layout or
+wire-format change: 916 public fns, matching `docs/api-surface.snapshot`. `dist/agnostik.deps` is
+unchanged, because `sys_write` and `sys_exit` come from the `syscalls` module `sys_getrandom`
+already required.
+
+The F-014 tests in `tests/tcyr/test_v137_hardening.tcyr` exercise a replica of the removed read
+loop, not `src/`. They stay as a pin on the flag + `continue` loop exit and on signed comparison,
+and the file header now says so.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.6.2 baseline in `history.csv` (commit `5e1b9ed`):
+**25 checked, 0 new, 0 regressions.** All but two rows came in slower, by up to +10.3%, including
+rows that never reach `_fill_random`. That is the host, not the change. To separate the two, the
+table adds medians of 3 interleaved runs of the unchanged tree (HEAD `b2fe277`) and of this one,
+taken back to back after the gate. † marks the 8 rows that draw IDs through `_fill_random`.
+
+| benchmark | 1.6.2 baseline | this gate run | Δ vs baseline | unchanged tree, median | this tree, median | Δ A/B |
+|---|---:|---:|---:|---:|---:|---:|
+| token_usage_update | 29 | 32 | +10.3% | 33 | 33 | +0.0% |
+| version_to_str | 100 | 110 | +10.0% | 114 | 115 | +0.9% |
+| agent_id_roundtrip † | 926 | 1016 | +9.7% | 1030 | 1050 | +1.9% |
+| inference_request_full | 338 | 369 | +9.2% | 373 | 381 | +2.1% |
+| agent_id_new † | 524 | 570 | +8.8% | 578 | 587 | +1.6% |
+| agent_id_to_str † | 681 | 732 | +7.5% | 753 | 758 | +0.7% |
+| trace_context_child † | 535 | 570 | +6.5% | 596 | 591 | -0.8% |
+| message_build_3turn | 350 | 372 | +6.3% | 411 | 415 | +1.0% |
+| traceparent_format † | 1713 | 1815 | +6.0% | 1863 | 1862 | -0.1% |
+| security_context_full † | 643 | 676 | +5.1% | 699 | 704 | +0.7% |
+| resource_limits_to_json | 930 | 975 | +4.8% | 995 | 1009 | +1.4% |
+| audit_entry_full † | 2142 | 2239 | +4.5% | 2267 | 2263 | -0.2% |
+| trace_context_new † | 1091 | 1137 | +4.2% | 1168 | 1177 | +0.8% |
+| accelerator_device_full | 100 | 104 | +4.0% | 108 | 115 | +6.5% |
+| sandbox_config_default | 25 | 26 | +4.0% | 28 | 26 | -7.1% |
+| resource_limits_from_json | 441 | 456 | +3.4% | 463 | 475 | +2.6% |
+| version_roundtrip | 240 | 248 | +3.3% | 264 | 255 | -3.4% |
+| token_usage_to_json | 854 | 878 | +2.8% | 890 | 903 | +1.5% |
+| token_usage_from_json | 413 | 423 | +2.4% | 439 | 434 | -1.1% |
+| agent_stats_from_json | 278 | 282 | +1.4% | 296 | 294 | -0.7% |
+| accel_flags_to_json | 1595 | 1614 | +1.2% | 1675 | 1667 | -0.5% |
+| injection_scores_to_json | 765 | 773 | +1.0% | 796 | 801 | +0.6% |
+| agent_stats_to_json | 661 | 665 | +0.6% | 697 | 686 | -1.6% |
+| accel_flags_from_json | 743 | 715 | -3.8% | 771 | 740 | -4.0% |
+| injection_scores_from_json | 338 | 317 | -6.2% | 342 | 319 | -6.7% |
+
+The unchanged tree's medians sit above the 1.6.2 baseline on all 25 rows (median +8.0%, range
++1.2% to +17.4%), so the host was slower than at 1.6.2 throughout. Against that tree, 18 of 25 rows
+land within ±2% and 22 within ±5%, and the median row moves +0.6%. The 8 † rows move −0.8% to
++1.9% (`agent_id_new` 578 → 587 ns). The two largest A/B movers, `sandbox_config_default` −7.1% and
+`accelerator_device_full` +6.5%, are 26–115 ns rows that draw no ID. That fits the code: the path
+`_fill_random` executes on success is the same call and compare as before.
+
+No `history.csv` row is appended; baseline updates ride on the release tag.
+
+### Verification
+
+- `CYRIUS_DCE=1 cyrius build`: x86_64-linux 127,128 → **127,096 B**, aarch64 1,024,048 →
+  **1,024,016 B**, agnos 126,976 → **126,944 B**, Windows 790,528 → **789,504 B**. All four build
+  with 0 warnings except Windows' informational routed-raw-syscall note, which the 1.6.2 tree
+  prints too.
+- `cyrius test`: **18 files, 1,412 assertions, 0 failures**, on x86_64-linux and on aarch64
+  (`cyrius test --aarch64`, under `qemu-aarch64`), unchanged from 1.6.2.
+- `qemu-aarch64 -strace` on the probe: one `getrandom(…,16,0) = 16` per ID, then `exit(0)`.
+- `--agnos`, disassembled rather than run: the old `_fill_random` issues five inline syscalls
+  loading 2, 0, 3, 1 and 60; the new one issues none, and its callees load 45, 1 and 0.
+- `cyrius fmt --check` and `cyrius lint`: 34 files clean, 0 warnings. `CYRIUS_TYPE_CHECK=1`: 0
+  agnostik-side warnings. `cyrius vet`: 24 deps, 0 untrusted, 0 missing.
+- `scripts/api-surface.sh check`: 916 fns, matching the snapshot. `cyrius distlib`: the
+  `dist/agnostik.cyr` diff is the `_fill_random` change alone, 161,663 → 161,032 B. (The 1.6.2
+  entry's 161,433 B does not match its committed bundle, which is 161,663 B and which `distlib`
+  regenerates byte-identically from the 1.6.2 tree.)
+
 ## [1.6.2] - 2026-09-23
 
 **Toolchain refresh to cyrius 6.6.6, plus the `_fill_random` fix that pin's release notes asked
