@@ -141,6 +141,104 @@ fn test_injection_scores_roundtrip() {
     return 0;
 }
 
+# AgentInfo, the 9th _from_json. Through 1.6.2 it read integer
+# `agent_type_id` / `status_id` keys while AgentInfo_to_json writes
+# `agent_type` / `status` name strings, so its own output parsed back as
+# type 0 / status 0. And an AgentInfo whose id failed to parse (id 0)
+# crashed AgentInfo_to_json with a null dereference (F-024).
+var _AI_ID = "11111111-2222-4333-8444-555555555555";
+
+fn _ai_fixed_id() {
+    var id_t, id = agent_id_from_str(str_from(_AI_ID));
+    return id;
+}
+
+# Join two literal halves into one Str. The golden JSON below stays
+# literal, but no single line runs past the 120-column lint limit.
+fn _j2(a, b) {
+    var sb = str_builder_new();
+    str_builder_add_cstr(sb, a);
+    str_builder_add_cstr(sb, b);
+    return str_builder_build(sb);
+}
+
+fn test_agent_info_roundtrip() {
+    # Every AgentType x AgentStatus member survives to_json -> from_json.
+    var t = AGENT_TYPE_SYSTEM;
+    while (t <= AGENT_TYPE_SERVICE) {
+        var s = AGENT_PENDING;
+        while (s <= AGENT_FAILED) {
+            var id = agent_id_new();
+            var a = agent_info_new(id, str_from("agent-x"), t, s);
+            var b = AgentInfo_from_json(_ser(a, &AgentInfo_to_json));
+            assert_eq(agent_id_eq(ainfo_id(b), id), 1, "ai rt id");
+            assert_eq(str_eq_cstr(ainfo_name(b), "agent-x"), 1, "ai rt name");
+            assert_eq(ainfo_type(b), t, "ai rt type");
+            assert_eq(ainfo_status(b), s, "ai rt status");
+            s = s + 1;
+        }
+        t = t + 1;
+    }
+    return 0;
+}
+
+fn test_agent_info_wire_format() {
+    # Byte-exact output for a fixed id: the 1.6.3 to_json change must not
+    # move a single byte for a valid id.
+    var a = agent_info_new(_ai_fixed_id(), str_from("svc"), AGENT_TYPE_SERVICE, AGENT_FAILED);
+    var want = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"svc\",",
+      "\"agent_type\":\"Service\",\"status\":\"Failed\"}");
+    assert_eq(str_eq(_ser(a, &AgentInfo_to_json), want), 1, "ai golden");
+    # A null name is written as null and reads back as 0.
+    var n = agent_info_new(_ai_fixed_id(), 0, AGENT_TYPE_USER, AGENT_RUNNING);
+    var nj = _ser(n, &AgentInfo_to_json);
+    var nwant = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":null,",
+      "\"agent_type\":\"User\",\"status\":\"Running\"}");
+    assert_eq(str_eq(nj, nwant), 1, "ai golden null name");
+    assert_eq(ainfo_name(AgentInfo_from_json(nj)), 0, "ai null name rt");
+    return 0;
+}
+
+fn test_agent_info_null_id() {
+    # F-024: an id of 0 is written as null instead of dereferenced.
+    var a = agent_info_new(0, str_from("x"), AGENT_TYPE_SYSTEM, AGENT_PENDING);
+    var j = _ser(a, &AgentInfo_to_json);
+    var want = _j2("{\"id\":null,\"name\":\"x\",", "\"agent_type\":\"System\",\"status\":\"Pending\"}");
+    assert_eq(str_eq(j, want), 1, "ai null id written as null");
+    assert_eq(ainfo_id(AgentInfo_from_json(j)), 0, "ai null id rt");
+    # A missing or unparseable id leaves id 0, and re-serializing that
+    # must not crash.
+    var bsrc = _j2("{\"id\":\"not-a-uuid\",\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
+    var bad = AgentInfo_from_json(bsrc);
+    assert_eq(ainfo_id(bad), 0, "ai bad id -> 0");
+    assert_eq(ainfo_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
+    var bwant = _j2("{\"id\":null,\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
+    assert_eq(str_eq(_ser(bad, &AgentInfo_to_json), bwant), 1, "ai bad id reserializes");
+    var none = AgentInfo_from_json(str_from("{}"));
+    var ewant = _j2("{\"id\":null,\"name\":null,", "\"agent_type\":\"System\",\"status\":\"Pending\"}");
+    assert_eq(str_eq(_ser(none, &AgentInfo_to_json), ewant), 1, "ai empty object reserializes");
+    return 0;
+}
+
+fn test_agent_info_legacy_ids() {
+    # The integer keys this fn read through 1.6.2 still parse ...
+    var lsrc = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"legacy\",",
+      "\"agent_type_id\":2,\"status_id\":8}");
+    var l = AgentInfo_from_json(lsrc);
+    assert_eq(ainfo_type(l), AGENT_TYPE_SERVICE, "ai legacy type id");
+    assert_eq(ainfo_status(l), AGENT_FAILED, "ai legacy status id");
+    # ... a recognised name wins over them ...
+    var both = AgentInfo_from_json(_j2("{\"agent_type\":\"User\",\"agent_type_id\":2,",
+        "\"status\":\"Paused\",\"status_id\":8}"));
+    assert_eq(ainfo_type(both), AGENT_TYPE_USER, "ai name beats type id");
+    assert_eq(ainfo_status(both), AGENT_PAUSED, "ai name beats status id");
+    # ... and an unrecognised name falls back to them (0 when absent).
+    var unk = AgentInfo_from_json(str_from("{\"agent_type\":\"Bogus\",\"agent_type_id\":2,\"status\":\"Nope\"}"));
+    assert_eq(ainfo_type(unk), AGENT_TYPE_SERVICE, "ai unknown type name -> id");
+    assert_eq(ainfo_status(unk), AGENT_PENDING, "ai unknown status name -> 0");
+    return 0;
+}
+
 fn main() {
     println("=== agnostik serde roundtrip tests ===");
     test_resource_limits_roundtrip();
@@ -151,6 +249,10 @@ fn main() {
     test_edge_overrides_roundtrip();
     test_telemetry_config_roundtrip();
     test_injection_scores_roundtrip();
+    test_agent_info_roundtrip();
+    test_agent_info_wire_format();
+    test_agent_info_null_id();
+    test_agent_info_legacy_ids();
     println("");
     return assert_summary();
 }

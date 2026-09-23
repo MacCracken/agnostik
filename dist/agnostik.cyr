@@ -1011,13 +1011,27 @@ fn aevent_agent_id(e)   { return load64(e); }
 fn aevent_type(e)       { return load64(e + 8); }
 fn aevent_payload(e)    { return load64(e + 16); }
 struct AgentInfo { id; name; agent_type; status; }
+# Serialize an AgentInfo as compact JSON: `{"id":"<uuid>","name":"<name>",
+# "agent_type":"<AgentType name>","status":"<AgentStatus name>"}`. An id or
+# name of 0 is written as null. AgentInfo_from_json reads the output back.
 fn AgentInfo_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. Custom
     # field semantics (UUID stringification + enum-name lookup +
-    # null-for-0 name) prevent derive adoption for this struct.
-    str_builder_add_cstr(sb, "{\"id\":\"");
-    str_builder_add(sb, agent_id_to_str(load64(ptr)));
-    str_builder_add_cstr(sb, "\",\"name\":");
+    # null-for-0 id and name) prevent derive adoption for this struct.
+    #
+    # F-024: an id of 0 is written as null. AgentInfo_from_json leaves 0
+    # for a missing or unparseable id, and agent_id_to_str(0) used to
+    # dereference it; a valid id serializes byte-for-byte as before.
+    str_builder_add_cstr(sb, "{\"id\":");
+    var id = load64(ptr);
+    if (id != 0) {
+        str_builder_putc(sb, '"');
+        str_builder_add(sb, agent_id_to_str(id));
+        str_builder_putc(sb, '"');
+    } else {
+        str_builder_add_cstr(sb, "null");
+    }
+    str_builder_add_cstr(sb, ",\"name\":");
     var name = load64(ptr + 8);
     if (name != 0) {
         str_builder_putc(sb, '"');
@@ -1033,16 +1047,38 @@ fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "\"}");
     return 0;
 }
+# Parse an AgentInfo from JSON. Never fails: a field that is missing or
+# invalid reads as 0. `agent_type` and `status` are read as the names
+# AgentInfo_to_json writes, falling back to integer `agent_type_id` /
+# `status_id` keys, the shape this fn read through 1.6.2.
 fn AgentInfo_from_json(src: Str) {
     var info = alloc(32);
+    store64(info, 0);
     var id_str = _json_str(src, str_from("id"));
     if (id_str != 0) {
         var parsed_t, parsed = agent_id_from_str(id_str);
         if (is_ok(parsed_t) == 1) { store64(info, parsed); }
     }
     store64(info + 8, _json_str(src, str_from("name")));
-    store64(info + 16, _json_int(src, str_from("agent_type_id")));
-    store64(info + 24, _json_int(src, str_from("status_id")));
+    # AgentInfo_to_json writes agent_type / status as their *_name
+    # strings, so read those. Through 1.6.2 this read integer
+    # agent_type_id / status_id keys instead, and its own output parsed
+    # back as type 0 / status 0. Those keys stay as the fallback when the
+    # name is absent or unrecognised, so that shape still parses.
+    var atype = _json_int(src, str_from("agent_type_id"));
+    var tname = _json_str(src, str_from("agent_type"));
+    if (tname != 0) {
+        var t_t, t = agent_type_parse(tname);
+        if (is_ok(t_t) == 1) { atype = t; }
+    }
+    store64(info + 16, atype);
+    var astatus = _json_int(src, str_from("status_id"));
+    var sname = _json_str(src, str_from("status"));
+    if (sname != 0) {
+        var s_t, s = agent_status_parse(sname);
+        if (is_ok(s_t) == 1) { astatus = s; }
+    }
+    store64(info + 24, astatus);
     return info;
 }
 fn agent_info_new(id, name: Str, atype, status) {
@@ -3547,6 +3583,9 @@ fn fleet_default(f)      { return load64(f + 8); }
 # --- classification.cyr ---
 
 enum ClassificationLevel { CLASS_PUBLIC; CLASS_INTERNAL; CLASS_CONFIDENTIAL; CLASS_RESTRICTED; }
+# Display name of a ClassificationLevel: "Public", "Internal", "Confidential"
+# or "Restricted", and "Unknown" for a value outside the enum.
+# classification_level_parse is the inverse.
 fn classification_level_name(l) {
     if (l == CLASS_PUBLIC)       { return "Public"; }
     elif (l == CLASS_INTERNAL)     { return "Internal"; }
@@ -3589,6 +3628,9 @@ enum PiiKind {
     PII_BIOMETRIC_TEMPLATE;  # algorithmic representation (distinct from raw PII_BIOMETRIC_DATA)
     PII_PRECISE_GEOLOCATION; # CCPA / CO / CT / VA precise-location category
 }
+# Display name of a PiiKind: "Email", "CreditCard", "PreciseGeolocation" and so
+# on. PII_CUSTOM, and any value outside the enum, is "Custom", the fallthrough
+# rather than an explicit arm. pii_kind_parse is the inverse.
 fn pii_kind_name(k) {
     if (k == PII_EMAIL)                 { return "Email"; }
     elif (k == PII_PHONE)               { return "Phone"; }
@@ -3637,6 +3679,11 @@ fn pii_kind_parse(s: Str) {
     elif (str_eq_cstr(s, "Custom") == 1) { return Ok(PII_CUSTOM); }
     return stik_err_invalid_argument(str_from("unknown PiiKind name"));
 }
+# A ClassificationResult: the outcome of classifying content for data
+# sensitivity. 48 bytes, all 8-byte slots, read through the cresult_* accessors:
+#   +0 level, +8 auto_level, +16 rules, +24 pii, +32 keywords, +40 confidence.
+# Both levels start at `level`, the three vecs start empty, and confidence
+# starts at 0. Record findings by pushing into the vecs.
 fn classification_result_new(level) {
     var r = alloc(48);
     store64(r, level);
@@ -3647,11 +3694,21 @@ fn classification_result_new(level) {
     store64(r + 40, 0);
     return r;
 }
+# Final classification level. The Rust original let policy override it; this
+# struct has no setter for it yet, so it stays equal to the level passed to
+# classification_result_new.
 fn cresult_level(r)       { return load64(r); }
+# Level the automatic detection rules produced.
 fn cresult_auto_level(r)  { return load64(r + 8); }
+# vec of the names of the rules that triggered.
 fn cresult_rules(r)       { return load64(r + 16); }
+# vec of the PiiKind values found in the content.
 fn cresult_pii(r)         { return load64(r + 24); }
+# vec of the sensitive keywords found in the content.
 fn cresult_keywords(r)    { return load64(r + 32); }
+# Confidence score. The Rust original was an optional 0.0-1.0 float. Here it is
+# an i64 that starts at 0 and has no setter and no defined unit yet, so read 0
+# as "not set".
 fn cresult_confidence(r)  { return load64(r + 40); }
 
 # --- validation.cyr ---

@@ -106,13 +106,16 @@ they aren't re-discovered each cycle. Full context in
 - **Dead/vestigial public helpers** — `seccomp_errno`/`seccomp_trace`,
   the `SeccompArg` cluster, `id_mapping_*`, `network_policy_*`
   (`security.cyr`); `stream_usage` (`llm.cyr`); `AgentInfo_from_json`
-  (`agent.cyr`). The last one also **cannot round-trip its own
+  (`agent.cyr`). The last one also ~~**cannot round-trip its own
   `_to_json`** (emits `agent_type`/`status` name strings, reads
-  `agent_type_id`/`status_id` ints) and has no test — fold its fix or
-  removal into the v2.0.0 break, or fix-and-test it sooner if a consumer
-  needs it. All are in `docs/api-surface.snapshot`; gate any
-  removal/rename on the v1.2.4 cross-consumer sweep confirming no
-  external dependency.
+  `agent_type_id`/`status_id` ints) and has no test~~. **Round-trip FIXED
+  under `[Unreleased]`, targeted at v1.6.3.** It reads the name strings now,
+  with the integer keys as a fallback, backed by a 123-assertion round-trip
+  test and a fuzz target. `AgentInfo_to_json` no longer crashes on the id 0
+  that a bad parse leaves (F-024). Whether to *remove* it is unchanged: it
+  still has no consumer, and that call waits on the sweep. All are in
+  `docs/api-surface.snapshot`; gate any removal/rename on the v1.2.4
+  cross-consumer sweep confirming no external dependency.
 - ~~**Setter-less `mcap_supports_*` getters** (`llm.cyr`) — seven flag
   getters with no matching setter (can only read 0).~~ **RESOLVED in
   v1.4.0** (F-021): setters added, alongside `SecretMetadata`'s, so the
@@ -140,16 +143,17 @@ Two items surfaced by the 6.2.11 pin that were **accepted as-is** at the
 v1.3.1 cut (toolchain trade-offs, no source-side fix) but warrant a later
 look. Full numbers in the CHANGELOG `[1.3.1]` Performance section.
 
-- **Ack'd bench regressions** — 3 consistent on an unloaded runner
+- ~~**Ack'd bench regressions** — 3 consistent on an unloaded runner
   (`version_roundtrip` 371→~668ns, `accelerator_device_full` 177→~284ns,
   `version_to_str` 191→~296ns), rising to 6 under CI load as sub-µs ops
   (`traceparent_format`, `sandbox_config_default`, `token_usage_update`)
-  inflate past threshold — jitter, not drift. Pure 6.2.11 codegen / runner
-  contention; source unchanged, nothing to optimize agnostik-side, and the
-  net is strongly positive (JSON-decode hot paths −67…87%). Revisit if a
-  later cyrius pin recovers the three real small-op paths, or if a
-  consumer's profile shows these constructor/format ops on a hot path.
-  Ack'd via `[bench-regression-ack]` in the release commit (whole-run skip).
+  inflate past threshold — jitter, not drift.~~ **RESOLVED by later pins.**
+  The revisit condition was "a later cyrius pin recovers the three real
+  small-op paths", and all three now run below even their pre-6.2.11
+  figures. The v1.6.2 baseline in `docs/benchmarks/history.csv` (cyrius
+  6.6.6) has `version_roundtrip` **240 ns** (371 before 6.2.11),
+  `accelerator_device_full` **100 ns** (177) and `version_to_str` **100 ns**
+  (191).
 - ~~**DCE binary +81 KB** (`311,264 B` → `392,840 B`). Two causes: 6.2.11 DCE
   *NOPs* unreachable fns in place instead of stripping, and the `bayan`
   bundle (base64+json+csv+toml) adds ~119 KB of now-NOPed dead code the
@@ -182,6 +186,23 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
   over the test and bench files). `audit`'s docs phase reports **1,421** over
   its `src tests` scope, which is not the sum of the per-file counts (1,047),
   so track the per-file `src` figure release to release.
+  **Under `[Unreleased]`, targeted at v1.6.3:** both halves of the plan have
+  started. The gate is `scripts/doc-debt.sh check` in CI. It fails on a new
+  undocumented fn, and on a fn in the grandfathered `docs/undocumented.baseline`
+  that has since been documented, so the committed count is the tracked figure.
+  The first module is `src/classification.cyr`, now 11 of 11 documented;
+  `AgentInfo_{to,from}_json` are documented too. Count **860 → 849**. Next
+  cycle: `error.cyr` (18) or `secrets.cyr` (21).
+
+- **`ClassificationResult` has getters but no setters** for `level`,
+  `auto_level` and `confidence`. That is the F-021 class, found while
+  documenting the module at v1.6.3. The original Rust type let policy override
+  `level` separately from the detected `auto_level`, and here that needs raw
+  `store64(r + 0, …)`. `confidence` also has no defined unit (Rust: optional
+  0.0–1.0 float), and nothing ever sets it. The fix adds API (setters, plus a
+  fixed-point unit such as parts-per-thousand), so it belongs in a minor, not a
+  patch. Trigger: any consumer that needs policy overrides or scores. No local
+  consumer references `cresult_*` today.
 
 - ~~**Binary +215,520 B (+52.1%)** — `413,512` → `629,032` B, entirely the
   361-fn PDF parse/encode subsystem (209 private `_pdf*` + 152 public
@@ -224,13 +245,16 @@ and the CHANGELOG `[1.6.2]` sections.
   sandboxes that deny `getrandom` but allow the open, now exit 70 on the
   first ID. See the CHANGELOG `[Unreleased]` entry and the audit's
   Resolution note.
-- **Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
+- ~~**Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
   `resource_limits_from_json` run 500-iteration windows that sit near the
   ~222 µs bar (100 × (clock floor + tick) on this host). Only their slower
-  windows resolve, so `min` can exceed `avg`. The gate reads `avg` and is
-  unaffected. Raising those batch sizes would make every window resolve, but
-  it changes what those rows measure, so land it with a fresh baseline and
-  a note.
+  windows resolve, so `min` can exceed `avg`.~~ **RESOLVED under
+  `[Unreleased]`, targeted at v1.6.3.** Every row's window is sized to about
+  1 ms or more, which clears the documented CI hosts' bar too. Rounds drop
+  from 10 to 5 to hold peak RSS at 126 MB. All 25 rows now resolve. An
+  interleaved A/B of `avg`, the only field the gate reads, put 23 of 25 rows
+  within ±5%. As this entry asked, the change lands with a note, and the 1.6.3
+  cut's baseline row is the fresh one.
 - **Upstream (cyrius) papercuts to file.**
   - `cyrius update` on a project with no `[deps.NAME]` entries copies the
     whole stdlib snapshot into `./lib/`: 111 files, including an untracked

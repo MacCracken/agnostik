@@ -139,6 +139,14 @@ jobs:
         # update` and commit the new snapshot in the same PR. v1.0.5+ gate.
         run: scripts/api-surface.sh check
 
+      - name: Verify documentation debt
+        # Every fn in src/ either has a doc comment (a `#` line directly above
+        # it, which is what `cyrius doc --check` counts) or is listed in
+        # docs/undocumented.baseline as grandfathered debt. Fails on a new
+        # undocumented fn, and on a listed fn that has since been documented;
+        # record progress with `scripts/doc-debt.sh update`. v1.6.3+ gate.
+        run: scripts/doc-debt.sh check
+
       - name: Verify dist bundle is in sync with src/
         run: |
           cyrius distlib

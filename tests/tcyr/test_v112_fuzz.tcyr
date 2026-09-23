@@ -1,7 +1,8 @@
 # tests/tcyr/test_v112_fuzz.tcyr
 #
-# Fuzz harness for the 8 parser entry points handling untrusted input
-# (per the v1.1.2 roadmap pin). Deterministic xorshift64 PRNG so any
+# Fuzz harness for the parser entry points handling untrusted input
+# (per the v1.1.2 roadmap pin): 8 from v1.1.2, plus AgentInfo_from_json ->
+# AgentInfo_to_json since the F-024 fix. Deterministic xorshift64 PRNG so any
 # failure reproduces from the seed — no CSPRNG or wall-clock seeding.
 #
 # Goal: SURVIVAL. Each parser must accept any byte sequence and return
@@ -9,9 +10,9 @@
 # correctness for random inputs (they're random) — only that the
 # parser doesn't fault.
 #
-# Audit-finding seeds: every F-002..F-005, F-008..F-010 input shape is
-# included as a deterministic regression row so fuzz iterations always
-# include the historically-vulnerable cases.
+# Audit-finding seeds: every F-002..F-005, F-008..F-010 and F-024 input
+# shape is included as a deterministic regression row so fuzz iterations
+# always include the historically-vulnerable cases.
 
 include "lib/syscalls.cyr"
 include "lib/string.cyr"
@@ -221,6 +222,31 @@ fn fuzz_tctx_from_traceparent(_seed) {
     return _FUZZ_ITERS + 2;
 }
 
+# AgentInfo_from_json -> AgentInfo_to_json. Survival covers the parse AND
+# the re-serialize: F-024 was AgentInfo_to_json dereferencing the id 0 that
+# from_json leaves for a missing or unparseable id, so a parse-only check
+# would have passed while every random input crashed the second call.
+fn _fuzz_ai_rt(src) {
+    var sb = str_builder_new();
+    AgentInfo_to_json(AgentInfo_from_json(src), sb);
+    return 0;
+}
+
+fn fuzz_agent_info_json(_seed) {
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        _fuzz_ai_rt(fuzz_json_like(rng_len(150)));
+        i = i + 1;
+    }
+    _fuzz_ai_rt(str_from("{}"));
+    _fuzz_ai_rt(str_from("{\"id\":\"not-a-uuid\"}"));
+    _fuzz_ai_rt(str_from("{\"id\":null,\"name\":null}"));
+    _fuzz_ai_rt(str_from("{\"id\":\"11111111-2222-4333-8444-55555555555\"}"));
+    _fuzz_ai_rt(str_from("{\"agent_type\":\"Bogus\",\"status\":\"Unknown\"}"));
+    _fuzz_ai_rt(str_from("{\"agent_type_id\":-1,\"status_id\":99999999999999999999}"));
+    return _FUZZ_ITERS + 6;
+}
+
 fn test_fuzz_json_int() {
     rng_init(0xCAFEBABE);
     var n = fuzz_json_int(0);
@@ -277,8 +303,15 @@ fn test_fuzz_tctx_from_traceparent() {
     return 0;
 }
 
+fn test_fuzz_agent_info_json() {
+    rng_init(0xA6E471F0);
+    var n = fuzz_agent_info_json(0);
+    assert_eq(n, _FUZZ_ITERS + 6, "AgentInfo_from_json -> _to_json survived all iterations");
+    return 0;
+}
+
 fn main() {
-    println("=== agnostik v1.1.2 fuzz harness (8 parsers, 200 iters each) ===");
+    println("=== agnostik v1.1.2 fuzz harness (9 parsers, 200 iters each) ===");
     test_fuzz_json_int();
     test_fuzz_json_str();
     test_fuzz_json_find_value();
@@ -287,6 +320,7 @@ fn main() {
     test_fuzz_trace_id_from_str();
     test_fuzz_span_id_from_str();
     test_fuzz_tctx_from_traceparent();
+    test_fuzz_agent_info_json();
     println("");
     return assert_summary();
 }

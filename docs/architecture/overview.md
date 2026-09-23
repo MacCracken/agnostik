@@ -113,7 +113,7 @@ v1.0.7 / v1.1.0 / v1.1.1 / v1.1.2 / v1.2.0 feature-coverage files).
 | `InjectionScores` | `#derive(Serialize)` | All-i8 fields (v1.1.1 sub-byte) |
 | `TokenUsage` | `#derive(Serialize)` | All-int fields |
 | `AcceleratorFlags` | `#derive(Serialize)` | All-i8 fields (v1.1.1 sub-byte) |
-| `AgentInfo` | hand-written | UUID stringification + enum-name lookup + null-Str |
+| `AgentInfo` | hand-written | UUID stringification (`null` for an id of 0) + enum names, parsed back by name (legacy `agent_type_id` / `status_id` ints accepted as a fallback) + null-Str |
 | `TelemetryConfig` | hand-written | null-Str fallback for `export_endpoint` |
 
 Both camps emit the same compact byte format

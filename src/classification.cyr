@@ -1,4 +1,7 @@
 enum ClassificationLevel { CLASS_PUBLIC; CLASS_INTERNAL; CLASS_CONFIDENTIAL; CLASS_RESTRICTED; }
+# Display name of a ClassificationLevel: "Public", "Internal", "Confidential"
+# or "Restricted", and "Unknown" for a value outside the enum.
+# classification_level_parse is the inverse.
 fn classification_level_name(l) {
     if (l == CLASS_PUBLIC)       { return "Public"; }
     elif (l == CLASS_INTERNAL)     { return "Internal"; }
@@ -41,6 +44,9 @@ enum PiiKind {
     PII_BIOMETRIC_TEMPLATE;  # algorithmic representation (distinct from raw PII_BIOMETRIC_DATA)
     PII_PRECISE_GEOLOCATION; # CCPA / CO / CT / VA precise-location category
 }
+# Display name of a PiiKind: "Email", "CreditCard", "PreciseGeolocation" and so
+# on. PII_CUSTOM, and any value outside the enum, is "Custom", the fallthrough
+# rather than an explicit arm. pii_kind_parse is the inverse.
 fn pii_kind_name(k) {
     if (k == PII_EMAIL)                 { return "Email"; }
     elif (k == PII_PHONE)               { return "Phone"; }
@@ -89,6 +95,11 @@ fn pii_kind_parse(s: Str) {
     elif (str_eq_cstr(s, "Custom") == 1) { return Ok(PII_CUSTOM); }
     return stik_err_invalid_argument(str_from("unknown PiiKind name"));
 }
+# A ClassificationResult: the outcome of classifying content for data
+# sensitivity. 48 bytes, all 8-byte slots, read through the cresult_* accessors:
+#   +0 level, +8 auto_level, +16 rules, +24 pii, +32 keywords, +40 confidence.
+# Both levels start at `level`, the three vecs start empty, and confidence
+# starts at 0. Record findings by pushing into the vecs.
 fn classification_result_new(level) {
     var r = alloc(48);
     store64(r, level);
@@ -99,9 +110,19 @@ fn classification_result_new(level) {
     store64(r + 40, 0);
     return r;
 }
+# Final classification level. The Rust original let policy override it; this
+# struct has no setter for it yet, so it stays equal to the level passed to
+# classification_result_new.
 fn cresult_level(r)       { return load64(r); }
+# Level the automatic detection rules produced.
 fn cresult_auto_level(r)  { return load64(r + 8); }
+# vec of the names of the rules that triggered.
 fn cresult_rules(r)       { return load64(r + 16); }
+# vec of the PiiKind values found in the content.
 fn cresult_pii(r)         { return load64(r + 24); }
+# vec of the sensitive keywords found in the content.
 fn cresult_keywords(r)    { return load64(r + 32); }
+# Confidence score. The Rust original was an optional 0.0-1.0 float. Here it is
+# an i64 that starts at 0 and has no setter and no defined unit yet, so read 0
+# as "not set".
 fn cresult_confidence(r)  { return load64(r + 40); }

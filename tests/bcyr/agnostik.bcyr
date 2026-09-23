@@ -122,6 +122,15 @@ fn tier(label) {
     syscall(SYS_WRITE, 1, "\n", 1);
     return 0;
 }
+# Batch sizes (1.6.3): each row's window, batch x per-op time, is sized to
+# about 1 ms or more. Since cyrius 6.6.5, lib/bench.cyr counts a window toward
+# min/max only if it clears 100 x (clock floor + tick). That is ~225 us on the
+# reference host and up to ~455 us on the Linux CI hosts bench.cyr documents.
+# A row whose windows sat near that bar counted only its slow ones, so it could
+# print a min above its avg. 5 rounds, not 10, hold peak RSS near 126 MB: the
+# bump allocator never frees, and the fastest rows now run 250,000 iterations.
+# The gate reads avg only; an interleaved A/B of the old and new sizes put 23 of
+# 25 rows within 5%, the other two being 2-3 ns moves on 25-30 ns ops.
 fn run(bname, fp, batch, rounds) {
     var b = bench_new(bname);
     bench_run_batch(b, fp, batch, rounds);
@@ -133,23 +142,23 @@ fn main() {
     _bench_vs = str_from("0.90.0");
     println("=== agnostik benchmarks ===");
     tier("[tier1] core");
-    run("agent_id_new", &_b_agent_id_new, 1000, 10);
-    run("trace_context_new", &_b_trace_context_new, 1000, 10);
-    run("trace_context_child", &_b_trace_context_child, 1000, 10);
-    run("sandbox_config_default", &_b_sandbox_config, 1000, 10);
+    run("agent_id_new", &_b_agent_id_new, 2000, 5);
+    run("trace_context_new", &_b_trace_context_new, 1000, 5);
+    run("trace_context_child", &_b_trace_context_child, 2000, 5);
+    run("sandbox_config_default", &_b_sandbox_config, 50000, 5);
     tier("[tier2] format");
-    run("agent_id_to_str", &_b_agent_id_to_str, 1000, 10);
-    run("agent_id_roundtrip", &_b_agent_id_roundtrip, 1000, 10);
-    run("version_to_str", &_b_version_to_str, 1000, 10);
-    run("version_roundtrip", &_b_version_roundtrip, 1000, 10);
-    run("traceparent_format", &_b_traceparent, 500, 10);
+    run("agent_id_to_str", &_b_agent_id_to_str, 2000, 5);
+    run("agent_id_roundtrip", &_b_agent_id_roundtrip, 2000, 5);
+    run("version_to_str", &_b_version_to_str, 10000, 5);
+    run("version_roundtrip", &_b_version_roundtrip, 5000, 5);
+    run("traceparent_format", &_b_traceparent, 1000, 5);
     tier("[tier3] integration");
-    run("inference_request_full", &_b_inference_request, 500, 10);
-    run("audit_entry_full", &_b_audit_entry, 500, 10);
-    run("accelerator_device_full", &_b_accel_device, 500, 10);
-    run("security_context_full", &_b_security_context, 500, 10);
-    run("message_build_3turn", &_b_message_build, 500, 10);
-    run("token_usage_update", &_b_token_usage, 1000, 10);
+    run("inference_request_full", &_b_inference_request, 5000, 5);
+    run("audit_entry_full", &_b_audit_entry, 1000, 5);
+    run("accelerator_device_full", &_b_accel_device, 20000, 5);
+    run("security_context_full", &_b_security_context, 2000, 5);
+    run("message_build_3turn", &_b_message_build, 5000, 5);
+    run("token_usage_update", &_b_token_usage, 50000, 5);
     # Pre-generate JSON for from_json benchmarks
     _bench_rl_json = _ser(resource_limits_new(), &ResourceLimits_to_json);
     var _tu = token_usage_new();
@@ -165,16 +174,16 @@ fn main() {
     store64(_as, 999); store64(_as + 8, 50000); store64(_as + 16, 86400);
     _bench_as_json = _ser(_as, &AgentStats_to_json);
     tier("[tier4] serde");
-    run("resource_limits_to_json", &_b_rl_to_json, 500, 10);
-    run("resource_limits_from_json", &_b_rl_from_json, 500, 10);
-    run("token_usage_to_json", &_b_tu_to_json, 500, 10);
-    run("token_usage_from_json", &_b_tu_from_json, 500, 10);
-    run("accel_flags_to_json", &_b_af_to_json, 500, 10);
-    run("accel_flags_from_json", &_b_af_from_json, 500, 10);
-    run("injection_scores_to_json", &_b_is_to_json, 500, 10);
-    run("injection_scores_from_json", &_b_is_from_json, 500, 10);
-    run("agent_stats_to_json", &_b_as_to_json, 500, 10);
-    run("agent_stats_from_json", &_b_as_from_json, 500, 10);
+    run("resource_limits_to_json", &_b_rl_to_json, 2000, 5);
+    run("resource_limits_from_json", &_b_rl_from_json, 5000, 5);
+    run("token_usage_to_json", &_b_tu_to_json, 2000, 5);
+    run("token_usage_from_json", &_b_tu_from_json, 5000, 5);
+    run("accel_flags_to_json", &_b_af_to_json, 1000, 5);
+    run("accel_flags_from_json", &_b_af_from_json, 2000, 5);
+    run("injection_scores_to_json", &_b_is_to_json, 2000, 5);
+    run("injection_scores_from_json", &_b_is_from_json, 5000, 5);
+    run("agent_stats_to_json", &_b_as_to_json, 2000, 5);
+    run("agent_stats_from_json", &_b_as_from_json, 5000, 5);
     println("\n=== done ===");
     return 0;
 }

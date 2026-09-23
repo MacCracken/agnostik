@@ -45,6 +45,98 @@ The F-014 tests in `tests/tcyr/test_v137_hardening.tcyr` exercise a replica of t
 loop, not `src/`. They stay as a pin on the flag + `continue` loop exit and on signed comparison,
 and the file header now says so.
 
+### Fixed — `AgentInfo_from_json` reads what `AgentInfo_to_json` writes; F-024
+
+`AgentInfo` was the one serializable struct whose `_from_json` could not read its own `_to_json`.
+`AgentInfo_to_json` writes `agent_type` and `status` as name strings (`"Service"`, `"Failed"`), but
+`AgentInfo_from_json` read integer `agent_type_id` / `status_id` keys. So every round trip came back
+as type 0 / status 0 (`AGENT_TYPE_SYSTEM` / `AGENT_PENDING`). It also had no test: it was the only
+one of the 9 `_from_json` functions that `test_serde_roundtrip.tcyr` did not cover, although the
+file's header claimed all 9. This was a v1.3.0 roadmap backlog item.
+
+`AgentInfo_from_json` now parses the names with `agent_type_parse` / `agent_status_parse` (1.4.0).
+The integer keys stay as the fallback when a name is absent or unrecognised, so JSON in the old
+shape parses exactly as before. When both are present, a recognised name wins.
+
+**F-024 (LOW) — `AgentInfo_to_json` dereferenced a null id.** `AgentInfo_from_json` leaves the id
+at 0 when the `id` key is missing or is not a UUID, and `AgentInfo_to_json` passed that 0 straight
+to `agent_id_to_str`, which reads from address 0. So parsing any JSON without a valid id and
+re-serializing the result crashed; a probe reproduced it (SIGSEGV, exit 139). An id of 0 is now
+written as `"id":null`, which `AgentInfo_from_json` reads back as 0. A valid id serializes
+byte-for-byte as before, pinned by a golden test. Latent: no consumer in the local ecosystem calls
+either function. Written up in [`docs/audit/2026-09-23-audit.md`](docs/audit/2026-09-23-audit.md).
+
+**Tests.** `test_serde_roundtrip.tcyr` gains 123 assertions (36 → 159):
+- all 27 `AgentType` × `AgentStatus` pairs round-trip id, name, type and status;
+- byte-exact output for a fixed id, with and without a null name;
+- a null, missing and unparseable id;
+- the legacy integer keys, name-over-legacy precedence, and the unknown-name fallback.
+
+`test_v112_fuzz.tcyr` gains a 9th target: 200 random JSON-like inputs plus 6 seeds through
+`AgentInfo_from_json` → `AgentInfo_to_json`. It checks the re-serialize step on purpose, because
+a parse-only check passes on the old code. Against the unfixed `src/agent.cyr` (HEAD `3da9b65`),
+both files die with SIGSEGV.
+
+**No public API change** (916 fns). The only wire-format change is for an id of 0, which previously
+crashed instead of serializing.
+
+### Changed — benchmark windows sized to clear the 6.6.5 resolution bar
+
+cyrius 6.6.5 reworked `lib/bench.cyr` so that a timed window counts toward a row's `min`/`max` only
+if its net duration clears 100 × (clock floor + tick). That is ~225 µs on the reference host, and up
+to ~455 µs on the Linux CI hosts `bench.cyr` documents. The harness's windows (batch × per-op time)
+ranged from 25 µs to 1.1 ms. Seven or eight rows, depending on the run, never cleared the bar, so
+their min/max just echoed the mean. Rows near it counted only their slow windows, so they could print a `min` above their `avg`:
+`message_build_3turn` read `368ns avg (min=446ns …)`. This was a v1.6.2 roadmap backlog item.
+Upstream tracks the instrument side as an open issue,
+`2026-09-21-hisab-bench-min-above-mean-below-resolution-bar.md` in the cyrius repo, filed from
+another consumer. Sizing the windows clear of the bar sidesteps it, and stays valid once it is
+fixed.
+
+`tests/bcyr/agnostik.bcyr` now sizes every row's window to about 1 ms or more. Batches range from
+1,000 to 50,000 iterations, and rounds drop from 10 to 5. With 5 rounds peak RSS is 126 MB, against
+32 MB before and 250 MB at 10 rounds, because the bump allocator never frees and the fastest rows
+now run 250,000 iterations. The run takes 0.25 s. Every row now resolves: no `UNRESOLVED` lines and
+no `avg` outside `[min, max]`, 3 of 3 runs.
+
+**What the gate sees.** `scripts/bench-regression.sh` parses only `avg`. An interleaved A/B, 5
+pairs of the old and new harness on the same tree, put 23 of 25 rows within ±5% and the median row
+at ~0%. The two outliers are the two smallest ops: `sandbox_config_default` 26 → 23 ns and
+`token_usage_update` 31 → 33 ns. Those are 2–3 ns moves, and the longer windows make them less
+sensitive to clock-floor calibration. The 1.6.3 baseline row therefore comes from the new sizes.
+
+### Added — documentation-debt gate; `src/classification.cyr` fully documented
+
+This is the v1.3.6 roadmap backlog item on undocumented public fns. That item was the sole reason
+`cyrius audit` exits non-zero, and it planned for incremental work: "document a module per cycle,
+gate new fns".
+
+**The gate.** `scripts/doc-debt.sh check` now runs in CI next to the API-surface check. It lists
+every fn in `src/` that `cyrius doc --check` reports as undocumented, as `module::fn`. `cyrius doc`
+counts a fn as documented when a `#` comment sits directly above it. The gate diffs that list
+against the committed `docs/undocumented.baseline` and fails in two cases:
+
+- **A new undocumented fn.** So from here on every new public fn ships with a doc comment, while
+  existing debt is grandfathered.
+- **A listed fn that has since been documented.** So the committed count moves only when someone
+  records the progress, with `scripts/doc-debt.sh update`.
+
+Both directions were exercised: a probe fn added to `src/secrets.cyr` failed with
+`+ secrets::tmp_probe_fn`, and documenting two listed fns failed until the update.
+
+**This cycle's module.** `src/classification.cyr` goes from 2 of 11 documented to 11 of 11. The
+`ClassificationResult` field meanings come from the original Rust definition
+(`rust-old/src/classification.rs` in history): `level` is the final level, which policy may
+override, and `auto_level` is what detection produced. `AgentInfo_to_json` and
+`AgentInfo_from_json` are also documented, since their contracts changed above. The undocumented
+count over `src/*.cyr` goes **860 → 849**, and the baseline records 849.
+
+Writing the docs surfaced a contract gap of the F-021 kind, recorded on the roadmap rather than
+fixed in a patch, because a fix would add API: `ClassificationResult` has getters but no setters
+for `level`, `auto_level` and `confidence`. So the policy override the original modeled cannot be
+expressed without raw `store64` offsets. `confidence` also has no defined unit; the Rust original
+was an optional 0.0–1.0 float.
+
 ### Performance
 
 `scripts/bench-regression.sh` against the 1.6.2 baseline in `history.csv` (commit `5e1b9ed`):
