@@ -2,6 +2,193 @@
 
 ## [Unreleased]
 
+## [1.6.2] - 2026-09-23
+
+**Toolchain refresh to cyrius 6.6.6, plus the `_fill_random` fix that pin's release notes asked
+agnostik for.** No public API, struct-layout or wire-format change — 916 public fns, matching
+`docs/api-surface.snapshot`. 18 test files, **1,412 assertions, 0 failures**, on x86_64-linux and
+on aarch64 (under `qemu-aarch64`).
+
+### Changed — cyrius pin 6.6.2 → **6.6.6**; stdlib re-vendored
+
+`cyrius lib sync` + `cyrius deps` against the 6.6.6 snapshot. `lib/` now holds **32** files, every
+one byte-identical to the snapshot:
+
+- **17 changed content**: `alloc`, `assert`, `bayan`, `chrono`, `fmt`, `fnptr`, `hashseed`, `io`,
+  `string`, `vec`, and `syscalls` with its six platform peers.
+- **13 did not**, including the git-tracked `keccak.cyr`.
+- **2 are new**: `alloc_cx.cyr`, a new `alloc` peer that `lib sync` takes along with every
+  `alloc_*`; and `args_agnos.cyr`, which 6.6.6's `io.cyr` now includes.
+
+A fresh checkout gets 27 files from `lib sync` (26, plus the tracked `keccak.cyr`). `cyrius deps`
+adds the five transitive includes: `args_agnos`, `args_macos`, `atomic`, `boxed` and `hashseed`.
+
+There were no other deps to update. `cyrius.cyml` declares no `[deps.NAME]` git dependencies, so
+`cyrius deps` and `cyrius update` have no tags to move, and no `cyrius.lock` is written (since 6.6.4
+a stdlib-only project gets one only from `deps --lock`). `dist/agnostik.deps` is unchanged at 15
+stdlib leaves.
+
+⚠ **`cyrius update` is not the refresh command for this repo.** With no git deps it copied the
+*whole* snapshot into `lib/`: 111 files, including an untracked `lib/unicode/` that the `lib/*.cyr`
+ignore rule does not cover. That was reverted; `lib sync` + `deps` is the right pair.
+
+Builds still read the stdlib from the pinned snapshot, not from `./lib/`. The 6.6.6 binary is
+byte-identical whether built against the stale 6.6.2 `lib/` or the re-synced one.
+
+### Fixed — F-022: `_fill_random` reached `getrandom` by its raw x86_64 number
+
+`syscall(318, buf, n, 0)` → `sys_getrandom(buf, n, 0)` in `src/types.cyr`. 318 is `getrandom` on
+x86_64-linux and nowhere else:
+
+| target | raw 318 | effect on every `agent_id_new` / `user_id_new` / trace-id call |
+|---|---|---|
+| aarch64-linux | unassigned, `-ENOSYS` | fell to `/dev/urandom`: openat + read + close, 4 syscalls instead of 1. In a sandbox that denies the open, the fail-loud path exits 70 |
+| agnos | no syscall 318 (its `getrandom` is #45) | per the stdlib's agnos peer, an unknown number falls through the kernel dispatch and the caller reads the result as data |
+| Windows | unrouted, `-ENOSYS` | no `/dev/urandom` either, so the first ID exits 70 |
+| macOS | rewritten to `getentropy`, which returns `0` on success | read as a failure, so the fallback ran on every ID |
+
+The aarch64 row was executed: `qemu-aarch64 -strace` showed `Unknown syscall 318` and then the
+fallback, once per ID. After the fix it shows `getrandom(…,16,0) = 16`. The IDs were random all
+along, since the fallback reads the kernel CSPRNG, so on aarch64 this was cost and availability,
+not entropy. The agnos, Windows and macOS rows come from the stdlib tables and were not executed.
+
+⭐ **`sys_getrandom`, not the `SYS_GETRANDOM` spelling cyrius 6.6.4's notes suggested for this
+site.** The constant is absent from the Windows peer, so `SYS_GETRANDOM` fails `--win` builds with
+`undefined variable 'SYS_GETRANDOM'`. It would also leave macOS reading getentropy's `0` as a
+failure. The wrapper is the stdlib's portable CSPRNG primitive and is defined in every target's
+peer.
+
+**Consumer impact: none on x86_64-linux.** It is the same syscall with the same arguments; only the
+wrapper call is new, and the wrapper's `r == 0 → len` branch cannot fire on Linux for `n > 0`. On
+aarch64, agnos, Windows and macOS the primary path now works. `dist/agnostik.cyr` now references
+`sys_getrandom`, which every 6.6.x stdlib peer defines, and agnostik 1.6.x already requires
+cyrius ≥ 6.6.2.
+
+**Still open — F-023 (LOW).** The `/dev/urandom` fallback and the fail-loud exit keep raw x86_64
+numbers (2 / 0 / 3 / 1 / 60). aarch64 and Windows route them. On agnos they mean getpid / exit /
+spawn / write / winsize. After F-022 that path runs only if `sys_getrandom` fails. The fix is a
+design choice (an agnos-specific open, or dropping the fallback), so it is deferred. Both findings
+are written up in [`docs/audit/2026-09-23-audit.md`](docs/audit/2026-09-23-audit.md).
+
+### Fixed — CI never ran the aarch64 cross-build
+
+`ci.yml` and `release.yml` probed `$HOME/.cyrius/bin/cc5_aarch64`. cyrius renamed `cc5` → `cycc` at
+6.0.0. The `cc5_*` compat symlinks came only from its `install.sh` and were dropped at 6.1.1, and no
+6.x release tarball — the thing CI unpacks — ships the old name (checked 6.0.14, 6.0.26 and 6.6.6).
+
+So on every pin since 1.2.3, the first 6.x one, CI skipped the aarch64 build with a `::warning::`
+and exited 0, and every release silently dropped its `agnostik-<tag>-aarch64-linux` artifact. Both
+workflows now probe `cycc_aarch64`. The skipped build is where F-022 would have surfaced: the
+compiler flagged `src/types.cyr:8` on aarch64 at the old 6.6.2 pin too.
+
+**Release artifact change:** from 1.6.2 on, releases again carry `agnostik-<tag>-aarch64-linux`
+(1,024,048 B), listed in `SHA256SUMS`.
+
+### Toolchain notes — what 6.6.3 → 6.6.6 changed for agnostik
+
+- **DCE has removed code for real since cyrius 6.5.72**, and 1.6.0 crossed that release without
+  recording it; the `675,824 B` in its entry is the plain build. The `CYRIUS_DCE=1` artifact that CI
+  and release ship went **629,032 B** (1.3.6–1.5.x on 6.5.35) → **126,960 B** (the 1.6.1 tree on
+  6.6.2) → **127,128 B** (1.6.2 on 6.6.6, with 1,989 unreachable fns / 553,555 B eliminated). The
+  plain build went 675,824 → 684,184 B. aarch64 DCE still NOP-fills (1,024,048 B).
+- **`lib/bench.cyr` accounting was reworked in 6.6.5.** It measures the timer floor (~1.3 µs per
+  clock read on this host) and nets it per window. min/max now count only windows that clear a
+  100 × (floor + tick) resolution bar. Rows whose window sits near that bar can print `avg < min`:
+  `message_build_3turn` and `resource_limits_from_json` did in 2 of 3 runs. `avg`, the only field
+  the gate parses, counts every window and is unaffected.
+- **cyrdoc counts more in 6.6.5**: `pub fn`, `public fn` and `#inline fn`, and whole files rather
+  than the first 64 KB. The per-file `cyrius doc --check` sum over `src/*.cyr` is **860** (853 at
+  6.5.35), plus 187 over the test and bench files. `cyrius audit`'s docs phase reports **1,421**
+  over its `src tests` scope, which is not the sum of those per-file counts (1,047). That phase is
+  still the only reason `audit` exits 1; fmt, lint, tests (18/18) and bench pass.
+- **`cyrfmt --check` really checks now (6.6.5).** It used to print to stdout and exit 0. All 34
+  source, test and bench files are clean.
+- `cyrius self` still false-fails exactly as recorded at 1.3.6 (`bayan_json_get` / `clock_now_ns`,
+  `FAIL: cycc!=cycc`).
+
+### Performance
+
+`scripts/bench-regression.sh`: **25 checked, 0 new, 0 regressions**. The baseline is the 1.5.0 run
+on cyrius 6.5.35, because 1.5.1, 1.6.0 and 1.6.1 appended none. The deltas therefore span two pin
+steps, 6.5.35 → 6.6.2 → 6.6.6. To split them, the table adds medians of 3 runs of the *same* source
+(the 1.6.1 tree) under each pin, taken back to back.
+
+| benchmark | 1.5.0 baseline (6.5.35) | 1.6.2 gate | Δ vs baseline | 6.6.2 median | 6.6.6 median | Δ pin only |
+|---|---:|---:|---:|---:|---:|---:|
+| token_usage_update | 27 | 31 | +14.8% | 28 | 31 | +10.7% |
+| injection_scores_from_json | 286 | 323 | +12.9% | 291 | 316 | +8.6% |
+| token_usage_from_json | 378 | 418 | +10.6% | 392 | 396 | +1.0% |
+| agent_stats_from_json | 256 | 283 | +10.5% | 275 | 267 | -2.9% |
+| accel_flags_from_json | 674 | 727 | +7.9% | 682 | 703 | +3.1% |
+| trace_context_child | 524 | 565 | +7.8% | 554 | 544 | -1.8% |
+| trace_context_new | 1048 | 1126 | +7.4% | 1095 | 1022 | -6.7% |
+| resource_limits_from_json | 432 | 459 | +6.2% | 435 | 433 | -0.5% |
+| message_build_3turn | 346 | 359 | +3.8% | 348 | 368 | +5.7% |
+| audit_entry_full | 2150 | 2223 | +3.4% | 2172 | 2147 | -1.2% |
+| traceparent_format | 1673 | 1718 | +2.7% | 1668 | 1676 | +0.5% |
+| resource_limits_to_json | 923 | 941 | +2.0% | 912 | 918 | +0.7% |
+| agent_id_new | 550 | 559 | +1.6% | 532 | 516 | -3.0% |
+| agent_id_roundtrip | 944 | 954 | +1.1% | 972 | 960 | -1.2% |
+| accel_flags_to_json | 1547 | 1563 | +1.0% | 1507 | 1544 | +2.5% |
+| version_roundtrip | 255 | 256 | +0.4% | 233 | 236 | +1.3% |
+| token_usage_to_json | 829 | 829 | 0.0% | 800 | 807 | +0.9% |
+| version_to_str | 106 | 104 | -1.9% | 101 | 105 | +4.0% |
+| agent_stats_to_json | 677 | 661 | -2.4% | 639 | 648 | +1.4% |
+| security_context_full | 657 | 639 | -2.7% | 610 | 650 | +6.6% |
+| inference_request_full | 366 | 356 | -2.7% | 352 | 338 | -4.0% |
+| agent_id_to_str | 713 | 689 | -3.4% | 703 | 698 | -0.7% |
+| injection_scores_to_json | 777 | 744 | -4.2% | 750 | 750 | 0.0% |
+| accelerator_device_full | 119 | 104 | -12.6% | 102 | 99 | -2.9% |
+| sandbox_config_default | 34 | 27 | -20.6% | 25 | 25 | 0.0% |
+
+Every row is inside its threshold (50% ns-bracket / 80% µs-bracket). The notable movers, read
+against all three 6.5.35-era history runs rather than the single baseline row:
+
+- **Win: `accelerator_device_full`.** Every 6.6.x sample (94–107 ns) is below every 6.5.35 sample
+  (111–119 ns), about −10%. It arrived in the 6.5.35 → 6.6.2 step, and 6.6.6 leaves it flat.
+- **Not a win: `sandbox_config_default`, despite reading −20.6%.** Its 34 ns baseline is the middle
+  of a noisy 27 / 34 / 42 ns trio. 6.6.x sits at 24–29 ns, the low end of that range.
+- **Drift: `injection_scores_from_json`** is the one consistent mover across the 6.6.6 step. All
+  four 6.6.6 samples (309–347 ns) are above all three 6.6.2 samples (290–303 ns), which are
+  themselves above the 6.5.35 range (276–289 ns): about +8% / +25 ns at 6.6.6.
+- **Drift: `token_usage_update`**, +2–4 ns on a 27 ns op (6.5.35: 27 / 27 / 27; 6.6.6: 29–32).
+- **Noise: `token_usage_from_json` and `agent_stats_from_json`.** Both read +10% against the
+  baseline row, but they sit within or just above their 6.5.35 ranges (378–406 and 256–270 ns) and
+  moved −3% to +1% across the 6.6.6 step itself.
+
+**F-022's cost.** Five interleaved A/B pairs on 6.6.6 (raw 318 vs `sys_getrandom`, same host
+state): 22 of 25 rows within ±2%. The three outliers at +4.7% to +5.4% are `agent_id_new` 535 → 563,
+`injection_scores_from_json` and `accel_flags_from_json`, and the last two never call
+`_fill_random`. The composites that do call it moved −1.5% to +1.6% (`agent_id_roundtrip` −1.4%,
+`security_context_full` −1.5%, `trace_context_new` +1.6%). So there is no consistent per-call cost;
+a call and a compare are a few ns against a ~500 ns syscall.
+
+The release run is appended to `docs/benchmarks/history.csv` as the next baseline (25 rows). Its
+commit column reads `5e1b9ed`, because the script records HEAD and the 1.6.2 tree was uncommitted
+when it ran.
+
+### Verification
+
+- `CYRIUS_DCE=1 cyrius build`: x86_64-linux 127,128 B, aarch64 1,024,048 B, agnos 126,976 B,
+  Windows 790,528 B. All build, with 0 warnings except Windows' informational
+  routed-raw-syscall note.
+- `cyrius test`: **18 files, 1,412 assertions, 0 failures**, on x86_64-linux and on aarch64
+  (`cyrius test --aarch64`, under `qemu-aarch64`).
+- `cyrius fmt --check` and `cyrius lint`: 34 files clean, 0 warnings, 0 untracked deferrals.
+  `CYRIUS_TYPE_CHECK=1`: 0 agnostik-side warnings. `cyrius vet`: 24 deps, 0 untrusted, 0 missing.
+- `scripts/api-surface.sh check`: 916 fns, matching the snapshot. `cyrius distlib --check`:
+  current. The `dist/agnostik.cyr` diff is the version banner plus the `_fill_random` change
+  (161,077 → 161,433 B).
+- CI security scan (run locally, verbatim): clean.
+- The published `cyrius-6.6.6-x86_64-linux.tar.gz` matches its `.sha256` sidecar, and its `lib/`
+  and toolchain binaries are byte-identical to the local install.
+
+### Correction
+
+The 1.6.0 entry's "18 test files, 788 assertions" does not reproduce. The same 18 files, unchanged
+since 1.5.1, report **1,412** on both 6.6.2 and 6.6.6.
+
+
 ## [1.6.1] - 2026-09-10
 
 **A name collision that had been live and silent since 1.3.5.**

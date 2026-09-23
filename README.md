@@ -11,14 +11,16 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.5.0
-- **Toolchain**: Cyrius `6.5.35` (pinned in `cyrius.cyml`)
-- **Tests**: 1,402 assertions across 18 `.tcyr` files; `CYRIUS_TYPE_CHECK=1`
-  clean; api-surface gate locked at 913 public fns
+- **Current**: 1.6.2
+- **Toolchain**: Cyrius `6.6.6` (pinned in `cyrius.cyml`)
+- **Tests**: 1,412 assertions across 18 `.tcyr` files, passing on x86_64-linux
+  and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean;
+  api-surface gate locked at 916 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
   2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
-  contract gaps shipped in v1.4.0). Cadence: every minor cut, plus each
+  contract gaps shipped in v1.4.0), 2026-09-23 (v1.6.2 cross-target syscall
+  review — F-022 fixed, F-023 open). Cadence: every minor cut, plus each
   P(-1) pass.
 - **Per-parser fuzz**: 8 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.

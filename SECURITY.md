@@ -30,7 +30,10 @@ only). Primary attack surfaces:
      audit finding's input shape as a regression seed; runs every CI build.
 2. **Identifier generation** — `agent_id_new` / `span_id_new` /
    `trace_id_new` use a `getrandom(2)` → `/dev/urandom` retry loop with
-   loud-fail on both unavailable (see audit F-001).
+   loud-fail on both unavailable (see audit F-001). Since v1.6.2 the
+   primary path goes through the stdlib's portable `sys_getrandom`, not a
+   raw x86_64 syscall number (F-022). The fallback's raw numbers are still
+   wrong on agnos (F-023, open).
 3. **OTLP wire-format encoding** (v1.2.0) in `src/proto.cyr` and
    `Span_to_otlp_proto`. Output is byte-exact-tested; helpers don't read
    external input directly (callers pass `str_builder` and pre-validated
@@ -46,6 +49,9 @@ shell interpolation — verified by the `Security Scan` job in
 |------------|-------|----------|--------|
 | 2026-04-26 | Pre-1.0.0 hardening pass | 11 closed (F-001..F-011) | [`docs/audit/2026-04-26-audit.md`](docs/audit/2026-04-26-audit.md) |
 | 2026-05-10 | Post-1.0 cadence (1.0.1..1.0.7 cumulative diff) | 1 INFO closed (F-012); F-001..F-011 re-verified | [`docs/audit/2026-05-10-audit.md`](docs/audit/2026-05-10-audit.md) |
+| 2026-06-01 | v1.3.0 closeout pass | 1 LOW closed (F-013, bounded `version_from_str` scan) | [`docs/audit/2026-06-01-audit.md`](docs/audit/2026-06-01-audit.md) |
+| 2026-08-24 | v1.3.7 P(-1) full-source sweep | F-014..F-021: 6 closed in v1.3.7, 2 contract gaps closed in v1.4.0 | [`docs/audit/2026-08-24-audit.md`](docs/audit/2026-08-24-audit.md) |
+| 2026-09-23 | v1.6.2 cross-target syscall review (cyrius 6.6.2 → 6.6.6) | F-022 (MEDIUM) closed; F-023 (LOW) open | [`docs/audit/2026-09-23-audit.md`](docs/audit/2026-09-23-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

@@ -2,10 +2,20 @@
 # Audit 2026-04-26 F-001: removed xorshift state and the deterministic
 # fallback constant. UUIDs now draw fresh entropy per call.
 fn _fill_random(buf, n) {
-    # Primary: getrandom(2) — syscall 318 on x86_64. Preferred over
-    # opening /dev/urandom because it works in sandboxed envs that
-    # block file IO and never returns short reads for buffers <= 256 B.
-    var got = syscall(318, buf, n, 0);
+    # Primary: getrandom(2). Preferred over opening /dev/urandom because
+    # it works in sandboxed envs that block file IO and never returns
+    # short reads for buffers <= 256 B.
+    #
+    # F-022 (audit 2026-09-23): reached through the stdlib's
+    # sys_getrandom, never a raw syscall number. Each target's syscall
+    # peer supplies it — getrandom 318 on x86_64-linux, 278 on
+    # aarch64-linux, #45 on agnos, ProcessPrng on Windows, getentropy
+    # (normalised to the byte count) on macOS. The raw 318 this replaced
+    # is getrandom only on x86_64-linux: aarch64 returned -ENOSYS on every
+    # call, so the fast path never ran there, and agnos has no syscall 318.
+    # Spelling it SYS_GETRANDOM instead would not compile for Windows,
+    # whose peer defines no such constant.
+    var got = sys_getrandom(buf, n, 0);
     if (got == n) { return 0; }
     # Fallback: /dev/urandom for older kernels / restricted seccomp.
     var fd = syscall(2, "/dev/urandom", 0, 0);

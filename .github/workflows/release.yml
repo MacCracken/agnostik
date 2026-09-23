@@ -77,12 +77,16 @@ jobs:
           echo "agnostik: $(wc -c < build/agnostik) bytes"
 
       - name: Cross-build aarch64 (best-effort)
+        # Probe the 6.x name: cyrius renamed cc5 -> cycc at 6.0.0, and no 6.x
+        # release tarball ships a `cc5_aarch64` (checked 6.0.14, 6.0.26,
+        # 6.6.6), so the old probe dropped this artifact from every 6.x
+        # release. See the matching step in ci.yml.
         run: |
-          if [ -x "$HOME/.cyrius/bin/cc5_aarch64" ]; then
+          if [ -x "$HOME/.cyrius/bin/cycc_aarch64" ]; then
             CYRIUS_DCE=1 cyrius build --aarch64 src/main.cyr build/agnostik-aarch64
             echo "agnostik-aarch64: $(wc -c < build/agnostik-aarch64) bytes"
           else
-            echo "::warning::cc5_aarch64 not in toolchain — aarch64 binary skipped"
+            echo "::warning::cycc_aarch64 not in toolchain — aarch64 binary skipped"
           fi
 
       - name: Test

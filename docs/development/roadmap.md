@@ -2,11 +2,24 @@
 
 ## Status
 
-**v1.5.0** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), **1,402 test assertions across 18 `.tcyr` files**, 25
-benchmarks, zero external dependencies, Cyrius `6.5.35`.
+**v1.6.2** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), **1,412 test assertions across 18 `.tcyr` files** (passing on
+x86_64-linux and on aarch64 under `qemu-aarch64`), 25 benchmarks, zero
+external dependencies, Cyrius `6.6.6`.
 
-v1.5.0 is a security minor: `enum LinuxCapability`'s values are Linux
+v1.6.2 is a toolchain refresh (`6.6.2` → `6.6.6`, `lib/` re-vendored) plus
+**F-022**: `_fill_random` called `getrandom` by its raw x86_64 number, which
+is `-ENOSYS` on aarch64 and not a syscall on agnos. It now calls the stdlib's
+portable `sys_getrandom`. It also re-enables the aarch64 CI cross-build, which
+had probed a compiler name (`cc5_aarch64`) that no 6.x toolchain ships.
+v1.6.1 renamed `health_check_new` → `agnostik_health_check_new` (the argonaut
+collision in kybernet). v1.6.0 migrated to the cyrius 6.6.x value form (pin
+`6.5.35` → `6.6.2`; `result_print_agnostik_err` takes the tag); v1.5.1 added
+the three missing `cglim_set_*` setters. See
+[`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md) for the most
+recent audit.
+
+v1.5.0 was a security minor: `enum LinuxCapability`'s values are Linux
 capability numbers again. They are fed to `capset(2)` via `1 << cap`, and
 the enum omitted `CAP_MAC_OVERRIDE`/`CAP_MAC_ADMIN` (shifting its tail by
 two) and transposed `CAP_AUDIT_READ`/`CAP_AUDIT_CONTROL`. Adds
@@ -32,8 +45,8 @@ format-gate fix), v1.3.5 (`6.4.62` → `6.5.27`), v1.3.4 (`6.3.15` →
 `6.4.62`), v1.3.3 (error-family namespacing `ERR_* → STIK_ERR_*`,
 symbol-level breaking). See [`state.md`](state.md) for the live snapshot,
 [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md) for the
-most recent audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for full
-release history.
+last full-source audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for
+full release history.
 
 Every item below is pinned to a specific release. Shipped work is recorded
 in `CHANGELOG.md` and not duplicated here — the principle: if work is worth
@@ -137,14 +150,15 @@ look. Full numbers in the CHANGELOG `[1.3.1]` Performance section.
   later cyrius pin recovers the three real small-op paths, or if a
   consumer's profile shows these constructor/format ops on a hot path.
   Ack'd via `[bench-regression-ack]` in the release commit (whole-run skip).
-- **DCE binary +81 KB** (`311,264 B` → `392,840 B`). Two causes: 6.2.11 DCE
+- ~~**DCE binary +81 KB** (`311,264 B` → `392,840 B`). Two causes: 6.2.11 DCE
   *NOPs* unreachable fns in place instead of stripping, and the `bayan`
   bundle (base64+json+csv+toml) adds ~119 KB of now-NOPed dead code the
-  former standalone `json.cyr` did not. agnostik uses none of bayan's json
-  directly — it's declared only to satisfy the build's `bayan_json_get`
-  preamble reference. Revisit if upstream ships a leaner standalone json
-  module (or strips-not-NOPs again), which would let `[deps] stdlib` drop
-  back off the bundle.
+  former standalone `json.cyr` did not.~~ **RESOLVED upstream at cyrius
+  6.5.72**, which made `CYRIUS_DCE=1` strip rather than NOP-fill on x86_64.
+  agnostik first pinned past it at v1.6.0, and it was recorded at v1.6.2: the
+  DCE binary is **127,128 B** on 6.6.6. `bayan` stays declared for the
+  `bayan_json_get` preamble reference, but its dead code no longer reaches
+  the artifact.
 
 ---
 
@@ -164,28 +178,71 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
   effort, so the realistic shape is incremental (document a module per
   cycle, gate new fns at the api-surface check) rather than one sweep.
   Until then, read `audit`'s per-phase verdicts, not its exit code.
+  **At v1.6.2 / 6.6.6:** the `src/*.cyr` per-file sum is **860** (plus 187
+  over the test and bench files). `audit`'s docs phase reports **1,421** over
+  its `src tests` scope, which is not the sum of the per-file counts (1,047),
+  so track the per-file `src` figure release to release.
 
-- **Binary +215,520 B (+52.1%)** — `413,512` → `629,032` B, entirely the
+- ~~**Binary +215,520 B (+52.1%)** — `413,512` → `629,032` B, entirely the
   361-fn PDF parse/encode subsystem (209 private `_pdf*` + 152 public
   `bayan_pdf_*`) that 6.5.3x folds into the bundled `bayan`
   module (`215,481` → `641,083` B of source). agnostik reaches none of it;
-  it lands NOPed. Same shape as the v1.3.1 `+81 KB` item below, one
-  magnitude up, and the same resolution applies: revisit if upstream ships
-  a leaner json module or returns to strip-not-NOP DCE, either of which
-  would let `[deps] stdlib` drop the bundle. Worth noting the metric itself
-  has quietly changed meaning — since DCE NOP-fills in place, a DCE build
-  and a plain build now emit byte-identical artifacts, so "binary size"
-  tracks total stdlib surface, not reachable surface.
+  it lands NOPed.~~ **RESOLVED upstream at cyrius 6.5.72** (strip-not-NOP
+  DCE on x86_64). Crossed at v1.6.0 and recorded at v1.6.2: the DCE
+  artifact went 629,032 → 126,960 B (6.6.2) → **127,128 B** (6.6.6), with
+  553,555 B of unreachable code eliminated. On x86_64, binary size tracks
+  reachable surface again. aarch64 DCE still NOP-fills (1,024,048 B).
 
 - **`cyrius self` still false-fails** — same `clock_now_ns` /
   `bayan_json_get` preamble-resolution defect, verified on 6.5.27, 6.5.30,
-  and 6.5.35, so not a 6.5.35 regression. `cyrius audit` does not cover it
+  6.5.35 and **6.6.6** (v1.6.2), so not a regression at any of them. `cyrius audit` does not cover it
   and has not since 6.2.24, when the self-host phase left `audit`'s phase
   list; the `audit`-side preamble fix landed at **6.4.73**, already present
   in the previous 6.5.27 pin — the bug was routed around, not repaired.
   Tracked in
   [`issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md);
   archive that file when `self` resolves its preamble.
+
+---
+
+## Backlog — v1.6.2 toolchain review (unpinned, revisit later)
+
+Surfaced by the 6.6.6 pin and the cross-target syscall review. Full
+write-ups are in [`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md)
+and the CHANGELOG `[1.6.2]` sections.
+
+- **F-023 (LOW) — `_fill_random`'s fallback still uses raw x86_64-linux
+  syscall numbers.** Its `open` / `read` / `close` / `write` / `exit` are 2 /
+  0 / 3 / 1 / 60. aarch64 and Windows route them; on agnos they are getpid /
+  exit / spawn / write / winsize. After F-022 this path runs only if
+  `sys_getrandom` fails. There are two fixes, and choosing between them is the
+  work:
+  1. Route through `sys_read` / `sys_close` / `sys_write` / `sys_exit`, which
+     are uniform on every peer, plus an agnos arm for `sys_open`, whose
+     signature there is `(name, namelen, flags)`.
+  2. Drop the `/dev/urandom` fallback now that `sys_getrandom` covers every
+     target, keeping only the fail-loud path.
+  Either is a behaviour change for kernels without `getrandom(2)` (Linux
+  < 3.17), so it wants a minor, not a toolchain patch.
+- **Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
+  `resource_limits_from_json` run 500-iteration windows that sit near the
+  ~222 µs bar (100 × (clock floor + tick) on this host). Only their slower
+  windows resolve, so `min` can exceed `avg`. The gate reads `avg` and is
+  unaffected. Raising those batch sizes would make every window resolve, but
+  it changes what those rows measure, so land it with a fresh baseline and
+  a note.
+- **Upstream (cyrius) papercuts to file.**
+  - `cyrius update` on a project with no `[deps.NAME]` entries copies the
+    whole stdlib snapshot into `./lib/`: 111 files, including an untracked
+    `lib/unicode/` that the `lib/*.cyr` ignore rule misses.
+  - No raw-syscall diagnostic fires for `--agnos` builds, although agnos
+    numbering diverges from x86_64-linux further than aarch64's does. The
+    aarch64 diagnostic is what caught F-022; nothing would have caught F-023.
+- **aarch64 is build-checked in CI, not run.** CI now cross-builds aarch64
+  again (the probe was `cc5_aarch64` through 1.6.1), and the full suite passes
+  locally under `qemu-aarch64`. Running `cyrius test --aarch64` in CI would
+  need `qemu-user` on the runner; it is a small step if aarch64 consumers
+  appear.
 
 ---
 

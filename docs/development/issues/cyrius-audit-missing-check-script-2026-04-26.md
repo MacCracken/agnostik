@@ -237,3 +237,30 @@ not because 6.5.35 changed anything. Workaround: run `cyrius audit` for
 fmt/lint/tests/bench and read its per-phase verdicts rather than its exit
 code; treat `cyrius self`'s failure as known-false. Archive this file when
 `cyrius self` resolves its stdlib preamble.
+
+## Update 2026-09-23 — cyrius 6.6.6 (during the 6.6.2 → 6.6.6 pin bump, agnostik v1.6.2)
+
+`cyrius self` is **still open**, unchanged. On 6.6.6 it fails exactly as
+recorded above:
+
+```
+warning: undefined function 'bayan_json_get'
+warning: undefined function 'clock_now_ns'
+warning: undefined function 'clock_now_ns' (call site may be unreachable)
+error: refusing to emit binary with 1 reachable undefined function(s) (pass --allow-undef to downgrade)
+  FAIL: cycc!=cycc
+```
+
+rc 1. 6.6.6's own notes say `cyrius self` now "refuses by name if its
+per-target source is missing", and that x86-64 Linux still uses
+`src/main.cyr`. That fits what this tree shows: `self` compiles agnostik's
+`src/main.cyr` without the manifest's stdlib preamble, which is where the
+two undefined symbols come from.
+
+`cyrius audit` stays usable. fmt, lint, tests (18 / 18) and bench all pass.
+It exits 1 only on its `docs` phase, which now reports 1,421 undocumented
+public fns over a `src tests` scope; the per-file `src/*.cyr` sum is 860.
+That is agnostik's own gap and a roadmap item, not this issue.
+
+Table row update: `cyrius self` stdlib preamble — **still open** — fails
+identically on 6.5.27, 6.5.30, 6.5.35 and **6.6.6**.

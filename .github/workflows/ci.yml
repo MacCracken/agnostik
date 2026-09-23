@@ -150,10 +150,16 @@ jobs:
           echo "dist bundle matches src/"
 
       - name: Cross-build aarch64
-        # Best-effort: only when toolchain bundle includes cc5_aarch64.
+        # Best-effort: only when the toolchain bundle ships cycc_aarch64.
+        # cyrius renamed cc5 -> cycc at 6.0.0. The cc5_* compat symlinks came
+        # from its install.sh, never the release tarball this job unpacks
+        # (checked 6.0.14, 6.0.26, 6.6.6), and were dropped at 6.1.1 — so the
+        # old `cc5_aarch64` probe skipped this step on every 6.x pin, silently.
+        # That is how agnostik's raw getrandom 318 (-ENOSYS on aarch64, F-022)
+        # went unseen until 1.6.2.
         run: |
-          if [ ! -x "$HOME/.cyrius/bin/cc5_aarch64" ]; then
-            echo "::warning::cc5_aarch64 not shipped with Cyrius $CYRIUS_VERSION — skipping"
+          if [ ! -x "$HOME/.cyrius/bin/cycc_aarch64" ]; then
+            echo "::warning::cycc_aarch64 not shipped with this Cyrius toolchain — skipping"
             exit 0
           fi
           CYRIUS_DCE=1 cyrius build --aarch64 src/main.cyr build/agnostik-aarch64

@@ -3,7 +3,7 @@
 ## Setup
 
 1. Install the [Cyrius toolchain](https://github.com/MacCracken/cyrius) — version pinned in `cyrius.cyml` (`[package].cyrius`).
-2. Ensure `cc5`, `cyrlint`, and `cyrfmt` are on your PATH (`$HOME/.cyrius/bin/`).
+2. Ensure `cycc` (the compiler — named `cc5` before cyrius 6.0.0), `cyrlint`, and `cyrfmt` are on your PATH (`$HOME/.cyrius/bin/`).
 3. Clone the repo and verify:
    ```sh
    cyrius lib sync                              # copy version-pinned stdlib snapshot into lib/ (6.4.x+: declared subset by default, --full for all)
