@@ -11,18 +11,18 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.6.2
+- **Current**: 1.6.3
 - **Toolchain**: Cyrius `6.6.6` (pinned in `cyrius.cyml`)
-- **Tests**: 1,412 assertions across 18 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 1,536 assertions across 18 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean;
   api-surface gate locked at 916 public fns
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
   2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
   contract gaps shipped in v1.4.0), 2026-09-23 (v1.6.2 cross-target syscall
-  review — F-022 fixed, F-023 open). Cadence: every minor cut, plus each
-  P(-1) pass.
-- **Per-parser fuzz**: 8 parser entry points × 200 deterministic
+  review — F-022 fixed in v1.6.2; F-023 and F-024 fixed in v1.6.3).
+  Cadence: every minor cut, plus each P(-1) pass.
+- **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
 
 See [`docs/development/state.md`](docs/development/state.md) for the live
@@ -54,8 +54,8 @@ include "src/lib.cyr"
 
 # Identifiers
 var id = agent_id_new();                              # CSPRNG-backed UUID v4
-var parsed = agent_id_from_str(str_from("550e8400-e29b-41d4-a716-446655440000"));
-assert_eq(is_ok(parsed), 1, "valid UUID parses");
+var parsed_t, parsed = agent_id_from_str(str_from("550e8400-e29b-41d4-a716-446655440000"));
+assert_eq(is_ok(parsed_t), 1, "valid UUID parses");      # a Result binds tag + value
 
 # Tracing (W3C TraceContext)
 var ctx = trace_context_new();
@@ -76,13 +76,14 @@ ResourceLimits_to_json(rl, j);                        # `{"max_memory":268435456
 ## Build / Test / Bench
 
 ```bash
-cyrius lib sync                                       # copy version-pinned stdlib snapshot into lib/ (6.4.x+: declared subset by default, --full for all)
-cyrius deps                                           # resolve git deps into lib/ (stdlib comes from lib sync)
+cyrius lib sync                                       # vendor the pinned stdlib's declared subset into lib/
+cyrius deps                                           # add its transitive includes (agnostik has no git deps)
 cyrius build src/main.cyr build/agnostik              # compile the test harness
-for t in tests/tcyr/*.tcyr; do cyrius test "$t"; done # 1367/1367
+cyrius tests                                          # every .tcyr under tests/ (counts in state.md)
 cyrius bench tests/bcyr/agnostik.bcyr                 # 25 benchmarks
 scripts/bench-regression.sh                           # vs baseline in history.csv
 scripts/api-surface.sh check                          # diff vs committed snapshot
+scripts/doc-debt.sh check                             # no new undocumented fns
 ```
 
 ## Consumers

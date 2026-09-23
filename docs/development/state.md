@@ -5,6 +5,25 @@
 
 ## Version
 
+**1.6.3** — Patch. **F-023**: `_fill_random` has no `/dev/urandom` fallback
+any more. Its raw open / read / close / write / exit numbers (2 / 0 / 3 / 1 /
+60) mean getpid / exit / spawn / write / winsize on agnos. It now uses
+`sys_getrandom` only and fails loudly through `sys_write` / `sys_exit`. Behaviour
+change: Linux < 3.17, and sandboxes that deny `getrandom` but allow the open,
+now exit 70 on the first ID. **`AgentInfo` JSON**: `AgentInfo_from_json` read
+integer `agent_type_id` / `status_id` keys while `_to_json` writes names, so
+its own output parsed back as type 0 / status 0. It now reads the names, with
+the integer keys as a fallback. **F-024 (LOW)**: `AgentInfo_to_json`
+dereferenced the id 0 that a missing or bad `id` leaves, a SIGSEGV on
+parse-then-reserialize; the id is now written as `null`. Two roadmap items also
+land. The bench harness sizes every window to about 1 ms or more, so all 25
+rows clear the 6.6.5 resolution bar; rounds dropped 10 → 5, and peak RSS is
+126 MB. And `scripts/doc-debt.sh` gates CI on new undocumented fns, with
+`classification.cyr` documented (860 → 849). 1,536 assertions / 18 files, 0
+failures, on x86_64-linux and aarch64; api-surface 916 fns, unchanged; bench
+gate 25 checked, 0 regressions. An A/B of 1.6.2 vs 1.6.3 `src/` on the same
+harness put 25 of 25 rows within ±5%.
+
 **1.6.2** — Toolchain-refresh patch. Cyrius pin `6.6.2` → `6.6.6`; `lib/`
 re-vendored (`lib sync` + `deps`: 32 files, all byte-identical to the 6.6.6
 snapshot — 17 changed, 2 new: `alloc_cx`, `args_agnos`). There are no
@@ -613,10 +632,15 @@ for full release notes.
   what named F-022. No equivalent check exists for `--agnos` (see F-023).
 - **Bench harness** (`lib/bench.cyr`, reworked at 6.6.5): it measures the
   clock-read floor at startup (~1.3 µs on this host) and nets it per window.
-  `min`/`max` count only windows that clear 100 × (floor + tick), so rows near
-  that bar can print `avg < min`. `scripts/bench-regression.sh` parses `avg`
-  only, so it is unaffected. The new supplementary `[per op in ps: …]` lines
-  start with `[` and carry no ` avg`, so both bench parsers skip them.
+  `min`/`max` count only windows that clear 100 × (floor + tick), which is
+  ~225 µs here and up to ~455 µs on the CI hosts `bench.cyr` documents. Since
+  1.6.3 `tests/bcyr/agnostik.bcyr` sizes every window to about 1 ms or more,
+  so every row resolves; before that, rows near the bar could print `avg < min`.
+  Upstream tracks that instrument defect as an open issue
+  (`2026-09-21-hisab-bench-min-above-mean-below-resolution-bar.md`).
+  `scripts/bench-regression.sh` parses `avg` only. The supplementary
+  `[per op in ps: …]` lines start with `[` and carry no ` avg`, so both bench
+  parsers skip them.
 - **Locally installed vs released**: the wrapper dispatches to the
   manifest-pinned toolchain when that version is installed, and `cyrius
   --version` prints `manifest-pin: X` alongside it, flagging drift. Keep the
@@ -672,13 +696,13 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 | Source LOC (src/)     | 4,057     | non-blank, non-comment lines across `src/*.cyr` (4,527 raw), measured at 1.6.2. Same measure: 3,617 at 1.3.0, 4,054 at 1.5.0. The ~3,180 recorded here earlier predates 1.3.0. Ported from 7,121 LOC of Rust |
 | Module count          | 12        | plus `src/proto.cyr` (OTLP wire helpers)   |
 | Test files            | 18        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0) |
-| Test assertions       | 1,412     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.6.2. +10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0; 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
+| Test assertions       | 1,536     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.6.3. +123 `AgentInfo` round-trip + 1 fuzz target at v1.6.3; 1,412 at v1.6.2 (+10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0); 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
 | Benchmarks            | 25        | `tests/bcyr/agnostik.bcyr` — gained the missing `src/proto.cyr` include at 1.3.6 |
-| Test binary           | 127,128 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.6.2; plain build 684,184 B; aarch64 1,024,048 B (DCE still NOP-fills there). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE — unrecorded until 1.6.2); **127,128 B at 1.6.2** (6.6.6) |
+| Test binary           | 127,096 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.6.3; plain build 684,152 B; aarch64 1,024,016 B (DCE still NOP-fills there). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE); 127,128 B at 1.6.2 (6.6.6); **127,096 B at 1.6.3** |
 | Build warnings        | 0         | on x86_64-linux, aarch64 and agnos. aarch64's raw-`getrandom`-318 warning (live since at least the 6.6.2 pin, unseen because CI skipped aarch64) fixed at 1.6.2 (F-022) |
 | Lint warnings         | 0         | (28 UFCS false positives resolved upstream in cyrius 5.7.7) |
-| Lib bundle (dist/)    | 161,433 B | `dist/agnostik.cyr`, 3,959 lines, regenerated by `cyrius distlib`; tracked in CI sync check. 1.6.2 diff: version banner + the F-022 `_fill_random` change |
-| Undocumented pub fns  | 860       | sum of per-file `cyrius doc --check` over `src/*.cyr` (853 at 6.5.35). `cyrius audit`'s docs phase reports 1,421 over its `src tests` scope at 6.6.6 and is the sole reason `audit` exits non-zero; pre-existing, backlog item |
+| Lib bundle (dist/)    | 164,007 B | `dist/agnostik.cyr`, regenerated by `cyrius distlib`; tracked in CI sync check. 1.6.3 diff: F-023, the `AgentInfo` fix, doc comments, banner. 1.6.2's bundle is 161,663 B; this file said 161,433 B until 1.6.3, a figure measured before 1.6.2's last comment edit |
+| Undocumented pub fns  | 849       | `docs/undocumented.baseline`, enforced by `scripts/doc-debt.sh check` in CI since 1.6.3 (a new undocumented fn fails; so does a listed fn that has since been documented). Per-file `cyrius doc --check` sum over `src/*.cyr`: 860 at 1.6.2, 853 at 6.5.35. `cyrius audit`'s docs phase reports its own, larger figure over `src tests` and is the sole reason `audit` exits non-zero |
 
 ## Consumers
 
@@ -698,10 +722,11 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.6.2`**,
-a toolchain refresh to Cyrius `6.6.6` plus F-022 (`_fill_random` →
-`sys_getrandom`; raw 318 was `-ENOSYS` on aarch64 and undefined on agnos)
-and the re-enabled aarch64 CI cross-build. Prior: `1.6.1`
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.6.3`**, a patch:
+F-023 (no `/dev/urandom` fallback), the `AgentInfo` JSON round-trip plus F-024
+(a null-id crash), bench windows sized for the 6.6.5 resolution bar, and the
+documentation-debt gate. Prior: `1.6.2` (Cyrius `6.6.6` refresh, F-022
+`_fill_random` → `sys_getrandom`, re-enabled aarch64 CI cross-build); `1.6.1`
 (`health_check_new` → `agnostik_health_check_new`, the argonaut collision in
 kybernet); `1.6.0` (Cyrius `6.5.35` → `6.6.2` value-form migration,
 `result_print_agnostik_err` arity break); `1.5.1` (the three missing

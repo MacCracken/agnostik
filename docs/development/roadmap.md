@@ -2,12 +2,19 @@
 
 ## Status
 
-**v1.6.2** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), **1,412 test assertions across 18 `.tcyr` files** (passing on
+**v1.6.3** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+helpers), **1,536 test assertions across 18 `.tcyr` files** (passing on
 x86_64-linux and on aarch64 under `qemu-aarch64`), 25 benchmarks, zero
 external dependencies, Cyrius `6.6.6`.
 
-v1.6.2 is a toolchain refresh (`6.6.2` → `6.6.6`, `lib/` re-vendored) plus
+v1.6.3 is a patch that clears four items from this roadmap. **F-023**: no
+`/dev/urandom` fallback, and the fail-loud path goes through `sys_write` /
+`sys_exit`. The `AgentInfo` JSON round-trip is fixed, with **F-024**, a
+null-id crash found in passing. Bench windows now clear the 6.6.5 resolution
+bar. And the documentation-debt gate is in CI, with `classification.cyr`
+documented. No public API change.
+
+v1.6.2 was a toolchain refresh (`6.6.2` → `6.6.6`, `lib/` re-vendored) plus
 **F-022**: `_fill_random` called `getrandom` by its raw x86_64 number, which
 is `-ENOSYS` on aarch64 and not a syscall on agnos. It now calls the stdlib's
 portable `sys_getrandom`. It also re-enables the aarch64 CI cross-build, which
@@ -109,7 +116,7 @@ they aren't re-discovered each cycle. Full context in
   (`agent.cyr`). The last one also ~~**cannot round-trip its own
   `_to_json`** (emits `agent_type`/`status` name strings, reads
   `agent_type_id`/`status_id` ints) and has no test~~. **Round-trip FIXED
-  under `[Unreleased]`, targeted at v1.6.3.** It reads the name strings now,
+  in v1.6.3.** It reads the name strings now,
   with the integer keys as a fallback, backed by a 123-assertion round-trip
   test and a fuzz target. `AgentInfo_to_json` no longer crashes on the id 0
   that a bad parse leaves (F-024). Whether to *remove* it is unchanged: it
@@ -186,7 +193,7 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
   over the test and bench files). `audit`'s docs phase reports **1,421** over
   its `src tests` scope, which is not the sum of the per-file counts (1,047),
   so track the per-file `src` figure release to release.
-  **Under `[Unreleased]`, targeted at v1.6.3:** both halves of the plan have
+  **In v1.6.3:** both halves of the plan have
   started. The gate is `scripts/doc-debt.sh check` in CI. It fails on a new
   undocumented fn, and on a fn in the grandfathered `docs/undocumented.baseline`
   that has since been documented, so the committed count is the tracked figure.
@@ -233,7 +240,7 @@ write-ups are in [`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md)
 and the CHANGELOG `[1.6.2]` sections.
 
 - ~~**F-023 (LOW) — `_fill_random`'s fallback still uses raw x86_64-linux
-  syscall numbers.**~~ **RESOLVED under `[Unreleased]` — option 2.** Its
+  syscall numbers.**~~ **RESOLVED in v1.6.3 — option 2.** Its
   `open` / `read` / `close` / `write` / `exit` were 2 / 0 / 3 / 1 / 60, which
   on agnos are getpid / exit / spawn / write / winsize; disassembling the
   1.6.2 `--agnos` binary confirms the raw numbers went through unrouted. The
@@ -243,13 +250,13 @@ and the CHANGELOG `[1.6.2]` sections.
   taken: agnos and Windows have no `/dev/urandom`, so that arm could only
   fail. As this entry predicted, it is a behaviour change: Linux < 3.17, and
   sandboxes that deny `getrandom` but allow the open, now exit 70 on the
-  first ID. See the CHANGELOG `[Unreleased]` entry and the audit's
+  first ID. See the CHANGELOG `[1.6.3]` entry and the audit's
   Resolution note.
 - ~~**Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
   `resource_limits_from_json` run 500-iteration windows that sit near the
   ~222 µs bar (100 × (clock floor + tick) on this host). Only their slower
-  windows resolve, so `min` can exceed `avg`.~~ **RESOLVED under
-  `[Unreleased]`, targeted at v1.6.3.** Every row's window is sized to about
+  windows resolve, so `min` can exceed `avg`.~~ **RESOLVED in
+  v1.6.3.** Every row's window is sized to about
   1 ms or more, which clears the documented CI hosts' bar too. Rounds drop
   from 10 to 5 to hold peak RSS at 126 MB. All 25 rows now resolve. An
   interleaved A/B of `avg`, the only field the gate reads, put 23 of 25 rows

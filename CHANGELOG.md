@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+## [1.6.3] - 2026-09-23
+
+**Patch: identifier generation has no `/dev/urandom` fallback any more (F-023), `AgentInfo`'s JSON
+round-trips and no longer crashes on a missing id (F-024), and two roadmap items land — benchmark
+windows that clear the 6.6.5 resolution bar, and a documentation-debt gate.** No public API change:
+916 fns, matching `docs/api-surface.snapshot`. 18 test files, **1,536 assertions, 0 failures**, on
+x86_64-linux and on aarch64 (under `qemu-aarch64`).
+
 ### Fixed — F-023: `_fill_random` no longer falls back to `/dev/urandom`
 
 F-022 (1.6.2) moved `_fill_random`'s primary path to `sys_getrandom`, but its `/dev/urandom`
@@ -140,65 +148,80 @@ was an optional 0.0–1.0 float.
 ### Performance
 
 `scripts/bench-regression.sh` against the 1.6.2 baseline in `history.csv` (commit `5e1b9ed`):
-**25 checked, 0 new, 0 regressions.** All but two rows came in slower, by up to +10.3%, including
-rows that never reach `_fill_random`. That is the host, not the change. To separate the two, the
-table adds medians of 3 interleaved runs of the unchanged tree (HEAD `b2fe277`) and of this one,
-taken back to back after the gate. † marks the 8 rows that draw IDs through `_fill_random`.
+**25 checked, 0 new, 0 regressions** (thresholds 50% ns-bracket / 80% µs-bracket). The medians
+column is 3 further runs taken right after the gate.
 
-| benchmark | 1.6.2 baseline | this gate run | Δ vs baseline | unchanged tree, median | this tree, median | Δ A/B |
-|---|---:|---:|---:|---:|---:|---:|
-| token_usage_update | 29 | 32 | +10.3% | 33 | 33 | +0.0% |
-| version_to_str | 100 | 110 | +10.0% | 114 | 115 | +0.9% |
-| agent_id_roundtrip † | 926 | 1016 | +9.7% | 1030 | 1050 | +1.9% |
-| inference_request_full | 338 | 369 | +9.2% | 373 | 381 | +2.1% |
-| agent_id_new † | 524 | 570 | +8.8% | 578 | 587 | +1.6% |
-| agent_id_to_str † | 681 | 732 | +7.5% | 753 | 758 | +0.7% |
-| trace_context_child † | 535 | 570 | +6.5% | 596 | 591 | -0.8% |
-| message_build_3turn | 350 | 372 | +6.3% | 411 | 415 | +1.0% |
-| traceparent_format † | 1713 | 1815 | +6.0% | 1863 | 1862 | -0.1% |
-| security_context_full † | 643 | 676 | +5.1% | 699 | 704 | +0.7% |
-| resource_limits_to_json | 930 | 975 | +4.8% | 995 | 1009 | +1.4% |
-| audit_entry_full † | 2142 | 2239 | +4.5% | 2267 | 2263 | -0.2% |
-| trace_context_new † | 1091 | 1137 | +4.2% | 1168 | 1177 | +0.8% |
-| accelerator_device_full | 100 | 104 | +4.0% | 108 | 115 | +6.5% |
-| sandbox_config_default | 25 | 26 | +4.0% | 28 | 26 | -7.1% |
-| resource_limits_from_json | 441 | 456 | +3.4% | 463 | 475 | +2.6% |
-| version_roundtrip | 240 | 248 | +3.3% | 264 | 255 | -3.4% |
-| token_usage_to_json | 854 | 878 | +2.8% | 890 | 903 | +1.5% |
-| token_usage_from_json | 413 | 423 | +2.4% | 439 | 434 | -1.1% |
-| agent_stats_from_json | 278 | 282 | +1.4% | 296 | 294 | -0.7% |
-| accel_flags_to_json | 1595 | 1614 | +1.2% | 1675 | 1667 | -0.5% |
-| injection_scores_to_json | 765 | 773 | +1.0% | 796 | 801 | +0.6% |
-| agent_stats_to_json | 661 | 665 | +0.6% | 697 | 686 | -1.6% |
-| accel_flags_from_json | 743 | 715 | -3.8% | 771 | 740 | -4.0% |
-| injection_scores_from_json | 338 | 317 | -6.2% | 342 | 319 | -6.7% |
+| benchmark | 1.6.2 baseline | 1.6.3 gate | Δ gate | 1.6.3 median of 3 | Δ median |
+|---|---:|---:|---:|---:|---:|
+| accel_flags_from_json | 743 | 666 | -10.4% | 674 | -9.3% |
+| sandbox_config_default | 25 | 22 | -12.0% | 23 | -8.0% |
+| token_usage_from_json | 413 | 420 | +1.7% | 385 | -6.8% |
+| injection_scores_from_json | 338 | 308 | -8.9% | 319 | -5.6% |
+| agent_stats_from_json | 278 | 292 | +5.0% | 265 | -4.7% |
+| injection_scores_to_json | 765 | 718 | -6.1% | 730 | -4.6% |
+| accel_flags_to_json | 1595 | 1588 | -0.4% | 1534 | -3.8% |
+| accelerator_device_full | 100 | 96 | -4.0% | 97 | -3.0% |
+| agent_stats_to_json | 661 | 629 | -4.8% | 643 | -2.7% |
+| trace_context_new | 1091 | 1099 | +0.7% | 1068 | -2.1% |
+| token_usage_to_json | 854 | 858 | +0.5% | 844 | -1.2% |
+| version_roundtrip | 240 | 239 | -0.4% | 237 | -1.2% |
+| message_build_3turn | 350 | 342 | -2.3% | 350 | +0.0% |
+| resource_limits_to_json | 930 | 916 | -1.5% | 930 | +0.0% |
+| security_context_full | 643 | 638 | -0.8% | 644 | +0.2% |
+| inference_request_full | 338 | 335 | -0.9% | 339 | +0.3% |
+| resource_limits_from_json | 441 | 440 | -0.2% | 445 | +0.9% |
+| traceparent_format | 1713 | 1740 | +1.6% | 1748 | +2.0% |
+| audit_entry_full | 2142 | 2192 | +2.3% | 2201 | +2.8% |
+| version_to_str | 100 | 110 | +10.0% | 103 | +3.0% |
+| agent_id_new | 524 | 533 | +1.7% | 541 | +3.2% |
+| agent_id_to_str | 681 | 711 | +4.4% | 711 | +4.4% |
+| trace_context_child | 535 | 559 | +4.5% | 562 | +5.0% |
+| agent_id_roundtrip | 926 | 985 | +6.4% | 974 | +5.2% |
+| token_usage_update | 29 | 31 | +6.9% | 31 | +6.9% |
 
-The unchanged tree's medians sit above the 1.6.2 baseline on all 25 rows (median +8.0%, range
-+1.2% to +17.4%), so the host was slower than at 1.6.2 throughout. Against that tree, 18 of 25 rows
-land within ±2% and 22 within ±5%, and the median row moves +0.6%. The 8 † rows move −0.8% to
-+1.9% (`agent_id_new` 578 → 587 ns). The two largest A/B movers, `sandbox_config_default` −7.1% and
-`accelerator_device_full` +6.5%, are 26–115 ns rows that draw no ID. That fits the code: the path
-`_fill_random` executes on success is the same call and compare as before.
+Medians land between −9.3% and +6.9% of the baseline. Two kinds of change could move these rows, and
+each was isolated with an interleaved A/B on this host:
 
-No `history.csv` row is appended; baseline updates ride on the release tag.
+- **The harness change** (windows resized, 10 → 5 rounds). Old vs new harness on the same tree,
+  5 pairs: 23 of 25 rows within ±5%. The two outliers are this table's two smallest rows, and they
+  moved the same way here: `sandbox_config_default` −3 ns, `token_usage_update` +2 ns.
+- **The code changes** (F-023's fallback removal; the `AgentInfo` fix, which no benchmark reaches).
+  The 1.6.2 tag's `src/` vs this release's `src/`, both built with the new harness, 3 pairs:
+  **25 of 25 rows within ±5%**, 13 within ±2%, with mixed signs. The ID-generating rows, which
+  run through `_fill_random`, moved −2.0% to +3.1% (`agent_id_new` +3.1%, `trace_context_new`
+  −2.0%).
+
+So the code costs nothing measurable. The ID-generating rows' +3–5% against the baseline is host
+variance: those rows are dominated by the `getrandom` syscall, and `agent_id_new` alone has read
+516–572 ns across this release's runs. The largest win, `accel_flags_from_json` −9.3%, is mostly a
+high baseline sample: the 1.6.2 medians for that row were 703–713 ns, and the harness A/B put it
+at −0.3%. The earlier F-023-only A/B (the unchanged tree `b2fe277` vs the F-023 tree) agrees: the 8
+ID-generating rows moved −0.8% to +1.9%.
+
+The release run is appended to `docs/benchmarks/history.csv` (25 rows) as the next gate's baseline,
+the first measured with the resized windows. Its commit column reads `542a6ea`, because
+`scripts/bench-history.sh` records HEAD and the version bump was not yet committed.
 
 ### Verification
 
-- `CYRIUS_DCE=1 cyrius build`: x86_64-linux 127,128 → **127,096 B**, aarch64 1,024,048 →
-  **1,024,016 B**, agnos 126,976 → **126,944 B**, Windows 790,528 → **789,504 B**. All four build
-  with 0 warnings except Windows' informational routed-raw-syscall note, which the 1.6.2 tree
-  prints too.
-- `cyrius test`: **18 files, 1,412 assertions, 0 failures**, on x86_64-linux and on aarch64
-  (`cyrius test --aarch64`, under `qemu-aarch64`), unchanged from 1.6.2.
-- `qemu-aarch64 -strace` on the probe: one `getrandom(…,16,0) = 16` per ID, then `exit(0)`.
-- `--agnos`, disassembled rather than run: the old `_fill_random` issues five inline syscalls
-  loading 2, 0, 3, 1 and 60; the new one issues none, and its callees load 45, 1 and 0.
+- `CYRIUS_DCE=1 cyrius build`: x86_64-linux **127,096 B** (1.6.2: 127,128), aarch64
+  **1,024,016 B** (1,024,048), agnos **126,944 B** (126,976), Windows **790,016 B** (790,528). All
+  four build with 0 warnings except Windows' informational routed-raw-syscall note, which `error.cyr`'s
+  four stderr writes produce on 1.6.2 too. Plain x86_64 build: 684,152 B.
+- `cyrius test`: **18 files, 1,536 assertions, 0 failures**, on x86_64-linux and on aarch64
+  (`cyrius test --aarch64`, under `qemu-aarch64`). 1.6.2 had 1,412; the +124 are the 123 new
+  `AgentInfo` assertions and the 9th fuzz target.
 - `cyrius fmt --check` and `cyrius lint`: 34 files clean, 0 warnings. `CYRIUS_TYPE_CHECK=1`: 0
   agnostik-side warnings. `cyrius vet`: 24 deps, 0 untrusted, 0 missing.
-- `scripts/api-surface.sh check`: 916 fns, matching the snapshot. `cyrius distlib`: the
-  `dist/agnostik.cyr` diff is the `_fill_random` change alone, 161,663 → 161,032 B. (The 1.6.2
-  entry's 161,433 B does not match its committed bundle, which is 161,663 B and which `distlib`
-  regenerates byte-identically from the 1.6.2 tree.)
+- `scripts/api-surface.sh check`: 916 fns, matching the snapshot. `scripts/doc-debt.sh check`: 849
+  undocumented fns, matching the baseline.
+- `cyrius distlib`: `dist/agnostik.cyr` 161,663 → **164,007 B**, carrying the `_fill_random`,
+  `AgentInfo` and doc-comment changes plus the banner. `dist/agnostik.deps` unchanged.
+- `qemu-aarch64 -strace` on an ID probe: one `getrandom(…,16,0) = 16` per ID. On `--agnos`,
+  disassembled rather than run, `_fill_random` issues no syscall of its own; its callees load 45, 1
+  and 0.
+- Every `ci.yml` step, run in order on a clean copy of the tree: 19 of 19 green.
+- CI security scan (run locally, verbatim): clean.
 
 ## [1.6.2] - 2026-09-23
 
