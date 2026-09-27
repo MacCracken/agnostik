@@ -22,7 +22,7 @@ for cyrlint).
 
 cyrius v5.10.6 bundled a cyrfmt fix for the char-literal brace-counter
 bug (see upstream
-[`CHANGELOG.md` v5.10.6 § cyrfmt char-literal brace fix](../../../../cyrius/CHANGELOG.md)):
+[`CHANGELOG.md` v5.10.6 § cyrfmt char-literal brace fix](../../../../../cyrius/CHANGELOG.md)):
 
 > cyrfmt's brace-depth counter at `programs/cyrfmt.cyr` v5.7.22 added
 > skip for `#` comments + `"..."` string literals. v5.10.6 adds the

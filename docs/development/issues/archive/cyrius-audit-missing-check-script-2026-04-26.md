@@ -1,11 +1,22 @@
 # `cyrius audit` invokes `~/.cyrius/bin/check.sh` but install never ships it
 
+**Status:** ✅ Resolved; nothing is left open. The missing-`check.sh` failure
+closed upstream at cyrius **6.2.24**, where `cyrius audit` began running its
+phases inline. The audit's `tests`/`bench` stdlib-preamble failure closed at
+**6.4.73**. The residue this file was later narrowed to, `cyrius self` failing,
+is not a defect: `self` is the compiler's self-hosting check, and it cannot pass
+in a library (see **Resolution — 2026-09-23** at the end). Verified live on
+agnostik 2026-09-23 under toolchain 6.6.6: `cyrius audit`'s fmt, lint, tests
+(18 / 18) and bench phases pass. It exits 1 only on its docs phase, which is
+agnostik's own documentation debt, tracked by `scripts/doc-debt.sh` and the
+roadmap. Archived at agnostik 1.6.4.
+
 **Discovered:** 2026-04-26 during agnostik 1.0.0 closeout pass (mid-pass toolchain bump 5.7.6 → 5.7.12)
 **Severity:** Low (tooling — `cyrius audit` is broken on a fresh install of any 5.7.x; users must run the constituents `build` / `test` / `fmt --check` / `lint` individually as a workaround. No correctness or runtime impact on shipped agnostik.)
 **Affects:** Cyrius toolchain 5.7.x (verified on 5.7.12; the `cmd_audit` codepath
 in `cbt/commands.cyr:395-398` calls `make_path(_scripts_dir, "check.sh")`
 without ever shipping that script in the install bundle).
-**Filed by:** agnostik (1.0.0 audit, [`docs/audit/2026-04-26-audit.md`](../../audit/2026-04-26-audit.md))
+**Filed by:** agnostik (1.0.0 audit, [`docs/audit/2026-04-26-audit.md`](../../../audit/2026-04-26-audit.md))
 
 ## Summary
 
@@ -264,3 +275,50 @@ That is agnostik's own gap and a roadmap item, not this issue.
 
 Table row update: `cyrius self` stdlib preamble — **still open** — fails
 identically on 6.5.27, 6.5.30, 6.5.35 and **6.6.6**.
+
+## Resolution — 2026-09-23 (cyrius 6.6.6, agnostik 1.6.4)
+
+The last open item was "`cyrius self` still false-fails". Reading the verb's
+implementation shows it was never going to pass here, and that no fix is
+owed to agnostik.
+
+`cmd_self` (cbt/commands.cyr at the 6.6.6 tag) is a **compiler fixpoint
+check**. It takes the compiler source for the current target from
+`_self_host_src()` (cbt/build.cyr). On x86-64 Linux that is `src/main.cyr`,
+which cbt's own comment calls "the x86-64 LINUX fork" of the compiler. It then
+runs, roughly:
+
+```sh
+cat $F | cycc > $cycc          # build the compiler from source, raw: no manifest, no deps
+cat $F | $cycc > $cc4          # run THAT build as a compiler on the same source
+cmp -s $cycc $cc4              # PASS only if the two compilers are byte-identical
+```
+
+In agnostik, `$F` is the test harness `src/main.cyr`. So:
+
+1. **The first step fails.** The raw pipe skips the manifest's stdlib preamble,
+   which is exactly the `bayan_json_get` / `clock_now_ns` "undefined function"
+   pair every update in this file recorded. It is not a preamble-resolution
+   bug; `self` bypasses the manifest by design.
+2. **The second step could never succeed either.** Even if the first step
+   built, its output is agnostik's test harness, not a compiler. Feeding it
+   source on stdin cannot reproduce itself.
+
+So the `FAIL: cycc!=cycc` measured on 6.5.27, 6.5.30, 6.5.35 and 6.6.6 is the
+correct answer to a question that does not apply to a library.
+
+**Where the confusion came from.** `cyrius --help` described `audit` as "full
+check: self-host, test, fmt, lint" through cyrius 6.2.10, so this file's
+original workaround ran `cyrius self` as part of an audit-equivalent gate. From
+6.2.24 on, `audit` is a "project sweep: fmt/lint/docs/tests/bench" with no
+self-host phase. That is the right gate for a library, and it works.
+
+**Upstream papercut (optional; not agnostik's to fix).** `cyrius self` runs in
+any repo that has a `src/main.cyr`, and prints a self-host verdict about
+whatever that file is. The same cbt already recognises the cyrius source repo
+by name, via `_dep_is_cyrius_source_repo()` in cbt/deps.cyr, which
+`_check_lib_freshness` uses. `cmd_self` could refuse outside that repo instead
+of reporting a failure.
+
+**Guidance for agnostik:** run `cyrius audit` and read its per-phase verdicts.
+Do not run `cyrius self`.

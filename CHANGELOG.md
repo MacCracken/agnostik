@@ -2,6 +2,126 @@
 
 ## [Unreleased]
 
+## [1.6.4] - 2026-09-23
+
+**Patch: a review of the two open toolchain-issue records. One is closed and archived; the other is
+re-verified open and filed upstream.** Documentation only: no source, test, API
+or wire-format change. 916 public fns, 1,536 assertions.
+
+### Changed — `cyrius-audit-missing-check-script-2026-04-26` closed and archived
+
+The record's two toolchain defects were fixed upstream long ago: the missing `check.sh` at cyrius
+6.2.24, and the `tests`/`bench` preamble at 6.4.73. It stayed open for one residue, "`cyrius self`
+still false-fails", re-measured at every pin since 1.3.6.
+
+Reading the verb's implementation (`cbt/commands.cyr` at the 6.6.6 tag) closes it as **not a
+defect**. `cyrius self` is the compiler's self-hosting fixpoint check:
+1. It pipes the compiler source for the target (`src/main.cyr` on x86-64 Linux) into `cycc` raw,
+   with no manifest and therefore no stdlib preamble.
+2. It runs the result as a compiler on the same source.
+3. It byte-compares the two builds.
+
+In agnostik, `src/main.cyr` is the test harness, so the check can never pass. The skipped preamble
+is where the two undefined symbols came from, and the harness is not a compiler.
+
+- The file gains a **Status** header and a **Resolution** section, and moves to
+  `docs/development/issues/archive/`. Its one relative link was fixed for the move.
+- Every link to it now points at the archive: three in this CHANGELOG, one in the 2026-04-26 audit,
+  and the ones in the roadmap and `state.md`. This follows the precedent set when the lint issue was
+  archived.
+- `state.md` no longer says to run `cyrius self` and expect a known failure. It now says not to run
+  it here. `cyrius audit` is the gate, and its fmt, lint, tests and bench phases pass on 6.6.6.
+- The roadmap's v1.3.6 backlog item is closed.
+- The Resolution suggests an optional upstream papercut: `cmd_self` could refuse to run outside the
+  cyrius source repo, which cbt already recognises through `_dep_is_cyrius_source_repo()`.
+
+### Changed — `cyrius-derive-comments-in-struct-body-2026-05-10` re-verified: still open
+
+The `#derive(Serialize)` body-comment corruption is unchanged on cyrius 6.6.0, 6.6.2 and 6.6.6. The
+original repro prints `{"#":330325,…}`, and all four negative cases the record lists corrupt too.
+The bug had **no record in the cyrius issue tracker**, so it is now filed there, with a self-proving
+repro, as `2026-09-22-agnostik-derive-serialize-comment-in-struct-body.md`. The nearest upstream
+issue, fixed at 6.6.6,
+is a different lexer path: comments that start with an attribute name. That is the likely reason
+the bug has survived since 5.10.14. The record gains a **Status** header and an update with these
+findings.
+
+agnostik stays protected. All 7 derive structs keep their comments above the directive. A
+mutation check, one comment placed inside `InjectionScores`' body, makes `test_v110_serde_golden.tcyr`
+fail (`FAIL: InjectionScores compact bytes`), so the corruption cannot ship silently.
+
+### Fixed — archive links and index
+
+- `archive/cyrlint-char-literal-brace-bug-2026-05-09.md` has linked the sibling `cyrius/CHANGELOG.md`
+  with one `../` too few ever since its own move into `archive/`. Fixed.
+- `archive/README.md` gains an index of the archived files and their resolutions. It also now
+  allows a file to be archived when a residue is shown not to be a defect.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.6.3 baseline in `history.csv` (commit `542a6ea`):
+**25 checked, 0 new, 0 regressions.** The medians column is 3 further runs taken right after the
+gate.
+
+| benchmark | 1.6.3 baseline | 1.6.4 gate | Δ gate | 1.6.4 median of 3 | Δ median |
+|---|---:|---:|---:|---:|---:|
+| token_usage_update | 34 | 32 | -5.9% | 32 | -5.9% |
+| agent_id_roundtrip | 1023 | 982 | -4.0% | 970 | -5.2% |
+| resource_limits_to_json | 971 | 930 | -4.2% | 926 | -4.6% |
+| token_usage_from_json | 412 | 397 | -3.6% | 393 | -4.6% |
+| sandbox_config_default | 24 | 23 | -4.2% | 23 | -4.2% |
+| resource_limits_from_json | 458 | 441 | -3.7% | 440 | -3.9% |
+| agent_id_to_str | 739 | 711 | -3.8% | 713 | -3.5% |
+| token_usage_to_json | 874 | 837 | -4.2% | 843 | -3.5% |
+| agent_stats_from_json | 281 | 266 | -5.3% | 272 | -3.2% |
+| security_context_full | 679 | 662 | -2.5% | 658 | -3.1% |
+| inference_request_full | 362 | 359 | -0.8% | 351 | -3.0% |
+| version_roundtrip | 245 | 238 | -2.9% | 238 | -2.9% |
+| accel_flags_from_json | 710 | 703 | -1.0% | 690 | -2.8% |
+| agent_stats_to_json | 671 | 654 | -2.5% | 652 | -2.8% |
+| version_to_str | 109 | 106 | -2.8% | 106 | -2.8% |
+| traceparent_format | 1820 | 1743 | -4.2% | 1775 | -2.5% |
+| accel_flags_to_json | 1616 | 1618 | +0.1% | 1583 | -2.0% |
+| accelerator_device_full | 101 | 99 | -2.0% | 99 | -2.0% |
+| message_build_3turn | 364 | 353 | -3.0% | 357 | -1.9% |
+| trace_context_child | 585 | 570 | -2.6% | 574 | -1.9% |
+| injection_scores_to_json | 769 | 761 | -1.0% | 755 | -1.8% |
+| audit_entry_full | 2242 | 2211 | -1.4% | 2220 | -1.0% |
+| trace_context_new | 1139 | 1123 | -1.4% | 1128 | -1.0% |
+| injection_scores_from_json | 329 | 331 | +0.6% | 328 | -0.3% |
+| agent_id_new | 571 | 554 | -3.0% | 588 | +3.0% |
+
+**No code changed**, so the whole table is host variance. `git diff 1.6.3` over `src/`, `tests/`,
+`scripts/`, the CI workflows and `cyrius.cyml` is empty, and the DCE binary is byte-for-byte
+1.6.3's size, 127,096 B. The median row moved −2.8%, and 24 of 25 rows moved down, which matches a
+host a little less loaded than during the 1.6.3 capture. The one row up, `agent_id_new` +3.0%
+(571 → 588 ns), is dominated by the `getrandom` syscall. Its four 1.6.4 samples spanned 554–624 ns,
+with the gate's own sample at 554 ns (−3.0%), on byte-identical code. All 25 rows resolve (no `UNRESOLVED` lines, 3 of 3 runs).
+
+The release run is appended to `docs/benchmarks/history.csv` (25 rows) as the next baseline. Its
+commit column reads `3729b55`, the tagged 1.6.3 commit, because `scripts/bench-history.sh`
+records HEAD and the 1.6.4 changes were not yet committed.
+
+### Verification
+
+- **Code unchanged** since the `1.6.3` tag, as above. `CYRIUS_DCE=1 cyrius build`: x86_64
+  127,096 B and aarch64 1,024,016 B, both identical to 1.6.3.
+- **Tests:** 18 files, **1,536 assertions, 0 failures**.
+- **Every `ci.yml` step**, run in order on a clean copy of the tree with the archive move applied:
+  19 of 19 green. That includes `scripts/doc-debt.sh check` (849, matching the baseline) and
+  `scripts/api-surface.sh check` (916). The release workflow's `Verify version` step accepts
+  tag `1.6.4`.
+- **Links:** every relative link in every Markdown file in the repo resolves (0 broken). That
+  covers the repointed references to the archived record.
+- **The issue findings are measured, not read.**
+  - The derive repro was rebuilt warning-free on 6.6.0, 6.6.2 and 6.6.6.
+  - The golden-test guard was mutation-checked.
+  - `cyrius audit` on 6.6.6 passes fmt, lint, tests (18 / 18) and bench; it exits 1 only on its
+    docs phase (1,425 over `src tests`).
+  - `cyrius self` prints `FAIL: cycc!=cycc`, as its implementation predicts for a
+    non-compiler repo.
+
+
 ## [1.6.3] - 2026-09-23
 
 **Patch: identifier generation has no `/dev/urandom` fallback any more (F-023), `AgentInfo`'s JSON
@@ -936,7 +1056,7 @@ sub-10% comparisons while another project is compiling.
   all** — v1.3.5 skipped it — not the toolchain bump.
 
   Still open, and the reason
-  [`cyrius-audit-missing-check-script-2026-04-26`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md)
+  [`cyrius-audit-missing-check-script-2026-04-26`](docs/development/issues/archive/cyrius-audit-missing-check-script-2026-04-26.md)
   is not archived: **`cyrius self` still false-fails**, standalone, with the
   same two undefined symbols and `FAIL: cycc!=cycc`. Verified on 6.5.27,
   6.5.30 and 6.5.35, so it is not a 6.5.35 regression — it is the original
@@ -2112,7 +2232,7 @@ files pass; stdlib dependencies (`syscalls`, `string`, `alloc`, `str`,
 - **`cyrius audit`** is still broken on 5.10.x (`check.sh` missing
   from the toolchain install — same upstream issue carried forward
   from 5.7.12, tracked in
-  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md)).
+  [`docs/development/issues/archive/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/archive/cyrius-audit-missing-check-script-2026-04-26.md)).
   Workaround unchanged: run `cyrius {test,fmt --check,lint}`
   individually.
 
@@ -2301,7 +2421,7 @@ gold-standard project shape.
   manifest `scripts` array omits it. `cyrius audit` exits 127 on
   every fresh install of 5.7.x. Workaround: run `cyrius self /
   test / fmt --check / lint` individually. Filed locally:
-  [`docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/cyrius-audit-missing-check-script-2026-04-26.md).
+  [`docs/development/issues/archive/cyrius-audit-missing-check-script-2026-04-26.md`](docs/development/issues/archive/cyrius-audit-missing-check-script-2026-04-26.md).
 
 Full audit report and verification: [`docs/audit/2026-04-26-audit.md`](docs/audit/2026-04-26-audit.md).
 

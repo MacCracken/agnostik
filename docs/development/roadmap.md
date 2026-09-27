@@ -2,12 +2,15 @@
 
 ## Status
 
-**v1.6.3** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
+**v1.6.4** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
 helpers), **1,536 test assertions across 18 `.tcyr` files** (passing on
 x86_64-linux and on aarch64 under `qemu-aarch64`), 25 benchmarks, zero
 external dependencies, Cyrius `6.6.6`.
 
-v1.6.3 is a patch that clears four items from this roadmap. **F-023**: no
+v1.6.4 is a documentation patch reviewing `docs/development/issues/`. The
+`cyrius self` residue is closed as not a defect, and its record archived. The
+`#derive` body-comment bug is re-verified open on 6.6.6 and now filed
+upstream. v1.6.3 was a patch that cleared four items from this roadmap. **F-023**: no
 `/dev/urandom` fallback, and the fail-loud path goes through `sys_write` /
 `sys_exit`. The `AgentInfo` JSON round-trip is fixed, with **F-024**, a
 null-id crash found in passing. Bench windows now clear the 6.6.5 resolution
@@ -221,15 +224,19 @@ v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
   553,555 B of unreachable code eliminated. On x86_64, binary size tracks
   reachable surface again. aarch64 DCE still NOP-fills (1,024,048 B).
 
-- **`cyrius self` still false-fails** — same `clock_now_ns` /
+- ~~**`cyrius self` still false-fails** — same `clock_now_ns` /
   `bayan_json_get` preamble-resolution defect, verified on 6.5.27, 6.5.30,
-  6.5.35 and **6.6.6** (v1.6.2), so not a regression at any of them. `cyrius audit` does not cover it
-  and has not since 6.2.24, when the self-host phase left `audit`'s phase
-  list; the `audit`-side preamble fix landed at **6.4.73**, already present
-  in the previous 6.5.27 pin — the bug was routed around, not repaired.
-  Tracked in
-  [`issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md);
-  archive that file when `self` resolves its preamble.
+  6.5.35 and **6.6.6** (v1.6.2).~~ **CLOSED at v1.6.4 — not a defect.**
+  `cyrius self` is the compiler's self-hosting fixpoint check. It pipes the
+  compiler source (`src/main.cyr` on x86-64 Linux) into `cycc` raw, with no
+  manifest and so no stdlib preamble. It then runs the output as a compiler on
+  the same source and byte-compares the two builds. In a library that can
+  never pass: the missing preamble is where the two undefined symbols come
+  from, and the harness is not a compiler. The gate agnostik actually needs,
+  `cyrius audit`, has worked since 6.4.73. The issue file is archived at
+  [`issues/archive/cyrius-audit-missing-check-script-2026-04-26.md`](issues/archive/cyrius-audit-missing-check-script-2026-04-26.md),
+  and its closing section suggests the optional upstream papercut: `self`
+  could refuse outside the cyrius repo.
 
 ---
 

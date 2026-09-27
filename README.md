@@ -11,7 +11,7 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.6.3
+- **Current**: 1.6.4
 - **Toolchain**: Cyrius `6.6.6` (pinned in `cyrius.cyml`)
 - **Tests**: 1,536 assertions across 18 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean;

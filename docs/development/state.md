@@ -5,6 +5,18 @@
 
 ## Version
 
+**1.6.4** — Documentation patch: a review of `docs/development/issues/`. No
+code, test or API change; the binaries are identical to 1.6.3. The
+`cyrius-audit-missing-check-script` record is **archived**. Its toolchain
+defects closed at 6.2.24 and 6.4.73, and its last residue, `cyrius self`
+failing, is not a defect: `self` is the compiler's self-hosting fixpoint check
+and cannot pass in a library. The `cyrius-derive-comments` record is
+**re-verified open** on 6.6.0 / 6.6.2 / 6.6.6 and filed upstream (it had no
+record in the cyrius tracker). agnostik stays protected, and a mutation check shows the golden serde
+test catches a comment inside a derive body. Links to the archived file were
+repointed, and a stale `../` in an older archived file fixed; 0 broken
+relative links repo-wide. Bench gate 25 checked, 0 regressions.
+
 **1.6.3** — Patch. **F-023**: `_fill_random` has no `/dev/urandom` fallback
 any more. Its raw open / read / close / write / exit numbers (2 / 0 / 3 / 1 /
 60) mean getpid / exit / spawn / write / winsize on agnos. It now uses
@@ -656,11 +668,15 @@ for full release notes.
   Read the per-phase verdicts, not the exit code. Both historical
   failure modes remain closed: missing `check.sh` since **6.2.24**, and the
   `tests`/`bench` preamble since **6.4.73**.
-- **`cyrius self`** still false-fails with the same undefined `bayan_json_get`
-  / `clock_now_ns` and `FAIL: cycc!=cycc`, rc 1. Re-verified on 6.6.6.
-  `audit` has not covered it since 6.2.24. Tracked in
-  [`issues/cyrius-audit-missing-check-script-2026-04-26.md`](issues/cyrius-audit-missing-check-script-2026-04-26.md),
-  which stays open; run `self` separately and expect the known failure.
+- **`cyrius self` does not apply to this repo; don't run it.** It is the
+  compiler's self-hosting check: it pipes the compiler source (`src/main.cyr`
+  on x86-64 Linux) into `cycc` with no manifest, runs the result as a compiler
+  on the same source, and byte-compares the two builds. Here `src/main.cyr` is
+  the test harness, so it prints `FAIL: cycc!=cycc`, with the undefined
+  `bayan_json_get` / `clock_now_ns` the skipped preamble would have supplied,
+  on every pin. That was recorded as an open defect until v1.6.4 closed it as
+  not one. See
+  [`issues/archive/cyrius-audit-missing-check-script-2026-04-26.md`](issues/archive/cyrius-audit-missing-check-script-2026-04-26.md).
 
 ## Source layout
 
@@ -722,7 +738,9 @@ Every AGNOS component depends on agnostik for shared types:
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.6.3`**, a patch:
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.6.4`**, a
+documentation patch (issue review: one record archived, one re-verified open).
+Prior: `1.6.3`, a patch:
 F-023 (no `/dev/urandom` fallback), the `AgentInfo` JSON round-trip plus F-024
 (a null-id crash), bench windows sized for the 6.6.5 resolution bar, and the
 documentation-debt gate. Prior: `1.6.2` (Cyrius `6.6.6` refresh, F-022
