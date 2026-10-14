@@ -36,6 +36,10 @@ fn _stik_fill_random(buf, n) {
     sys_exit(70);
     return 0 - 1;
 }
+# A fresh AgentId: a 16-byte random UUID v4. The bytes come from the CSPRNG
+# (_stik_fill_random) with the RFC 4122 version (byte 6) and variant (byte 8)
+# bits set. If the CSPRNG is unavailable the process exits with status 70
+# rather than return a predictable id.
 fn agent_id_new() {
     var id = alloc(16);
     _stik_fill_random(id, 16);
@@ -49,14 +53,19 @@ fn agent_id_new() {
     store8(id + 8, b8);
     return id;
 }
+# Bytes 0-7 of the id as one i64 (load64, so native byte order).
 fn agent_id_high(id) { return load64(id); }
+# Bytes 8-15 of the id as one i64 (load64, so native byte order).
 fn agent_id_low(id)  { return load64(id + 8); }
+# 1 when the two ids hold the same 16 bytes, else 0.
 fn agent_id_eq(a, b) {
     if (load64(a) != load64(b)) { return 0; }
     if (load64(a + 8) != load64(b + 8)) { return 0; }
     return 1;
 }
 var _hex_lut = "0123456789abcdef";
+# Write `byte` (0-255) as two lower-case hex digits at buf + offset. The
+# caller provides the two bytes of room. Returns 0.
 fn _stik_hex_byte(buf, offset, byte) {
     store8(buf + offset, load8(_hex_lut + (byte >> 4)));
     store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
@@ -112,6 +121,8 @@ fn _stik_utf8_encode(out, op, cp) {
     store8(out + op + 3, 0x80 | (cp & 0x3F));
     return op + 4;
 }
+# The id in canonical UUID form, 36 characters of lower-case hex in 8-4-4-4-12
+# groups, as a new Str. agent_id_from_str is the inverse.
 fn agent_id_to_str(id): Str {
     # UUID format: 8-4-4-4-12 = 36 chars
     var buf = alloc(37);
@@ -129,6 +140,10 @@ fn agent_id_to_str(id): Str {
     store8(buf + pos, 0);
     return str_new(buf, 36);
 }
+# Parse a 36-character UUID string into a new 16-byte AgentId. Hex digits may
+# be either case. Returns Ok(id), or an invalid-argument Err when the length is
+# not 36 or a digit is not hex. The four separator positions are skipped, not
+# checked for '-', and the version and variant bits are not checked.
 fn agent_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
@@ -248,6 +263,8 @@ fn _stik_json_int(src: Str, key: Str) {
 # U+FFFD REPLACEMENT CHARACTER (3 UTF-8 bytes) per common JSON
 # implementations.
 var _UTF8_REPLACEMENT_CP = 0xFFFD;
+# Returns the value of `key` in `src`, unescaped, as a new Str; 0 when the key
+# is missing, its value is null, or the value is not a string.
 fn _stik_json_str(src: Str, key: Str) {
     var vi = _stik_json_find_value(src, key);
     if (vi < 0) { return 0; }
@@ -341,12 +358,23 @@ fn _stik_json_str(src: Str, key: Str) {
     return str_new(out, op);
 }
 
+# A fresh UserId. A UserId shares AgentId's representation (a 16-byte random
+# UUID v4), so this and the other user_id_* fns delegate to agent_id_*.
 fn user_id_new()              { return agent_id_new(); }
+# Bytes 0-7 of the id as one i64; see agent_id_high.
 fn user_id_high(id)           { return agent_id_high(id); }
+# Bytes 8-15 of the id as one i64; see agent_id_low.
 fn user_id_low(id)            { return agent_id_low(id); }
+# 1 when the two ids hold the same 16 bytes, else 0; see agent_id_eq.
 fn user_id_eq(a, b)           { return agent_id_eq(a, b); }
+# Canonical 36-character lower-case UUID form, as a new Str; see agent_id_to_str.
 fn user_id_to_str(id): Str    { return agent_id_to_str(id); }
+# Parse a 36-character UUID string. Ok(id) or Err, as agent_id_from_str.
 fn user_id_from_str(s: Str)   { return agent_id_from_str(s); }
+# A Version (SemVer). 40 bytes, all 8-byte slots, read through the version_*
+# accessors:
+#   +0 major, +8 minor, +16 patch, +24 prerelease, +32 build.
+# prerelease and build are Strs, both 0 (absent) at construction.
 fn version_new(major, minor, patch) {
     var v = alloc(40);
     store64(v, major);
@@ -356,14 +384,25 @@ fn version_new(major, minor, patch) {
     store64(v + 32, 0);
     return v;
 }
+# Version 0.0.0 with no prerelease or build.
 fn version_default() { return version_new(0, 0, 0); }
+# Major version number.
 fn version_major(v)      { return load64(v); }
+# Minor version number.
 fn version_minor(v)      { return load64(v + 8); }
+# Patch version number.
 fn version_patch(v)      { return load64(v + 16); }
+# Prerelease Str, the part after '-' (for example "beta.1"); 0 when absent.
 fn version_prerelease(v) { return load64(v + 24); }
+# Build-metadata Str, the part after '+'; 0 when absent.
 fn version_build(v)      { return load64(v + 32); }
+# Set the prerelease Str, without its leading '-'. Not validated. Returns 0.
 fn version_set_prerelease(v, pre: Str) { store64(v + 24, pre); return 0; }
+# Set the build-metadata Str, without its leading '+'. Not validated. Returns 0.
 fn version_set_build(v, b: Str)        { store64(v + 32, b); return 0; }
+# Format as "MAJOR.MINOR.PATCH", then "-PRERELEASE" and "+BUILD" when set, as
+# a new Str. Output is capped at 127 bytes: a prerelease or build part that
+# would not fit is dropped silently, not truncated.
 fn version_to_str(v): Str {
     var buf = alloc(128);
     var cap = 127;
@@ -394,6 +433,11 @@ fn version_to_str(v): Str {
     store8(buf + pos, 0);
     return str_new(buf, pos);
 }
+# Parse "MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]" into a new Version. Returns
+# Ok(version), or an invalid-argument Err when a dot is missing or a numeric
+# segment is empty or has a non-digit. The first '-' or '+' after the second
+# dot ends the patch; the prerelease runs to the next '+'. Prerelease and build
+# text is not validated, and the numbers are not range-checked.
 fn version_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
@@ -496,6 +540,8 @@ fn version_from_str(s: Str) {
     }
     return Ok(v);
 }
+# 1 when major, minor and patch are equal, else 0. Prerelease and build are
+# not compared, so 1.0.0-rc.1 equals 1.0.0.
 fn version_eq(a, b) {
     if (version_major(a) != version_major(b)) { return 0; }
     if (version_minor(a) != version_minor(b)) { return 0; }
@@ -514,6 +560,10 @@ enum SystemStatus {
     STATUS_CRITICAL;
     STATUS_UNKNOWN;
 }
+# A capabilities record: four feature flags. 32 bytes, one 0/1 flag per 8-byte
+# slot, read through the capabilities_* accessors:
+#   +0 llm, +8 virtualization, +16 gpu, +24 tpm.
+# All start at 0.
 fn capabilities_new() {
     var c = alloc(32);
     store64(c, 0);
@@ -522,14 +572,23 @@ fn capabilities_new() {
     store64(c + 24, 0);
     return c;
 }
+# LLM capability flag (0/1).
 fn capabilities_llm(c)            { return load64(c); }
+# Virtualization capability flag (0/1).
 fn capabilities_virtualization(c) { return load64(c + 8); }
+# GPU capability flag (0/1).
 fn capabilities_gpu(c)            { return load64(c + 16); }
+# TPM capability flag (0/1).
 fn capabilities_tpm(c)            { return load64(c + 24); }
+# Set the LLM capability flag. Stored as given. Returns 0.
 fn capabilities_set_llm(c, v)            { store64(c, v); return 0; }
+# Set the virtualization capability flag. Stored as given. Returns 0.
 fn capabilities_set_virtualization(c, v) { store64(c + 8, v); return 0; }
+# Set the GPU capability flag. Stored as given. Returns 0.
 fn capabilities_set_gpu(c, v)            { store64(c + 16, v); return 0; }
+# Set the TPM capability flag. Stored as given. Returns 0.
 fn capabilities_set_tpm(c, v)            { store64(c + 24, v); return 0; }
+# 1 when all four flags are equal, else 0.
 fn capabilities_eq(a, b) {
     if (load64(a) != load64(b)) { return 0; }
     if (load64(a + 8) != load64(b + 8)) { return 0; }
@@ -537,6 +596,10 @@ fn capabilities_eq(a, b) {
     if (load64(a + 24) != load64(b + 24)) { return 0; }
     return 1;
 }
+# A ComponentConfig: one named component and its settings. 24 bytes:
+#   +0 name (a Str), +8 enabled (a 0/1 flag), +16 settings (a cstr-keyed map,
+#   created empty).
+# name and enabled are stored as passed; there are no setters.
 fn component_config_new(name: Str, enabled) {
     var c = alloc(24);
     store64(c, name);
@@ -544,10 +607,15 @@ fn component_config_new(name: Str, enabled) {
     store64(c + 16, map_new());
     return c;
 }
+# Component name Str, as passed.
 fn component_config_name(c)     { return load64(c); }
+# Enabled flag (0/1), as passed.
 fn component_config_enabled(c)  { return load64(c + 8); }
+# Settings map (map_new, cstr keys), created empty at construction.
 fn component_config_settings(c) { return load64(c + 16); }
 
+# Display name of a MessageType: "Command", "Response", "Event" or "Heartbeat",
+# and "Unknown" for a value outside the enum. message_type_parse is the inverse.
 fn message_type_name(t) {
     if (t == MSG_COMMAND)        { return "Command"; }
     elif (t == MSG_RESPONSE)     { return "Response"; }
@@ -565,6 +633,9 @@ fn message_type_parse(s: Str) {
     elif (str_eq_cstr(s, "Heartbeat") == 1) { return Ok(MSG_HEARTBEAT); }
     return stik_err_invalid_argument(str_from("unknown MessageType name"));
 }
+# Display name of a SystemStatus: "Healthy", "Degraded" or "Critical".
+# STATUS_UNKNOWN, and any value outside the enum, is "Unknown", the fallthrough
+# rather than an explicit arm. system_status_parse is the inverse.
 fn system_status_name(s) {
     if (s == STATUS_HEALTHY)     { return "Healthy"; }
     elif (s == STATUS_DEGRADED)  { return "Degraded"; }

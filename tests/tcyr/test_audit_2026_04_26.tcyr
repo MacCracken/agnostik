@@ -21,6 +21,7 @@ include "src/lib.cyr"
 # silently fall back to a hardcoded constant. After the fix, every
 # agent_id_new() call hits getrandom(2) and yields fresh entropy.
 
+# Test: three agent_id_new() calls yield pairwise-distinct IDs (F-001).
 fn test_f001_agent_id_unique() {
     var a = agent_id_new();
     var b = agent_id_new();
@@ -32,6 +33,7 @@ fn test_f001_agent_id_unique() {
     return 0;
 }
 
+# Test: agent_id_new() sets the UUIDv4 version nibble and RFC 4122 variant bits (F-001).
 fn test_f001_agent_id_v4_marker() {
     var id = agent_id_new();
     # Byte 6 high nibble must be 0x4, byte 8 top two bits must be 10.
@@ -42,6 +44,7 @@ fn test_f001_agent_id_v4_marker() {
     return 0;
 }
 
+# Test: two span_id_new() calls yield distinct IDs (F-001).
 fn test_f001_span_id_unique() {
     var s1 = span_id_new();
     var s2 = span_id_new();
@@ -54,6 +57,7 @@ fn test_f001_span_id_unique() {
 # preceding backslash. Now escaped quotes pass through and we decode
 # the standard set.
 
+# Test: _stik_json_str decodes an escaped quote and a later int field still parses (F-002).
 fn test_f002_escaped_quote() {
     var src = str_from("{\"name\": \"abc\\\"xyz\", \"id\": 42}");
     var s = _stik_json_str(src, str_from("name"));
@@ -63,6 +67,7 @@ fn test_f002_escaped_quote() {
     return 0;
 }
 
+# Test: _stik_json_str decodes the \\ \n \t \r escapes to the right bytes (F-002).
 fn test_f002_escape_set() {
     var src = str_from("{\"v\": \"a\\\\b\\nc\\td\\re\"}");
     var s = _stik_json_str(src, str_from("v"));
@@ -82,6 +87,7 @@ fn test_f002_escape_set() {
 
 # ─── F-003: _stik_json_int handles sign + overflow ──────────────────────
 
+# Test: _stik_json_int parses a negative value and its positive sibling (F-003).
 fn test_f003_negative() {
     var src = str_from("{\"x\": -42, \"y\": 7}");
     assert_eq(_stik_json_int(src, str_from("x")), 0 - 42, "F-003: negative");
@@ -89,6 +95,7 @@ fn test_f003_negative() {
     return 0;
 }
 
+# Test: _stik_json_int stops a 22-digit value at its first 19 digits (F-003).
 fn test_f003_overflow_capped() {
     # 22-digit input — pre-fix this wrapped i64. Now we stop at 19
     # digits; the result is the value of the first 19 digits without
@@ -125,6 +132,7 @@ fn _f005_case(input, expected, label) {
     return c;
 }
 
+# Test: version_from_str accepts/rejects each row of the F-005 table via test_each.
 fn test_f005_accept_reject_table() {
     var cases = vec_new();
     vec_push(cases, _f005_case(str_from("abc.1.2"),      0, "F-005: 'abc.1.2' rejected"));
@@ -135,6 +143,7 @@ fn test_f005_accept_reject_table() {
     return 0;
 }
 
+# Test: version_from_str("1.2.3") yields major 1, minor 2, patch 3 (F-005).
 fn test_f005_canonical_parse() {
     var v_t, v = version_from_str(str_from("1.2.3"));
     assert_eq(version_major(v), 1, "F-005: major");
@@ -148,6 +157,7 @@ fn test_f005_canonical_parse() {
 # adjacent string value. After the fix the walker stays out of strings
 # and only matches at the top level.
 
+# Test: _stik_json_int ignores a key that appears inside another field's string value (F-004).
 fn test_f004_key_inside_string_value() {
     # The "note" string value contains the literal text `"max_memory":99999`
     # which used to poison the lookup for the real max_memory field.
@@ -157,6 +167,7 @@ fn test_f004_key_inside_string_value() {
     return 0;
 }
 
+# Test: escaped quotes inside a string value do not end it early for key lookup (F-004).
 fn test_f004_string_with_escaped_quotes() {
     # Confirm the in-string escape walker handles `\"` so the closing
     # quote isn't seen prematurely (which would re-expose F-004).
@@ -165,6 +176,7 @@ fn test_f004_string_with_escaped_quotes() {
     return 0;
 }
 
+# Test-file entry: runs every F-001..F-005 regression above and returns the assertion summary.
 fn main() {
     println("=== agnostik audit 2026-04-26 regression ===");
     test_f001_agent_id_unique();

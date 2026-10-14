@@ -27,6 +27,8 @@ include "src/classification.cyr"
 include "src/validation.cyr"
 include "src/hardware.cyr"
 
+# Test: error kind, code and retriability for timeout and permission-denied
+# errors, and the Ok/Err tag and payload.
 fn test_error() {
     var e = agnostik_err_new(STIK_ERR_TIMEOUT, 0);
     assert_eq(agnostik_err_kind(e), STIK_ERR_TIMEOUT, "error kind");
@@ -41,6 +43,8 @@ fn test_error() {
     assert_eq(is_ok(err_t), 0, "Err not ok");
     return 0;
 }
+# Test: AgentId uniqueness, string form and parse roundtrip; Version format and
+# parse; capabilities flag default and setter.
 fn test_types() {
     var id1 = agent_id_new();
     var id2 = agent_id_new();
@@ -64,6 +68,8 @@ fn test_types() {
     assert_eq(capabilities_gpu(caps), 1, "caps set");
     return 0;
 }
+# Test: ResourceLimits, AgentConfig and health-check defaults, and an
+# AgentStatus name.
 fn test_agent() {
     var rl = resource_limits_new();
     assert_eq(rlim_max_memory(rl), 268435456, "mem 256MB");
@@ -75,6 +81,8 @@ fn test_agent() {
     assert_eq(streq(agent_status_name(AGENT_RUNNING), "Running"), 1, "status name");
     return 0;
 }
+# Test: SandboxConfig network defaults, SecurityContext no_new_privs, namespace
+# and cgroup setters, and a Role name.
 fn test_security() {
     var sb = sandbox_config_new();
     assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "net localhost");
@@ -91,6 +99,8 @@ fn test_security() {
     assert_eq(streq(role_name(ROLE_ADMIN), "Admin"), 1, "role name");
     return 0;
 }
+# Test: trace-context sampling and child propagation, trace and span id string
+# forms and parsing, traceparent roundtrip, and LogSeverity ordering.
 fn test_telemetry() {
     var ctx = trace_context_new();
     assert_eq(tctx_is_sampled(ctx), 1, "sampled");
@@ -123,6 +133,7 @@ fn test_telemetry() {
     assert_eq(tctx_trace_flags(tp_ctx), TRACE_FLAG_SAMPLED, "tp flags");
     return 0;
 }
+# Test: genesis integrity fields, and an AuditEntry's default result and setter.
 fn test_audit() {
     var ig = integrity_fields_genesis(str_from("sig"));
     assert_eq(integrity_is_genesis(ig), 1, "genesis");
@@ -133,6 +144,8 @@ fn test_audit() {
     assert_eq(aentry_result(entry), AUDIT_DENIED, "set denied");
     return 0;
 }
+# Test: text message construction, TokenUsage and InferenceRequest setters, and
+# an LlmProvider name.
 fn test_llm() {
     var msg = message_text(ROLE_USER, str_from("Hello"));
     assert_eq(msg_role(msg), ROLE_USER, "role user");
@@ -146,6 +159,7 @@ fn test_llm() {
     assert_eq(streq(llm_provider_name(LLM_ANTHROPIC), "Anthropic"), 1, "provider");
     return 0;
 }
+# Test: Secret length, expose and destroy (the length reads 0 afterwards).
 fn test_secrets() {
     var s = secret_new(str_from("my-key-12345"));
     assert_eq(secret_len(s), 12, "secret len");
@@ -155,6 +169,7 @@ fn test_secrets() {
     assert_eq(secret_len(s), 0, "zeroed");
     return 0;
 }
+# Test: AgnosConfig default profile and the profile setter.
 fn test_config() {
     var cfg = agnos_config_new();
     assert_eq(acfg_profile(cfg), ENV_DEVELOPMENT, "dev default");
@@ -162,6 +177,7 @@ fn test_config() {
     assert_eq(acfg_profile(cfg), ENV_PRODUCTION, "set prod");
     return 0;
 }
+# Test: ClassificationResult level and PII vec, and ClassificationLevel ordering.
 fn test_classification() {
     var r = classification_result_new(CLASS_CONFIDENTIAL);
     assert_eq(cresult_level(r), CLASS_CONFIDENTIAL, "confidential");
@@ -170,6 +186,7 @@ fn test_classification() {
     assert(CLASS_PUBLIC < CLASS_RESTRICTED, "pub<restricted");
     return 0;
 }
+# Test: ValidationResult valid flag and vresult_set_blocked.
 fn test_validation() {
     var r = validation_result_new(1, str_from("clean"));
     assert_eq(vresult_valid(r), 1, "valid");
@@ -177,6 +194,8 @@ fn test_validation() {
     assert_eq(vresult_blocked(r), 1, "blocked");
     return 0;
 }
+# Test: AcceleratorDevice VRAM and default health, and AcceleratorSummary VRAM
+# total and family filter.
 fn test_hardware() {
     var dev = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
     adev_set_vram_total(dev, 24576);
@@ -189,16 +208,21 @@ fn test_hardware() {
     assert_eq(vec_len(gpus), 1, "1 GPU");
     return 0;
 }
+# Harness helper: serialize `ptr` with the `*_to_json` fn at `fn_ptr` and
+# return the JSON as a Str.
 fn _to_json(ptr, fn_ptr): Str {
     var sb = str_builder_new();
     fncall2(fn_ptr, ptr, sb);
     return str_builder_build(sb);
 }
+# Harness helper: 1 when `json` contains the cstr `key` anywhere (a substring
+# check, not a JSON lookup), else 0.
 fn _json_has(json: Str, key) {
     var k = str_from(key);
     if (str_contains(json, k) == 1) { return 1; }
     return 0;
 }
+# Test: TokenUsage_to_json emits every field and the set values.
 fn test_serde_token_usage() {
     var u = token_usage_new();
     tusage_set_prompt(u, 100);
@@ -216,6 +240,7 @@ fn test_serde_token_usage() {
     assert(_json_has(j, "150"), "tu: total=150");
     return 0;
 }
+# Test: AgentInfo_to_json emits id, name, agent_type and status.
 fn test_serde_agent_info() {
     var info = agent_info_new(agent_id_new(), str_from("test-agent"), AGENT_TYPE_SERVICE, AGENT_RUNNING);
     var j = _to_json(info, &AgentInfo_to_json);
@@ -226,6 +251,7 @@ fn test_serde_agent_info() {
     assert(_json_has(j, "status"), "ai: has status");
     return 0;
 }
+# Test: AgentStats_to_json emits its fields and the set values.
 fn test_serde_agent_stats() {
     var s = agent_stats_new();
     store64(s, 42);
@@ -239,6 +265,7 @@ fn test_serde_agent_stats() {
     assert(_json_has(j, "3600"), "as: uptime=3600");
     return 0;
 }
+# Test: ResourceLimits_to_json emits every field and the 256 MiB memory default.
 fn test_serde_resource_limits() {
     var rl = resource_limits_new();
     var j = _to_json(rl, &ResourceLimits_to_json);
@@ -251,6 +278,7 @@ fn test_serde_resource_limits() {
     assert(_json_has(j, "268435456"), "rl: mem=256MB");
     return 0;
 }
+# Test: ResourceUsage_to_json emits every field and a set value.
 fn test_serde_resource_usage() {
     var ru = resource_usage_new();
     store64(ru, 512);
@@ -265,6 +293,7 @@ fn test_serde_resource_usage() {
     assert(_json_has(j, "512"), "ru: mem=512");
     return 0;
 }
+# Test: InjectionScores_to_json emits all five scores and a set value.
 fn test_serde_injection_scores() {
     var sc = injection_scores_new();
     iscore_set_sql(sc, 85);
@@ -278,6 +307,7 @@ fn test_serde_injection_scores() {
     assert(_json_has(j, "85"), "is: sql=85");
     return 0;
 }
+# Test: AcceleratorFlags_to_json emits the backend flag fields.
 fn test_serde_accelerator_flags() {
     var f = accelerator_flags_new();
     aflags_set_cuda(f, 1);
@@ -289,6 +319,7 @@ fn test_serde_accelerator_flags() {
     assert(_json_has(j, "directml_available"), "af: has directml");
     return 0;
 }
+# Test: EdgeResourceOverrides_to_json emits its three fields and a set value.
 fn test_serde_edge_overrides() {
     var e = edge_overrides_new();
     store64(e, 1073741824);
@@ -300,6 +331,7 @@ fn test_serde_edge_overrides() {
     assert(_json_has(j, "1073741824"), "eo: mem=1GB");
     return 0;
 }
+# Test: TelemetryConfig_to_json emits its fields and the default sample rate.
 fn test_serde_telemetry_config() {
     var tc = telemetry_config_new();
     var j = _to_json(tc, &TelemetryConfig_to_json);
@@ -310,6 +342,8 @@ fn test_serde_telemetry_config() {
     return 0;
 }
 # --- Integration tests (single function to fit 1024 limit) ---
+# Test: cross-module checks of Version serde, error codes and names, security,
+# telemetry, agent, secret, config, hardware, LLM and audit-integrity types.
 fn test_integration() {
     # Version serde roundtrip
     var v = version_new(1, 2, 3);
@@ -489,6 +523,7 @@ fn test_integration() {
     assert_eq(integrity_is_genesis(ig2), 0, "non-genesis check");
     return 0;
 }
+# Test: display names from the *_name fn of each module's enums.
 fn test_name_functions() {
     # types
     assert_eq(streq(message_type_name(MSG_COMMAND), "Command"), 1, "msg Command");
@@ -525,6 +560,8 @@ fn test_name_functions() {
     assert_eq(streq(audit_result_name(AUDIT_FAILURE), "Failure"), 1, "ares Failure");
     return 0;
 }
+# Harness entry: run every test group above and return assert_summary(), the
+# number of failed assertions (0 when all pass).
 fn main() {
     println("=== agnostik test suite ===");
     test_error();

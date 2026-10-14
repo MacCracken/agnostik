@@ -1,4 +1,6 @@
 enum DeviceFamily { DEV_GPU; DEV_TPU; DEV_NPU; DEV_AI_ASIC; DEV_CPU; }
+# Display name of a DeviceFamily: "GPU", "TPU", "NPU", "AI_ASIC" or "CPU", and
+# "Unknown" for a value outside the enum. device_family_parse is the inverse.
 fn device_family_name(f) {
     if (f == DEV_GPU)          { return "GPU"; }
     elif (f == DEV_TPU)        { return "TPU"; }
@@ -29,6 +31,10 @@ enum DeviceVendor {
     VENDOR_AWS;
     VENDOR_CUSTOM;
 }
+# Display name of a DeviceVendor: "Nvidia", "AMD", "Intel", "Apple", "Google",
+# "Qualcomm", "Habana" or "AWS". VENDOR_CUSTOM, and any value outside the enum,
+# is "Custom", the fallthrough rather than an explicit arm. device_vendor_parse
+# is the inverse.
 fn device_vendor_name(v) {
     if (v == VENDOR_NVIDIA)   { return "Nvidia"; }
     elif (v == VENDOR_AMD)      { return "AMD"; }
@@ -58,6 +64,9 @@ fn device_vendor_parse(s: Str) {
     return stik_err_invalid_argument(str_from("unknown DeviceVendor name"));
 }
 enum DeviceHealth { HEALTH_OK; HEALTH_DEGRADED; HEALTH_FAILED; HEALTH_UNKNOWN; }
+# Display name of a DeviceHealth: "Ok", "Degraded" or "Failed". HEALTH_UNKNOWN,
+# and any value outside the enum, is "Unknown", the fallthrough rather than an
+# explicit arm. device_health_parse is the inverse.
 fn device_health_name(h) {
     if (h == HEALTH_OK)            { return "Ok"; }
     elif (h == HEALTH_DEGRADED)    { return "Degraded"; }
@@ -90,6 +99,10 @@ enum MemoryType {
     MEM_DDR5;
     MEM_UNKNOWN;
 }
+# Display name of a MemoryType: "GDDR5", "GDDR6X", "HBM2e", "LPDDR5X", "DDR5"
+# and so on (note the lower-case e in "HBM2e"). MEM_UNKNOWN, and any value
+# outside the enum, is "Unknown", the fallthrough rather than an explicit arm.
+# memory_type_parse is the inverse.
 fn memory_type_name(t) {
     if (t == MEM_GDDR5)        { return "GDDR5"; }
     elif (t == MEM_GDDR6)      { return "GDDR6"; }
@@ -142,30 +155,63 @@ struct AcceleratorFlags {
     openvino_available: i8;
     directml_available: i8;
 }
+# An AcceleratorFlags: which compute backends are available for a device.
+# 9 bytes, one i8 0/1 flag per backend, read through the aflags_* accessors:
+#   +0 cuda, +1 rocm, +2 metal, +3 vulkan, +4 oneapi, +5 tpu, +6 sycl,
+#   +7 openvino, +8 directml.
+# All flags start at 0. AcceleratorFlags_to_json (#derive) serializes it.
 fn accelerator_flags_new() {
     var f = alloc(9);
     var i = 0;
     while (i < 9) { store8(f + i, 0); i = i + 1; }
     return f;
 }
+# 1 when CUDA is available, else 0.
 fn aflags_cuda(f)     { return load8(f); }
+# 1 when ROCm is available, else 0.
 fn aflags_rocm(f)     { return load8(f + 1); }
+# 1 when Metal is available, else 0.
 fn aflags_metal(f)    { return load8(f + 2); }
+# 1 when Vulkan is available, else 0.
 fn aflags_vulkan(f)   { return load8(f + 3); }
+# 1 when oneAPI is available, else 0.
 fn aflags_oneapi(f)   { return load8(f + 4); }
+# 1 when a TPU backend is available, else 0.
 fn aflags_tpu(f)      { return load8(f + 5); }
+# 1 when SYCL is available, else 0.
 fn aflags_sycl(f)     { return load8(f + 6); }
+# 1 when OpenVINO is available, else 0.
 fn aflags_openvino(f) { return load8(f + 7); }
+# 1 when DirectML is available, else 0.
 fn aflags_directml(f) { return load8(f + 8); }
+# Set the CUDA flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_cuda(f, v)     { store8(f, v); return 0; }
+# Set the ROCm flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_rocm(f, v)     { store8(f + 1, v); return 0; }
+# Set the Metal flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_metal(f, v)    { store8(f + 2, v); return 0; }
+# Set the Vulkan flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_vulkan(f, v)   { store8(f + 3, v); return 0; }
+# Set the oneAPI flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_oneapi(f, v)   { store8(f + 4, v); return 0; }
+# Set the TPU flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_tpu(f, v)      { store8(f + 5, v); return 0; }
+# Set the SYCL flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_sycl(f, v)     { store8(f + 6, v); return 0; }
+# Set the OpenVINO flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_openvino(f, v) { store8(f + 7, v); return 0; }
+# Set the DirectML flag (0/1). Only the low byte of `v` is stored. Returns 0.
 fn aflags_set_directml(f, v) { store8(f + 8, v); return 0; }
+# An AcceleratorDevice: one compute device and its reported state. 120 bytes,
+# all 8-byte slots, read through the adev_* accessors:
+#   +0 index, +8 name, +16 vendor, +24 family, +32 vram_total, +40 vram_used,
+#   +48 utilization, +56 temperature, +64 driver_version,
+#   +72 compute_capability, +80 flags, +88 power_watts,
+#   +96 memory_bandwidth_gbps, +104 memory_type, +112 health.
+# index, name (a Str), vendor (a DeviceVendor) and family (a DeviceFamily) come
+# from the arguments. +32 to +72 start at 0 (the two version Strs unset),
+# flags is a fresh all-0 AcceleratorFlags, power and bandwidth start at 0,
+# memory_type at MEM_UNKNOWN and health at HEALTH_OK.
 fn accelerator_device_new(index, dname: Str, vendor, family) {
     var d = alloc(120);
     store64(d, index);
@@ -181,44 +227,82 @@ fn accelerator_device_new(index, dname: Str, vendor, family) {
     store64(d + 112, HEALTH_OK);
     return d;
 }
+# Device index, as passed to accelerator_device_new.
 fn adev_index(d)       { return load64(d); }
+# Device name Str, as passed to accelerator_device_new.
 fn adev_name(d)        { return load64(d + 8); }
+# DeviceVendor of the device.
 fn adev_vendor(d)      { return load64(d + 16); }
+# DeviceFamily of the device.
 fn adev_family(d)      { return load64(d + 24); }
+# Total VRAM, 0 until set. The type fixes no unit; the tests store MiB figures
+# (24576 for a 24 GiB card). asum_add_device sums this value.
 fn adev_vram_total(d)  { return load64(d + 32); }
+# VRAM in use, in the same unit as vram_total; 0 until set.
 fn adev_vram_used(d)   { return load64(d + 40); }
+# Utilization, 0 until set; the type fixes no scale.
 fn adev_utilization(d) { return load64(d + 48); }
+# Temperature reading, 0 until set; the type fixes no unit.
 fn adev_temperature(d)           { return load64(d + 56); }
+# Driver version Str (for example "550.67"), 0 until set.
 fn adev_driver_version(d)        { return load64(d + 64); }
+# Compute-capability Str (for example "8.0"), 0 until set.
 fn adev_compute_capability(d)    { return load64(d + 72); }
+# The device's AcceleratorFlags (9 bytes, all 0 at construction). There is no
+# setter: update the flags in place with the aflags_set_* setters.
 fn adev_flags(d)                 { return load64(d + 80); }
+# Power figure in watts, 0 until set.
 fn adev_power_watts(d)           { return load64(d + 88); }
+# Memory bandwidth, in the gbps unit the field name gives; 0 until set.
 fn adev_memory_bandwidth_gbps(d) { return load64(d + 96); }
+# MemoryType of the device's memory, MEM_UNKNOWN until set.
 fn adev_memory_type(d)           { return load64(d + 104); }
+# DeviceHealth of the device, HEALTH_OK at construction.
 fn adev_health(d)                { return load64(d + 112); }
+# Set the total VRAM. Returns 0. asum_add_device reads vram_total once, when
+# the device is added, so a later change does not reach asum_total_vram.
 fn adev_set_vram_total(d, v)           { store64(d + 32, v); return 0; }
+# Set the VRAM in use. Returns 0.
 fn adev_set_vram_used(d, v)            { store64(d + 40, v); return 0; }
+# Set the utilization. Returns 0.
 fn adev_set_utilization(d, v)          { store64(d + 48, v); return 0; }
+# Set the temperature reading. Returns 0.
 fn adev_set_temperature(d, v)          { store64(d + 56, v); return 0; }
+# Set the driver-version Str (stored, not copied). Returns 0.
 fn adev_set_driver_version(d, v: Str)      { store64(d + 64, v); return 0; }
+# Set the compute-capability Str (stored, not copied). Returns 0.
 fn adev_set_compute_capability(d, v: Str)  { store64(d + 72, v); return 0; }
+# Set the power figure, in watts. Returns 0.
 fn adev_set_power_watts(d, v)          { store64(d + 88, v); return 0; }
+# Set the memory bandwidth. Returns 0.
 fn adev_set_memory_bandwidth_gbps(d,v) { store64(d + 96, v); return 0; }
+# Set the MemoryType. Stored without validation. Returns 0.
 fn adev_set_memory_type(d, v)          { store64(d + 104, v); return 0; }
+# Set the DeviceHealth. Stored without validation. Returns 0.
 fn adev_set_health(d, v)               { store64(d + 112, v); return 0; }
+# An AcceleratorSummary: a collection of devices with a running VRAM total.
+# 16 bytes: +0 devices (a vec, starts empty), +8 total_vram (starts at 0).
+# Add devices with asum_add_device.
 fn accelerator_summary_new() {
     var s = alloc(16);
     store64(s, vec_new());
     store64(s + 8, 0);
     return s;
 }
+# vec of the AcceleratorDevice pointers added with asum_add_device, in order.
 fn asum_devices(s)    { return load64(s); }
+# Sum of each device's vram_total as it was when the device was added. It is
+# not recomputed, so a later adev_set_vram_total on a member is not reflected.
 fn asum_total_vram(s) { return load64(s + 8); }
+# Append `dev` to the summary and add its current vram_total to total_vram.
+# Returns 0. There is no duplicate check: adding a device twice counts it twice.
 fn asum_add_device(s, dev) {
     vec_push(load64(s), dev);
     store64(s + 8, load64(s + 8) + adev_vram_total(dev));
     return 0;
 }
+# A new vec of the summary's devices whose family is `family`, in insertion
+# order; empty when none match. The devices are shared, not copied.
 fn asum_by_family(s, family) {
     var devices = load64(s);
     var result = vec_new();
@@ -230,6 +314,8 @@ fn asum_by_family(s, family) {
     }
     return result;
 }
+# A new vec of the summary's devices whose vendor is `vendor`, in insertion
+# order; empty when none match. The devices are shared, not copied.
 fn asum_by_vendor(s, vendor) {
     var devices = load64(s);
     var result = vec_new();

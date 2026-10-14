@@ -22,6 +22,7 @@ include "src/lib.cyr"
 
 # ─── proto primitive correctness ────
 
+# Test: _stik_proto_varint encodes 0, 1 and 127 as single bytes.
 fn test_proto_varint_small() {
     # 0 → 0x00; 1 → 0x01; 127 → 0x7F (single byte, MSB clear).
     var sb = str_builder_new();
@@ -37,6 +38,7 @@ fn test_proto_varint_small() {
     return 0;
 }
 
+# Test: _stik_proto_varint encodes 128, 300 and 16383 as the expected two-byte varints.
 fn test_proto_varint_two_bytes() {
     # 128 → 0x80 0x01; 300 → 0xAC 0x02; 16383 → 0xFF 0x7F.
     var sb = str_builder_new();
@@ -55,6 +57,7 @@ fn test_proto_varint_two_bytes() {
     return 0;
 }
 
+# Test: _stik_proto_tag packs (field << 3) | wire_type, incl. a two-byte tag for field 16.
 fn test_proto_tag() {
     # Tag = (field_no << 3) | wire_type. field 1 + varint(0) = 0x08.
     # field 5 + length(2) = 0x2A. field 16 + fixed64(1) = 0x81 0x01.
@@ -72,6 +75,7 @@ fn test_proto_tag() {
     return 0;
 }
 
+# Test: _stik_proto_fixed64_raw writes 8 little-endian bytes per value.
 fn test_proto_fixed64_le() {
     # 1 → 01 00 00 00 00 00 00 00; 0xFF → FF 00 00 00 00 00 00 00.
     var sb = str_builder_new();
@@ -87,6 +91,7 @@ fn test_proto_fixed64_le() {
     return 0;
 }
 
+# Test: _stik_proto_string writes tag, length and the raw bytes of "ab".
 fn test_proto_string() {
     # field 1 + length-delim "ab" → 0x0A 0x02 'a' 'b'.
     var sb = str_builder_new();
@@ -103,6 +108,8 @@ fn test_proto_string() {
 
 # ─── Span_to_otlp_proto ────
 
+# Test: Span_to_otlp_proto for a default span is the hand-computed 50 bytes (ids, name,
+# start/end times; default kind, status and drop counts omitted).
 fn test_span_otlp_minimal() {
     # Span with deterministic ids (allocate + fill explicit bytes) so
     # the encoded output is reproducible.
@@ -167,6 +174,7 @@ fn test_span_otlp_minimal() {
     return 0;
 }
 
+# Test: a SERVER kind and OK status add OTLP field 6 (kind 2) and the field-15 status message.
 fn test_span_otlp_kind_and_status() {
     # Span with non-default kind + non-UNSET status emit additional
     # fields. SPAN_SERVER (kind=1) maps to OTLP SPAN_KIND_SERVER (2).
@@ -200,6 +208,7 @@ fn test_span_otlp_kind_and_status() {
     return 0;
 }
 
+# Test: a set parent span ID is emitted as field 4 between span_id and name.
 fn test_span_otlp_parent_id() {
     # parent_span_id only emitted when non-zero. With parent set,
     # f4 appears between f2 and f5.
@@ -227,6 +236,7 @@ fn test_span_otlp_parent_id() {
     return 0;
 }
 
+# Test: non-zero dropped attribute/event/link counts emit OTLP fields 10, 12 and 14.
 fn test_span_otlp_dropped_counts() {
     # dropped_*_count fields emit only when non-zero.
     var trace_id = alloc(16);
@@ -255,6 +265,7 @@ fn test_span_otlp_dropped_counts() {
     return 0;
 }
 
+# Test-file entry: runs every OTLP primitive and Span test above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.2.0 OTLP wire-format primitives + Span ===");
     test_proto_varint_small();

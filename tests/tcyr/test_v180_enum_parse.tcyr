@@ -1,10 +1,10 @@
 # tests/tcyr/test_v180_enum_parse.tcyr
 #
 # v1.8.0: 25 of the last 26 enums gain `*_name()` / `*_parse()`. The 26th,
-# RestartPolicy, waits on argonaut, whose same-named enum and
-# `restart_policy_parse` collide with agnostik's inside kybernet. v1.4.0
-# (F-018) covered the 31 enums that already had a `_name`, and v1.5.0 added
-# LinuxCapability.
+# RestartPolicy, followed at v1.9.0, once argonaut 1.15.4 had renamed its own
+# `restart_policy_parse` (which collided with agnostik's inside kybernet) and
+# kybernet 1.7.9 had moved to the new name. v1.4.0 (F-018) covered the 31 enums
+# that already had a `_name`, and v1.5.0 added LinuxCapability.
 #
 # Like test_v140_enum_parse.tcyr, the roundtrip half is mechanically derived
 # from the same table that generated the functions: `parse(name(v)) == v` for
@@ -26,6 +26,40 @@ include "lib/fnptr.cyr"
 include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
+
+# --- RestartPolicy: 3 members (v1.9.0) ---
+fn test_restart_policy_roundtrip() {
+    var r1_t, r1 = restart_policy_parse(str_from(restart_policy_name(RESTART_NEVER)));
+    assert_eq(is_ok(r1_t), 1, "RestartPolicy/RESTART_NEVER: parses");
+    assert_eq(r1, RESTART_NEVER, "RestartPolicy/RESTART_NEVER: roundtrips");
+    var r2_t, r2 = restart_policy_parse(str_from(restart_policy_name(RESTART_ALWAYS)));
+    assert_eq(is_ok(r2_t), 1, "RestartPolicy/RESTART_ALWAYS: parses");
+    assert_eq(r2, RESTART_ALWAYS, "RestartPolicy/RESTART_ALWAYS: roundtrips");
+    var r3_t, r3 = restart_policy_parse(str_from(restart_policy_name(RESTART_ON_FAILURE)));
+    assert_eq(is_ok(r3_t), 1, "RestartPolicy/RESTART_ON_FAILURE: parses");
+    assert_eq(r3, RESTART_ON_FAILURE, "RestartPolicy/RESTART_ON_FAILURE: roundtrips");
+    var r4_t, r4 = restart_policy_parse(str_from("__not_a_restart_policy__"));
+    assert_eq(is_ok(r4_t), 0, "RestartPolicy: unknown string rejected");
+    var r5_t, r5 = restart_policy_parse(str_from("Unknown"));
+    assert_eq(is_ok(r5_t), 0, "RestartPolicy: fallback string owned by no member -> Err");
+    assert(streq(restart_policy_name(0 - 1), "Unknown") == 1, "RestartPolicy: -1 names Unknown");
+    assert(streq(restart_policy_name(99999), "Unknown") == 1, "RestartPolicy: 99999 names Unknown");
+    # The Kubernetes restartPolicy spelling, pinned by hand.
+    spell(restart_policy_name(RESTART_ON_FAILURE), "OnFailure", "RestartPolicy: Kubernetes OnFailure");
+    spell(restart_policy_name(RESTART_NEVER), "Never", "RestartPolicy: Kubernetes Never");
+    # argonaut's systemd-style spelling belongs to argonaut_restart_policy_parse,
+    # not to this parser: exact match, no aliases.
+    var r6_t, r6 = restart_policy_parse(str_from("on-failure"));
+    assert_eq(is_ok(r6_t), 0, "RestartPolicy: argonaut's on-failure spelling rejected");
+    var r7_t, r7 = restart_policy_parse(str_from("never"));
+    assert_eq(is_ok(r7_t), 0, "RestartPolicy: lowercase never rejected");
+    # Value-identical with argonaut >= 1.15.4, whose same-named enum meets this
+    # one in kybernet's unit.
+    assert_eq(RESTART_NEVER, 0, "RestartPolicy: RESTART_NEVER 0 (argonaut lockstep)");
+    assert_eq(RESTART_ALWAYS, 1, "RestartPolicy: RESTART_ALWAYS 1 (argonaut lockstep)");
+    assert_eq(RESTART_ON_FAILURE, 2, "RestartPolicy: RESTART_ON_FAILURE 2 (argonaut lockstep)");
+    return 0;
+}
 
 # --- ProbeType: 4 members ---
 fn test_probe_type_roundtrip() {
@@ -705,6 +739,8 @@ fn spell(got, want, label) {
     assert(streq(got, want) == 1, label);
     return 0;
 }
+# Test: hand-pinned spellings of enum names taken from external standards (Kubernetes,
+# LLM APIs, Gemini, Landlock, OCI, limits.conf, OTel), which the roundtrip cannot catch.
 fn test_external_spellings() {
     spell(label_operator_name(LABEL_NOT_IN), "NotIn", "LabelOperator: Kubernetes NotIn");
     spell(label_operator_name(LABEL_DOES_NOT_EXIST), "DoesNotExist", "LabelOperator: Kubernetes DoesNotExist");
@@ -794,8 +830,11 @@ fn test_exact_match() {
     return 0;
 }
 
+# Test-file entry: runs every v1.8.0 enum roundtrip plus the spelling, kernel-number and
+# exact-match pins; returns the assertion summary.
 fn main() {
     println("--- v1.8.0 enum name/parse completion ---");
+    test_restart_policy_roundtrip();
     test_probe_type_roundtrip();
     test_stop_reason_roundtrip();
     test_circuit_breaker_state_roundtrip();

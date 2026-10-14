@@ -30,6 +30,8 @@ fn err_kind_or(res_t, res) {
     return 0 - 1;
 }
 
+# Test-file entry: checks ClassificationResult defaults, the validated level / auto_level /
+# confidence setters and their Err paths; returns the assertion summary.
 fn main() {
     println("--- v1.7.0 ClassificationResult setters ---");
 

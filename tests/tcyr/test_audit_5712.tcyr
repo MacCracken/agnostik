@@ -30,6 +30,7 @@ include "src/lib.cyr"
 # Post-fix: the parser stops accepting digits before the multiply
 # would wrap, returning the largest in-bounds prefix.
 
+# Test: _stik_json_int stops before the 19th nine rather than wrapping past i64::MAX (F-008).
 fn test_f008_overflow_19_nines() {
     # 19 nines exceeds i64::MAX. Pre-fix wrapped to -8446744073709551617 etc.
     # Post-fix stops at digit 18 (since digit 19 would overflow).
@@ -40,6 +41,7 @@ fn test_f008_overflow_19_nines() {
     return 0;
 }
 
+# Test: a 19-digit value below i64::MAX still parses in full (F-008).
 fn test_f008_max_safe_19_digit_still_works() {
     # 1234567890123456789 (19 digits) is < i64::MAX, must still parse.
     var src = str_from("{\"x\": 1234567890123456789}");
@@ -48,6 +50,7 @@ fn test_f008_max_safe_19_digit_still_works() {
     return 0;
 }
 
+# Test: an oversized max_memory value never parses as negative (F-008).
 fn test_f008_attacker_cannot_negative_via_wrap() {
     # If wrap occurred, an attacker could submit a huge unsigned value
     # that ends up < a downstream non-negative limit check.
@@ -76,6 +79,7 @@ fn test_f009_truncated_value_2_bytes() {
     return 0;
 }
 
+# Test: _stik_json_str still returns 0 for a genuine null value (F-009).
 fn test_f009_real_null_still_returns_zero() {
     # The legitimate `null` shape must still be recognized and return 0.
     var src = str_from("{\"a\": null, \"b\": 5}");
@@ -114,6 +118,7 @@ fn _f010_case(src, key, expected, label) {
     return c;
 }
 
+# Test: _stik_json_int skips tab, LF, CR and pretty-printed whitespace after ':' (F-010).
 fn test_f010_whitespace_table() {
     var cases = vec_new();
     vec_push(cases, _f010_case(str_from("{\"x\":\t42}"), str_from("x"), 42, "F-010: skip tab"));
@@ -127,6 +132,7 @@ fn test_f010_whitespace_table() {
     return 0;
 }
 
+# Test-file entry: runs every F-008/F-009/F-010 regression above; returns the assertion summary.
 fn main() {
     println("=== agnostik audit F-008/F-009/F-010 regression ===");
     test_f008_overflow_19_nines();

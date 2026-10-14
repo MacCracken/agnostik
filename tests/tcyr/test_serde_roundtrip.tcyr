@@ -20,6 +20,7 @@ fn _ser(ptr, fn_ptr) {
     return str_builder_build(sb);
 }
 
+# Test: ResourceLimits survives to_json -> from_json_str with all six fields set.
 fn test_resource_limits_roundtrip() {
     var rl = resource_limits_new();
     rlim_set_max_memory(rl, 536870912);
@@ -39,6 +40,7 @@ fn test_resource_limits_roundtrip() {
     return 0;
 }
 
+# Test: ResourceUsage survives to_json -> from_json_str on all four fields.
 fn test_resource_usage_roundtrip() {
     var ru = resource_usage_new();
     store64(ru, 1024);
@@ -54,6 +56,7 @@ fn test_resource_usage_roundtrip() {
     return 0;
 }
 
+# Test: AgentStats survives to_json -> from_json_str (requests, tokens, uptime).
 fn test_agent_stats_roundtrip() {
     var s = agent_stats_new();
     store64(s, 999);
@@ -67,6 +70,7 @@ fn test_agent_stats_roundtrip() {
     return 0;
 }
 
+# Test: TokenUsage survives to_json -> from_json_str on all five counters.
 fn test_token_usage_roundtrip() {
     var tu = token_usage_new();
     tusage_set_prompt(tu, 100);
@@ -84,6 +88,7 @@ fn test_token_usage_roundtrip() {
     return 0;
 }
 
+# Test: AcceleratorFlags survives to_json -> from_json_str, set and unset flags alike.
 fn test_accelerator_flags_roundtrip() {
     var f = accelerator_flags_new();
     aflags_set_cuda(f, 1);
@@ -101,6 +106,7 @@ fn test_accelerator_flags_roundtrip() {
     return 0;
 }
 
+# Test: EdgeResourceOverrides survives to_json -> from_json_str (memory, cpu, agents).
 fn test_edge_overrides_roundtrip() {
     var eo = edge_overrides_new();
     store64(eo, 134217728);
@@ -114,6 +120,7 @@ fn test_edge_overrides_roundtrip() {
     return 0;
 }
 
+# Test: a default TelemetryConfig survives to_json -> from_json, null endpoint included.
 fn test_telemetry_config_roundtrip() {
     var tc = telemetry_config_new();
     var j = _ser(tc, &TelemetryConfig_to_json);
@@ -124,6 +131,7 @@ fn test_telemetry_config_roundtrip() {
     return 0;
 }
 
+# Test: InjectionScores survives to_json -> from_json_str on all five scores.
 fn test_injection_scores_roundtrip() {
     var sc = injection_scores_new();
     iscore_set_sql(sc, 85);
@@ -162,6 +170,7 @@ fn _j2(a, b) {
     return str_builder_build(sb);
 }
 
+# Test: AgentInfo survives to_json -> from_json for every AgentType x AgentStatus pair.
 fn test_agent_info_roundtrip() {
     # Every AgentType x AgentStatus member survives to_json -> from_json.
     var t = AGENT_TYPE_SYSTEM;
@@ -182,6 +191,7 @@ fn test_agent_info_roundtrip() {
     return 0;
 }
 
+# Test: AgentInfo_to_json is byte-exact against golden JSON, including a null name.
 fn test_agent_info_wire_format() {
     # Byte-exact output for a fixed id: the 1.6.3 to_json change must not
     # move a single byte for a valid id.
@@ -199,6 +209,7 @@ fn test_agent_info_wire_format() {
     return 0;
 }
 
+# Test: an AgentInfo with id 0 (null, unparseable or missing) serializes id as null (F-024).
 fn test_agent_info_null_id() {
     # F-024: an id of 0 is written as null instead of dereferenced.
     var a = agent_info_new(0, str_from("x"), AGENT_TYPE_SYSTEM, AGENT_PENDING);
@@ -220,6 +231,8 @@ fn test_agent_info_null_id() {
     return 0;
 }
 
+# Test: AgentInfo_from_json still reads the pre-1.6.3 integer type/status keys; a known
+# name wins over them and an unknown name falls back to them.
 fn test_agent_info_legacy_ids() {
     # The integer keys this fn read through 1.6.2 still parse ...
     var lsrc = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"legacy\",",
@@ -239,6 +252,7 @@ fn test_agent_info_legacy_ids() {
     return 0;
 }
 
+# Test-file entry: runs every serde roundtrip test above; returns the assertion summary.
 fn main() {
     println("=== agnostik serde roundtrip tests ===");
     test_resource_limits_roundtrip();

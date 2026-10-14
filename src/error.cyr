@@ -23,6 +23,11 @@ enum AgnostikErrorCode {
     CODE_SERIALIZATION = 1009;
     CODE_IO = 1010;
 }
+# An AgnostikError: a kind plus a message. 24 bytes, all 8-byte slots:
+#   +0 kind (AgnostikErrorKind), +8 code (AgnostikErrorCode), +16 message (Str, or 0).
+# The code is derived from the kind; STIK_ERR_UNKNOWN and any value outside the
+# enum get CODE_INTERNAL (1008). The kind is stored as given, not validated.
+# Fallible fns return it wrapped in Err through the stik_err_* constructors.
 fn agnostik_err_new(kind, message: Str) {
     var e = alloc(24);
     store64(e, kind);
@@ -42,45 +47,67 @@ fn agnostik_err_new(kind, message: Str) {
     store64(e + 16, message);
     return e;
 }
+# The error's kind: an AgnostikErrorKind value.
 fn agnostik_err_kind(e) { return load64(e); }
+# The error's numeric AgnostikErrorCode (1001..1010), derived from its kind by
+# agnostik_err_new.
 fn agnostik_err_code(e) { return load64(e + 8); }
+# The error's message (Str), or 0 when it has none, as from stik_err_timeout.
 fn agnostik_err_message(e) { return load64(e + 16); }
+# 1 when the error is worth retrying: its kind is STIK_ERR_TIMEOUT or
+# STIK_ERR_RESOURCE_EXHAUSTED. 0 for every other kind.
 fn agnostik_err_is_retriable(e) {
     var kind = agnostik_err_kind(e);
     if (kind == STIK_ERR_TIMEOUT) { return 1; }
     if (kind == STIK_ERR_RESOURCE_EXHAUSTED) { return 1; }
     return 0;
 }
+# Err(AgnostikError) of kind STIK_ERR_AGENT_NOT_FOUND, with `name` as the
+# message. Like every stik_err_* constructor it returns the value-form
+# (tag, payload) pair: return it from a fallible fn, and callers bind
+# `var t, v = f();` and test `t`.
 fn stik_err_agent_not_found(name: Str) {
     return Err(agnostik_err_new(STIK_ERR_AGENT_NOT_FOUND, name));
 }
+# Err(AgnostikError) of kind STIK_ERR_PERMISSION_DENIED, with message `msg`.
 fn stik_err_permission_denied(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_PERMISSION_DENIED, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_CONFIG_ERROR, with message `msg`.
 fn stik_err_config_error(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_CONFIG_ERROR, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_TIMEOUT, with no message (message slot 0).
 fn stik_err_timeout() {
     return Err(agnostik_err_new(STIK_ERR_TIMEOUT, 0));
 }
+# Err(AgnostikError) of kind STIK_ERR_RESOURCE_EXHAUSTED, with message `msg`.
 fn stik_err_resource_exhausted(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_RESOURCE_EXHAUSTED, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_INVALID_ARGUMENT, with message `msg`.
 fn stik_err_invalid_argument(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_INVALID_ARGUMENT, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_NOT_SUPPORTED, with message `msg`.
 fn stik_err_not_supported(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_NOT_SUPPORTED, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_INTERNAL, with message `msg`.
 fn stik_err_internal(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_INTERNAL, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_SERIALIZATION, with message `msg`.
 fn stik_err_serialization(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_SERIALIZATION, msg));
 }
+# Err(AgnostikError) of kind STIK_ERR_IO, with message `msg`.
 fn stik_err_io(msg: Str) {
     return Err(agnostik_err_new(STIK_ERR_IO, msg));
 }
+# AgnostikErrorKind display name: lowercase phrases "agent not found",
+# "permission denied" … "i/o error", and "unknown error" for STIK_ERR_UNKNOWN
+# or a value outside the enum. agnostik_err_kind_parse is the inverse.
 fn agnostik_err_kind_name(kind) {
     if (kind == STIK_ERR_AGENT_NOT_FOUND)    { return "agent not found"; }
     if (kind == STIK_ERR_PERMISSION_DENIED)  { return "permission denied"; }
@@ -144,6 +171,8 @@ fn agnostik_err_code_parse(s: Str) {
     elif (str_eq_cstr(s, "Io") == 1) { return Ok(CODE_IO); }
     return stik_err_invalid_argument(str_from("unknown AgnostikErrorCode name"));
 }
+# Write the error to stderr (fd 2) as "<kind name>: <message>" and a newline,
+# or just "<kind name>" and a newline when it has no message. Returns 0.
 fn agnostik_err_print(e) {
     var kind = agnostik_err_kind(e);
     var name = agnostik_err_kind_name(kind);
@@ -159,6 +188,10 @@ fn agnostik_err_print(e) {
     sys_write(2, "\n", 1);
     return 0;
 }
+# Report a Result whose Err payload is an AgnostikError. Takes both halves of
+# the value-form pair: `res_t` the tag, `res` the payload. Ok prints nothing
+# and returns 0; Err prints the error with agnostik_err_print and returns its
+# AgnostikErrorCode.
 fn result_print_agnostik_err(res_t, res) {
     if (is_ok(res_t) == 1) { return 0; }
     var e = res;

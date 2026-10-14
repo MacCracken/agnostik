@@ -49,9 +49,9 @@ CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik  # release build (dead cod
 cyrius distlib                                         # regenerate dist/agnostik.cyr (CI fails when it is stale)
 bash scripts/bench-regression.sh                       # benchmark gate — mandatory before every release
 bash scripts/api-surface.sh check                      # public-API snapshot gate (`update` after an intentional API change)
-bash scripts/doc-debt.sh check                         # doc gate: no new undocumented fn in src/ (`update` after documenting)
+bash scripts/doc-debt.sh check                         # doc gate: every fn in src/ has a doc comment
 bash scripts/consumer-sweep.sh                         # build + test every [deps.agnostik] consumer against this working tree, on its own pin
-cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — read per-phase verdicts, not the exit code
+cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — exits 0 since v1.9.0; a non-zero exit is a regression
 ```
 
 Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. `deps` rewrites `cyrius.lock`; commit it with the pin move. On a pin move with a committed lock, `lib sync` re-locks only the files it copies, so `deps` then refuses the transitive leaves it adds whose content changed ("DISAGREE under an unchanged pin"); run `cyrius deps --relock` to accept the new snapshot, then check that `cyrius deps --verify` passes and a fresh checkout reproduces the lock. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
@@ -69,7 +69,7 @@ Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, w
 - Fuzz every parser path — edge cases get invariants, not assertions
 - Benchmark before claiming perf — numbers or it didn't happen
 - **Own the stack** — agnostik IS the stack's type vocabulary; consumers should not redefine these
-- Every new public fn gets a `#` doc comment directly above it — `scripts/doc-debt.sh` fails CI on an undocumented fn that is not in the grandfathered `docs/undocumented.baseline`
+- Every fn gets a `#` doc comment directly above it — `scripts/doc-debt.sh` fails CI on any undocumented fn in `src/` (absolute since v1.9.0, when the grandfathered baseline reached zero). Test and bench fns get one too, which is what keeps `cyrius audit`'s docs phase green
 - All public enums must have `*_name()` (string representation) and `*_parse(s)` (roundtrip)
 - Every serializable struct must have a `*_to_json(ptr, sb)` function (or `#derive(Serialize)`)
 - Zero panic in library code — use `Result` (`Ok` / `Err`) for fallible operations
@@ -233,7 +233,6 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
 - [`docs/audit/`](docs/audit/) — security audit reports (`YYYY-MM-DD-audit.md`); frozen once superseded.
 - [`docs/benchmarks/history.csv`](docs/benchmarks/history.csv) — benchmark-gate baseline history.
 - [`docs/api-surface.snapshot`](docs/api-surface.snapshot) — the public-fn surface `scripts/api-surface.sh check` diffs against.
-- [`docs/undocumented.baseline`](docs/undocumented.baseline) — grandfathered undocumented fns; `scripts/doc-debt.sh check` diffs against it.
 - [`docs/development/roadmap.md`](docs/development/roadmap.md) — pinned future slots and the unpinned backlog; shipped work leaves it for the CHANGELOG.
 - [`docs/development/state.md`](docs/development/state.md) — **live state snapshot, refreshed every release**.
 - [`docs/development/issues/`](docs/development/issues/) — records of upstream (cyrius) issues; move to `archive/` once fixed upstream.

@@ -30,6 +30,7 @@ include "src/lib.cyr"
 # xorshift64 PRNG state — heap slot for mutability across helper fns.
 var _RNG = 0;
 
+# Seeds the xorshift64 PRNG (allocating its state slot on first use; seed 0 becomes 1).
 fn rng_init(seed) {
     if (_RNG == 0) { _RNG = alloc(8); }
     if (seed == 0) { seed = 1; }
@@ -37,6 +38,7 @@ fn rng_init(seed) {
     return 0;
 }
 
+# Advances the xorshift64 state and returns the new 64-bit value.
 fn rng_next() {
     var s = load64(_RNG);
     s = s ^ (s << 13);
@@ -46,8 +48,10 @@ fn rng_next() {
     return s;
 }
 
+# Returns the low byte of the next PRNG value.
 fn rng_byte() { return rng_next() & 0xFF; }
 
+# Returns a pseudo-random length in 0..max inclusive (0 when max is 0).
 fn rng_len(max) {
     if (max == 0) { return 0; }
     var n = rng_next();
@@ -55,6 +59,7 @@ fn rng_len(max) {
     return n % (max + 1);
 }
 
+# Returns a Str of `len` uniformly random bytes (NUL-terminated buffer).
 fn fuzz_random_bytes(len) {
     var buf = alloc(len + 1);
     var i = 0;
@@ -66,6 +71,8 @@ fn fuzz_random_bytes(len) {
     return str_new(buf, len);
 }
 
+# Returns a Str of `len` random bytes biased toward JSON punctuation ({ } : , " \),
+# digits and lowercase letters, with some raw bytes mixed in.
 fn fuzz_json_like(len) {
     var buf = alloc(len + 1);
     var i = 0;
@@ -88,6 +95,8 @@ fn fuzz_json_like(len) {
     return str_new(buf, len);
 }
 
+# Returns a Str of `len` random bytes, mostly hex digits (upper and lower case) plus
+# some raw bytes.
 fn fuzz_hex_like(len) {
     var buf = alloc(len + 1);
     var i = 0;
@@ -107,6 +116,8 @@ fn fuzz_hex_like(len) {
 
 var _FUZZ_ITERS = 200;
 
+# Fuzz driver: _stik_json_int over random JSON-like input + keys, then 3 overflow seeds;
+# returns the call count.
 fn fuzz_json_int(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -121,6 +132,8 @@ fn fuzz_json_int(_seed) {
     return _FUZZ_ITERS + 3;
 }
 
+# Fuzz driver: _stik_json_str over random JSON-like input + keys, then 9 escape / null /
+# \u seeds; returns the call count.
 fn fuzz_json_str(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -141,6 +154,8 @@ fn fuzz_json_str(_seed) {
     return _FUZZ_ITERS + 9;
 }
 
+# Fuzz driver: _stik_json_find_value over random input + keys, then 4 string-boundary and
+# whitespace seeds; returns the call count.
 fn fuzz_json_find_value(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -156,6 +171,8 @@ fn fuzz_json_find_value(_seed) {
     return _FUZZ_ITERS + 4;
 }
 
+# Fuzz driver: version_from_str over random bytes, then 6 F-005 / prerelease seeds;
+# returns the call count.
 fn fuzz_version_from_str(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -171,6 +188,8 @@ fn fuzz_version_from_str(_seed) {
     return _FUZZ_ITERS + 6;
 }
 
+# Fuzz driver: agent_id_from_str over 28..44-byte hex-like strings, then 4 fixed seeds;
+# returns the call count.
 fn fuzz_agent_id_from_str(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -185,6 +204,8 @@ fn fuzz_agent_id_from_str(_seed) {
     return _FUZZ_ITERS + 4;
 }
 
+# Fuzz driver: trace_id_from_str over 24..40-byte hex-like strings, then 3 fixed seeds;
+# returns the call count.
 fn fuzz_trace_id_from_str(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -198,6 +219,8 @@ fn fuzz_trace_id_from_str(_seed) {
     return _FUZZ_ITERS + 3;
 }
 
+# Fuzz driver: span_id_from_str over 8..24-byte hex-like strings, then 2 fixed seeds;
+# returns the call count.
 fn fuzz_span_id_from_str(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -210,6 +233,8 @@ fn fuzz_span_id_from_str(_seed) {
     return _FUZZ_ITERS + 2;
 }
 
+# Fuzz driver: tctx_from_traceparent over 40..70-byte hex-like strings, then 2 fixed seeds;
+# returns the call count.
 fn fuzz_tctx_from_traceparent(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -232,6 +257,8 @@ fn _fuzz_ai_rt(src) {
     return 0;
 }
 
+# Fuzz driver: AgentInfo_from_json -> _to_json over random JSON-like input, then 6 F-024
+# seeds; returns the call count.
 fn fuzz_agent_info_json(_seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
@@ -247,6 +274,7 @@ fn fuzz_agent_info_json(_seed) {
     return _FUZZ_ITERS + 6;
 }
 
+# Test: _stik_json_int survives every fuzz iteration from a fixed seed.
 fn test_fuzz_json_int() {
     rng_init(0xCAFEBABE);
     var n = fuzz_json_int(0);
@@ -254,6 +282,7 @@ fn test_fuzz_json_int() {
     return 0;
 }
 
+# Test: _stik_json_str survives every fuzz iteration from a fixed seed.
 fn test_fuzz_json_str() {
     rng_init(0xDEADBEEF);
     var n = fuzz_json_str(0);
@@ -261,6 +290,7 @@ fn test_fuzz_json_str() {
     return 0;
 }
 
+# Test: _stik_json_find_value survives every fuzz iteration from a fixed seed.
 fn test_fuzz_json_find_value() {
     rng_init(0xFACEFEED);
     var n = fuzz_json_find_value(0);
@@ -268,6 +298,7 @@ fn test_fuzz_json_find_value() {
     return 0;
 }
 
+# Test: version_from_str survives every fuzz iteration from a fixed seed.
 fn test_fuzz_version_from_str() {
     rng_init(0xBADC0FFEE);
     var n = fuzz_version_from_str(0);
@@ -275,6 +306,7 @@ fn test_fuzz_version_from_str() {
     return 0;
 }
 
+# Test: agent_id_from_str survives every fuzz iteration from a fixed seed.
 fn test_fuzz_agent_id_from_str() {
     rng_init(0xDECAFBAD);
     var n = fuzz_agent_id_from_str(0);
@@ -282,6 +314,7 @@ fn test_fuzz_agent_id_from_str() {
     return 0;
 }
 
+# Test: trace_id_from_str survives every fuzz iteration from a fixed seed.
 fn test_fuzz_trace_id_from_str() {
     rng_init(0xFEEDFACE);
     var n = fuzz_trace_id_from_str(0);
@@ -289,6 +322,7 @@ fn test_fuzz_trace_id_from_str() {
     return 0;
 }
 
+# Test: span_id_from_str survives every fuzz iteration from a fixed seed.
 fn test_fuzz_span_id_from_str() {
     rng_init(0xC0DEC0DE);
     var n = fuzz_span_id_from_str(0);
@@ -296,6 +330,7 @@ fn test_fuzz_span_id_from_str() {
     return 0;
 }
 
+# Test: tctx_from_traceparent survives every fuzz iteration from a fixed seed.
 fn test_fuzz_tctx_from_traceparent() {
     rng_init(0x1337C0DE);
     var n = fuzz_tctx_from_traceparent(0);
@@ -303,6 +338,7 @@ fn test_fuzz_tctx_from_traceparent() {
     return 0;
 }
 
+# Test: the AgentInfo_from_json -> _to_json roundtrip survives every fuzz iteration (F-024).
 fn test_fuzz_agent_info_json() {
     rng_init(0xA6E471F0);
     var n = fuzz_agent_info_json(0);
@@ -310,6 +346,7 @@ fn test_fuzz_agent_info_json() {
     return 0;
 }
 
+# Test-file entry: runs all nine parser fuzz tests above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.1.2 fuzz harness (9 parsers, 200 iters each) ===");
     test_fuzz_json_int();

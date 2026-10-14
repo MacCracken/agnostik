@@ -11,11 +11,12 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.8.0
+- **Current**: 1.9.0
 - **Toolchain**: Cyrius `6.7.9` (pinned in `cyrius.cyml`)
-- **Tests**: 2,001 assertions across 20 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 2,045 assertions across 21 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean;
-  api-surface gate locked at 977 public fns; all five consumers swept green
+  api-surface gate locked at 979 public fns, every one documented;
+  `cyrius audit` clean; all five consumers swept green
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
   2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
@@ -23,7 +24,8 @@ against successive Cyrius type-system slots.
   review — F-022 fixed in v1.6.2; F-023 and F-024 fixed in v1.6.3),
   2026-10-14 (v1.6.5 toolchain refresh — no findings; v1.7.0 minor-cut
   pass — F-025 helper namespacing, fixed in v1.7.0; v1.7.1 release pass —
-  no findings; v1.8.0 minor-cut pass — no findings).
+  no findings; v1.8.0 minor-cut pass — no findings; v1.9.0 minor-cut pass —
+  F-026 JSON string escaping, fixed in v1.9.0).
   Cadence: every minor cut, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
@@ -86,7 +88,7 @@ cyrius tests                                          # every .tcyr under tests/
 cyrius bench tests/bcyr/agnostik.bcyr                 # 25 benchmarks
 scripts/bench-regression.sh                           # vs baseline in history.csv
 scripts/api-surface.sh check                          # diff vs committed snapshot
-scripts/doc-debt.sh check                             # no new undocumented fns
+scripts/doc-debt.sh check                             # every fn in src/ documented
 scripts/consumer-sweep.sh                             # build + test every consumer against this tree
 ```
 

@@ -5,6 +5,19 @@
 
 ## Version
 
+**1.9.0** — Minor. **`restart_policy_name` / `restart_policy_parse`**, the pair
+1.8.0 held back, now that argonaut 1.15.4 renamed its own and kybernet 1.7.9
+calls that (API 977 → 979). **Every fn is documented:** 849 doc comments in
+`src/` and 195 in the tests and bench, comments only (byte-identical binaries).
+`scripts/doc-debt.sh` is an absolute gate, the baseline file is gone, and
+`cyrius audit` exits 0 for the first time. **Three fixes the documentation pass
+found:** the ten construction-time stamps were `clock_now_ns()` (monotonic), so
+OTLP `start_time_unix_nano` was boot-relative, and now read `clock_epoch_ns()`;
+span-id text was byte-reversed against the OTLP bytes, and now uses memory order
+like the trace id; the telemetry `export_endpoint` and the `AgentInfo` `name`
+were written to JSON unescaped (F-026, LOW). 2,045 assertions / 21 files on
+x86_64 and aarch64; sweep 5 / 5 green; bench neutral (paired median 0.0%).
+
 **1.8.0** — Minor. **Cyrius pin `6.6.20` → `6.7.9`**, the first 6.7.x pin, with no
 source change needed. Every 6.7.x change that could have altered behaviour silently
 (narrow typed-pointer derefs, signed slices, untyped slice params, the dropped lone
@@ -800,22 +813,24 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 |-----------------------|-----------|------------------------------------|
 | Source LOC (src/)     | 4,057     | non-blank, non-comment lines across `src/*.cyr` (4,527 raw), measured at 1.6.2. Same measure: 3,617 at 1.3.0, 4,054 at 1.5.0. The ~3,180 recorded here earlier predates 1.3.0. Ported from 7,121 LOC of Rust |
 | Module count          | 12        | plus `src/proto.cyr` (OTLP wire helpers)   |
-| Test files            | 20        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0, +test_v170_classification_setters at v1.7.0, +test_v180_enum_parse at v1.8.0) |
-| Test assertions       | 2,001     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.8.0 (cyrius 6.7.9). +427 enum name/parse at v1.8.0; 1,574 at 1.7.0–1.7.1. +38 `ClassificationResult` setters at v1.7.0; 1,536 at 1.6.3–1.6.5. +123 `AgentInfo` round-trip + 1 fuzz target at v1.6.3; 1,412 at v1.6.2 (+10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0); 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
+| Test files            | 21        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0, +test_v170_classification_setters at v1.7.0, +test_v180_enum_parse at v1.8.0, +test_v190_fixes at v1.9.0) |
+| Test assertions       | 2,045     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.9.0 (cyrius 6.7.9). +27 the v1.9.0 fixes, +17 `RestartPolicy` at v1.9.0; 2,001 at 1.8.0. +427 enum name/parse at v1.8.0; 1,574 at 1.7.0–1.7.1. +38 `ClassificationResult` setters at v1.7.0; 1,536 at 1.6.3–1.6.5. +123 `AgentInfo` round-trip + 1 fuzz target at v1.6.3; 1,412 at v1.6.2 (+10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0); 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
 | Benchmarks            | 25        | `tests/bcyr/agnostik.bcyr` — gained the missing `src/proto.cyr` include at 1.3.6 |
-| Test binary           | 134,408 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.8.0 (cyrius 6.7.9; 132,552 B at 1.7.0–1.7.1, 132,424 B at 1.6.5); plain 740,616 B and aarch64 896,144 B at 1.8.0; at 1.7.x plain 718,280 B, aarch64 828,776 B (DCE still NOP-fills there; 1,024,016 B on 6.6.6, before 6.6.18's compile-time syscall fold). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE); 127,128 B at 1.6.2 (6.6.6); 127,096 B at 1.6.3–1.6.4; **132,424 B at 1.6.5** (6.6.20, same source) |
+| Test binary           | 134,456 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.9.0 (cyrius 6.7.9); plain 744,760 B and aarch64 896,192 B at 1.9.0, where the doc comments add no byte. 134,408 B at 1.8.0 (132,552 B at 1.7.0–1.7.1, 132,424 B at 1.6.5); plain 740,616 B and aarch64 896,144 B at 1.8.0; at 1.7.x plain 718,280 B, aarch64 828,776 B (DCE still NOP-fills there; 1,024,016 B on 6.6.6, before 6.6.18's compile-time syscall fold). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE); 127,128 B at 1.6.2 (6.6.6); 127,096 B at 1.6.3–1.6.4; **132,424 B at 1.6.5** (6.6.20, same source) |
 | Build warnings        | 0         | on x86_64-linux, aarch64, agnos and Windows at 6.7.9 (on 6.6.20 the Windows build carried one stdlib-internal warning). | aarch64's raw-`getrandom`-318 warning (live since at least the 6.6.2 pin, unseen because CI skipped aarch64) fixed at 1.6.2 (F-022) |
 | Lint warnings         | 0         | (28 UFCS false positives resolved upstream in cyrius 5.7.7) |
-| Lib bundle (dist/)    | 197,447 B | `dist/agnostik.cyr`, regenerated by `cyrius distlib`; tracked in CI sync check. 1.8.0 diff: the 50 enum fns, banner. 166,565 B at 1.7.1; 1.7.1 diff: `sys_write` in `agnostik_err_print`, banner. 166,569 B at 1.7.0; 1.7.0 diff: the `_stik_` rename, the four `cresult_*` fns, comments, banner. 164,427 B at 1.6.5; 1.6.5 diff: the 6.6.18 requires block (12 `include` lines), two comments, banner; sidecar 15 → 12 leaves. 164,007 B at 1.6.3; 1.6.3 diff: F-023, the `AgentInfo` fix, doc comments, banner. 1.6.2's bundle is 161,663 B; this file said 161,433 B until 1.6.3, a figure measured before 1.6.2's last comment edit |
-| Undocumented pub fns  | 849       | `docs/undocumented.baseline`, enforced by `scripts/doc-debt.sh check` in CI since 1.6.3 (a new undocumented fn fails; so does a listed fn that has since been documented). Per-file `cyrius doc --check` sum over `src/*.cyr`: 860 at 1.6.2, 853 at 6.5.35. `cyrius audit`'s docs phase reports its own, larger figure over `src tests` and is the sole reason `audit` exits non-zero |
+| Lib bundle (dist/)    | 279,466 B | `dist/agnostik.cyr`, regenerated by `cyrius distlib`; tracked in CI sync check. 1.9.0 diff: the 849 doc comments (almost all of the growth), the three fixes, the `RestartPolicy` pair, banner. 197,447 B at 1.8.0; 1.8.0 diff: the 50 enum fns, banner. 166,565 B at 1.7.1; 1.7.1 diff: `sys_write` in `agnostik_err_print`, banner. 166,569 B at 1.7.0; 1.7.0 diff: the `_stik_` rename, the four `cresult_*` fns, comments, banner. 164,427 B at 1.6.5; 1.6.5 diff: the 6.6.18 requires block (12 `include` lines), two comments, banner; sidecar 15 → 12 leaves. 164,007 B at 1.6.3; 1.6.3 diff: F-023, the `AgentInfo` fix, doc comments, banner. 1.6.2's bundle is 161,663 B; this file said 161,433 B until 1.6.3, a figure measured before 1.6.2's last comment edit |
+| Undocumented pub fns  | 0         | since v1.9.0: every fn in `src/` is documented, and `scripts/doc-debt.sh check` fails on any undocumented one (the grandfathered baseline it diffed against from 1.6.3 to 1.8.0 is gone). Before: 1.6.3 (a new undocumented fn fails; so does a listed fn that has since been documented). Per-file `cyrius doc --check` sum over `src/*.cyr`: 860 at 1.6.2, 853 at 6.5.35. `cyrius audit`'s docs phase counts over `src tests`; it was the sole reason `audit` exited non-zero until 1.9.0 documented the tests and bench too, and `audit` now exits 0 |
 
 ## Consumers
 
 Repos that declare `[deps.agnostik]` in their `cyrius.cyml`, from a census of
 every local AGNOS checkout at 1.6.5. These are the repos a release can break.
 `scripts/consumer-sweep.sh` (`--list` for the live census) builds and tests
-each one against the working tree on its own pin; the 1.8.0 release swept
-5 / 5 green with no agnostik-involved duplicate definitions:
+each one against the working tree on its own pin; the 1.9.0 release swept
+5 / 5 green with no agnostik-involved duplicate definitions. kybernet 1.7.9 pins
+argonaut 1.15.4, whose `argonaut_restart_policy_parse` cleared the way for
+agnostik's `restart_policy_parse`:
 
 | Consumer | agnostik tag | Vendors | Cyrius pin |
 |---|---|---|---|
@@ -834,9 +849,11 @@ and the `_hex_nibble` one noted at 1.6.5 (sigil) surfaced.
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.8.0`**, cyrius
-6.7.9 and `*_name` / `*_parse` for 25 more enums (`RestartPolicy` held back for
-the argonaut 1.15.4 lockstep). Prior: `1.7.1`, CI and release hardening (no raw syscalls in `src/`, aarch64 tests in CI, a
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.9.0`**, the
+`RestartPolicy` pair, every fn documented (`cyrius audit` exits 0), and three
+fixes: Unix-time stamps (OTLP), span-id byte order, JSON escaping (F-026).
+Prior: `1.8.0`, cyrius 6.7.9 and `*_name` / `*_parse` for 25 more enums
+(`RestartPolicy` held back for the argonaut 1.15.4 lockstep). Prior: `1.7.1`, CI and release hardening (no raw syscalls in `src/`, aarch64 tests in CI, a
 signature-verified toolchain install, the orphan `keccak.cyr` removed). Prior:
 `1.7.0`, the consumer-safety-net minor (cross-consumer sweep, F-025 `_stik_` helper
 namespacing with a CI gate, `ClassificationResult` setters; API 923 → 927).

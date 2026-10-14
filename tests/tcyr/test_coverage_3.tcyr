@@ -14,6 +14,7 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# Test: AcceleratorDevice constructor fields, defaults, and a set/get roundtrip on every setter.
 fn test_hardware_device() {
     var dev = accelerator_device_new(0, str_from("A100"), VENDOR_NVIDIA, DEV_GPU);
     assert_eq(adev_index(dev), 0, "dev index 0");
@@ -55,6 +56,7 @@ fn test_hardware_device() {
     return 0;
 }
 
+# Test: all nine AcceleratorFlags default to 0 and read back 1 after their setters.
 fn test_hardware_flags() {
     var af = accelerator_flags_new();
     assert_eq(aflags_cuda(af), 0, "af default no cuda");
@@ -87,6 +89,7 @@ fn test_hardware_flags() {
     return 0;
 }
 
+# Test: AcceleratorSummary device count, total VRAM, and by_vendor / by_family filtering.
 fn test_hardware_summary() {
     var sum = accelerator_summary_new();
     assert_eq(vec_len(asum_devices(sum)), 0, "sum default no devices");
@@ -112,6 +115,7 @@ fn test_hardware_summary() {
     return 0;
 }
 
+# Test-file entry: runs every hardware coverage test above; returns the assertion summary.
 fn main() {
     println("=== agnostik extended coverage 3 (hardware) ===");
     test_hardware_device();

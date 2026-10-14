@@ -72,6 +72,7 @@ fn test_f013_in_slice_separator_honored() {
     return 0;
 }
 
+# Test-file entry: runs both F-013 slice-safety tests above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.3.0 slice-safety regression ===");
     test_f013_version_slice_no_separator();

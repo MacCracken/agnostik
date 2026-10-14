@@ -14,6 +14,7 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# Test: ResourceLimits defaults and a set/get roundtrip on each of its six fields.
 fn test_agent_resource_limits_setters() {
     var rl = resource_limits_new();
     # defaults
@@ -39,6 +40,7 @@ fn test_agent_resource_limits_setters() {
     return 0;
 }
 
+# Test: a fresh ResourceUsage reads 0 for memory, cpu, fds and procs.
 fn test_agent_resource_usage_accessors() {
     var ru = resource_usage_new();
     assert_eq(rusage_memory(ru), 0, "ru default mem");
@@ -48,6 +50,7 @@ fn test_agent_resource_usage_accessors() {
     return 0;
 }
 
+# Test: AgentConfig name and defaults, then the type / restart policy / max_restarts setters.
 fn test_agent_config_extended() {
     var cfg = agent_config_new(str_from("ext-test"));
     assert_eq(str_eq(aconf_name(cfg), str_from("ext-test")), 1, "cfg name");
@@ -70,6 +73,7 @@ fn test_agent_config_extended() {
     return 0;
 }
 
+# Test: a fresh AgentRateLimit has zero tokens/hour, requests/min and concurrency.
 fn test_agent_rate_limit() {
     var rl = agent_rate_limit_new();
     assert_eq(arl_tokens_per_hour(rl), 0, "arl default tokens");
@@ -78,6 +82,7 @@ fn test_agent_rate_limit() {
     return 0;
 }
 
+# Test: agent_event_new stores the agent ID, event type and payload.
 fn test_agent_event() {
     var id = agent_id_new();
     var ae = agent_event_new(id, 42, str_from("payload-data"));
@@ -87,6 +92,7 @@ fn test_agent_event() {
     return 0;
 }
 
+# Test: stop_reason_new stores kind and message, including a timeout with no message.
 fn test_agent_stop_reason() {
     var sr = stop_reason_new(STOP_USER_REQUESTED, str_from("user cancelled"));
     assert_eq(stop_reason_kind(sr), STOP_USER_REQUESTED, "sr kind");
@@ -96,6 +102,7 @@ fn test_agent_stop_reason() {
     return 0;
 }
 
+# Test: HealthCheck defaults, empty LifecycleHooks, and setting a pre_start hook with timeout.
 fn test_agent_lifecycle() {
     var hc = agnostik_health_check_new();
     assert_eq(hc_probe_type(hc), PROBE_LIVENESS_READINESS, "hc default probe");
@@ -116,6 +123,7 @@ fn test_agent_lifecycle() {
     return 0;
 }
 
+# Test: AgentCapabilities skills/input_types vectors and the max_tasks setter.
 fn test_agent_capabilities() {
     var ac = agent_capabilities_new();
     assert_eq(acap_max_tasks(ac), 0, "acap default max_tasks");
@@ -128,6 +136,7 @@ fn test_agent_capabilities() {
     return 0;
 }
 
+# Test: SchedulingConstraints defaults and the priority setter.
 fn test_agent_scheduling() {
     var sc = scheduling_constraints_new();
     assert_eq(sched_priority(sc), 0, "sched default priority");
@@ -137,6 +146,7 @@ fn test_agent_scheduling() {
     return 0;
 }
 
+# Test: RestartBackoff defaults (1000 ms delay, 2000 multiplier, 60000 ms max, jitter on).
 fn test_agent_restart_backoff() {
     var rb = restart_backoff_new();
     assert_eq(rback_initial_delay(rb), 1000, "rb default delay 1000");
@@ -146,6 +156,7 @@ fn test_agent_restart_backoff() {
     return 0;
 }
 
+# Test: ResourceRequest and ResourceGrant fields plus their justification/reason setters.
 fn test_agent_resource_request_grant() {
     var id = agent_id_new();
     var lim = resource_limits_new();
@@ -163,6 +174,7 @@ fn test_agent_resource_request_grant() {
     return 0;
 }
 
+# Test: AgentMessage id/sender/receiver, empty correlation + reply_to, set_correlation_id.
 fn test_agent_message_extended() {
     var s = agent_id_new();
     var r = agent_id_new();
@@ -177,6 +189,7 @@ fn test_agent_message_extended() {
     return 0;
 }
 
+# Test: TopicMessage id/topic/publisher/timestamp and the priority and ttl setters.
 fn test_agent_topic_message() {
     var id = agent_id_new();
     var tm = topic_message_new(str_from("events"), id);
@@ -191,6 +204,7 @@ fn test_agent_topic_message() {
     return 0;
 }
 
+# Test: SandboxConfig defaults and the net-access, seccomp, AppArmor and SELinux setters.
 fn test_security_sandbox_extended() {
     var sb = sandbox_config_new();
     assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "sb default net");
@@ -205,6 +219,7 @@ fn test_security_sandbox_extended() {
     return 0;
 }
 
+# Test: SecurityContext defaults (agent ID, no_new_privs, uid/gid 0, sandbox) and permissions.
 fn test_security_context_extended() {
     var id = agent_id_new();
     var ctx = security_context_new(id);
@@ -221,6 +236,7 @@ fn test_security_context_extended() {
     return 0;
 }
 
+# Test: SecurityPolicy name, allow effect, and its permissions vector.
 fn test_security_policy() {
     var pol = security_policy_new(str_from("allow-read"), POLICY_ALLOW);
     assert_eq(str_eq(secpol_name(pol), str_from("allow-read")), 1, "pol name");
@@ -231,6 +247,7 @@ fn test_security_policy() {
     return 0;
 }
 
+# Test: a CapabilitySet starts with all five sets empty; effective/permitted accept a push.
 fn test_security_capabilities() {
     var cs = capability_set_new();
     assert_eq(vec_len(capset_effective(cs)), 0, "cs default empty effective");
@@ -245,6 +262,7 @@ fn test_security_capabilities() {
     return 0;
 }
 
+# Test: a fresh SandboxCapabilities reports every probe as 0.
 fn test_security_sandbox_capabilities() {
     var sc = sandbox_capabilities_new();
     assert_eq(sbcap_seccomp(sc), 0, "sbcap default no seccomp");
@@ -256,6 +274,7 @@ fn test_security_sandbox_capabilities() {
     return 0;
 }
 
+# Test: TokenPayload subject/role and AuthContext agent ID/role, both with no permissions.
 fn test_security_auth() {
     var id = agent_id_new();
     var tp = token_payload_new(str_from("user-123"), ROLE_OPERATOR);
@@ -269,6 +288,7 @@ fn test_security_auth() {
     return 0;
 }
 
+# Test: tool_definition_new stores name, description and (null) params.
 fn test_llm_tool_definition() {
     var td = tool_definition_new(str_from("search"), str_from("Search the web"), 0);
     assert_eq(str_eq(tooldef_name(td), str_from("search")), 1, "td name");
@@ -277,6 +297,7 @@ fn test_llm_tool_definition() {
     return 0;
 }
 
+# Test: tool_call_new stores the call id, tool name and argument JSON.
 fn test_llm_tool_call() {
     var tc = tool_call_new(str_from("call_1"), str_from("search"), str_from("{\"q\":\"test\"}"));
     assert_eq(str_eq(tcall_id(tc), str_from("call_1")), 1, "tc id");
@@ -285,6 +306,7 @@ fn test_llm_tool_call() {
     return 0;
 }
 
+# Test: SamplingParams defaults, the temperature/top_p/top_k/seed setters, and stop sequences.
 fn test_llm_sampling_params() {
     var sp = sampling_params_new();
     assert_eq(samp_temperature(sp), 1000, "sp default temp 1000");
@@ -307,6 +329,7 @@ fn test_llm_sampling_params() {
     return 0;
 }
 
+# Test: TokenUsage zero defaults and a set/get roundtrip on all five counters.
 fn test_llm_token_usage_extended() {
     var tu = token_usage_new();
     assert_eq(tusage_prompt(tu), 0, "tu default prompt");
@@ -327,6 +350,7 @@ fn test_llm_token_usage_extended() {
     return 0;
 }
 
+# Test: InferenceRequest defaults, system prompt + tools; InferenceResponse id/finish_reason.
 fn test_llm_inference_extended() {
     var req = inference_request_new(str_from("claude-3"));
     assert_eq(str_eq(ireq_model(req), str_from("claude-3")), 1, "req model");
@@ -351,6 +375,7 @@ fn test_llm_inference_extended() {
     return 0;
 }
 
+# Test: each content_* constructor yields a block of the matching CB_* type.
 fn test_llm_content_blocks() {
     var tb = content_text(str_from("hello"));
     assert_eq(content_block_type(tb), CB_TEXT, "cb text type");
@@ -371,6 +396,7 @@ fn test_llm_content_blocks() {
     return 0;
 }
 
+# Test: ModelCapabilities model id/provider and the context-window and max-output setters.
 fn test_llm_model_capabilities() {
     var mc = model_capabilities_new(str_from("claude-3-opus"), LLM_ANTHROPIC);
     assert_eq(str_eq(mcap_model_id(mc), str_from("claude-3-opus")), 1, "mc model_id");
@@ -383,6 +409,7 @@ fn test_llm_model_capabilities() {
     return 0;
 }
 
+# Test: a fresh RateLimitInfo has every limit, remaining and reset field at 0.
 fn test_llm_rate_limit() {
     var rli = rate_limit_info_new();
     assert_eq(rli_limit_requests(rli), 0, "rli default limit_req");
@@ -393,6 +420,7 @@ fn test_llm_rate_limit() {
     return 0;
 }
 
+# Test: the stream_* constructors box the matching STREAM_* tag.
 fn test_llm_streaming() {
     var sd = stream_delta(str_from("Hello"));
     assert_eq(boxed_tag(sd), STREAM_DELTA, "stream delta tag");
@@ -405,6 +433,7 @@ fn test_llm_streaming() {
     return 0;
 }
 
+# Test-file entry: runs every agent/security/llm coverage test; returns the assertion summary.
 fn main() {
     println("=== agnostik extended coverage 1 (agent/security/llm) ===");
     test_agent_resource_limits_setters();

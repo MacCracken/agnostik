@@ -33,6 +33,7 @@ fn _has(json, key) {
 
 # ─── 7 derive-driven structs ─────────────
 
+# Test: a default ResourceLimits serializes to the exact compact JSON bytes.
 fn test_resource_limits_golden() {
     var rl = resource_limits_new();
     var got = _ser(rl, &ResourceLimits_to_json);
@@ -43,6 +44,7 @@ fn test_resource_limits_golden() {
     return 0;
 }
 
+# Test: a zeroed ResourceUsage serializes to the exact compact JSON bytes.
 fn test_resource_usage_golden() {
     var ru = resource_usage_new();
     var got = _ser(ru, &ResourceUsage_to_json);
@@ -51,6 +53,7 @@ fn test_resource_usage_golden() {
     return 0;
 }
 
+# Test: AgentStats serializes to the exact compact JSON bytes.
 fn test_agent_stats_golden() {
     var as = agent_stats_new();
     store64(as, 999); store64(as + 8, 50000); store64(as + 16, 86400);
@@ -60,6 +63,7 @@ fn test_agent_stats_golden() {
     return 0;
 }
 
+# Test: EdgeResourceOverrides serializes to the exact compact JSON bytes.
 fn test_edge_overrides_golden() {
     var eo = edge_overrides_new();
     store64(eo, 1024); store64(eo + 8, 60); store64(eo + 16, 5);
@@ -69,6 +73,7 @@ fn test_edge_overrides_golden() {
     return 0;
 }
 
+# Test: InjectionScores serializes to the exact compact JSON bytes.
 fn test_injection_scores_golden() {
     var is = injection_scores_new();
     iscore_set_sql(is, 85);
@@ -82,6 +87,7 @@ fn test_injection_scores_golden() {
     return 0;
 }
 
+# Test: TokenUsage serializes to the exact compact JSON bytes.
 fn test_token_usage_golden() {
     var tu = token_usage_new();
     tusage_set_prompt(tu, 1000);
@@ -97,6 +103,7 @@ fn test_token_usage_golden() {
     return 0;
 }
 
+# Test: AcceleratorFlags serializes to the exact compact JSON bytes (all nine flags).
 fn test_accelerator_flags_golden() {
     var af = accelerator_flags_new();
     aflags_set_cuda(af, 1);
@@ -113,6 +120,7 @@ fn test_accelerator_flags_golden() {
 
 # ─── 2 hand-written structs (compact per ADR-002) ──
 
+# Test: hand-written AgentInfo_to_json is 98 bytes, compact, with type/status as enum names.
 fn test_agent_info_golden_with_name() {
     var id = agent_id_new();
     var ai = agent_info_new(id, str_from("alpha"), 1, 3);
@@ -128,6 +136,7 @@ fn test_agent_info_golden_with_name() {
     return 0;
 }
 
+# Test: AgentInfo_to_json writes a null name compactly, with status Pending.
 fn test_agent_info_golden_null_name() {
     var id = agent_id_new();
     var ai = agent_info_new(id, 0, 1, 0);
@@ -137,6 +146,7 @@ fn test_agent_info_golden_null_name() {
     return 0;
 }
 
+# Test: TelemetryConfig with an export endpoint serializes to the exact compact JSON bytes.
 fn test_telemetry_config_golden_with_endpoint() {
     var tc = telemetry_config_new();
     store64(tc + 16, str_from("https://otlp.example/v1/traces"));
@@ -146,6 +156,7 @@ fn test_telemetry_config_golden_with_endpoint() {
     return 0;
 }
 
+# Test: a default TelemetryConfig serializes its null endpoint as compact `null`.
 fn test_telemetry_config_golden_null_endpoint() {
     var tc = telemetry_config_new();
     var got = _ser(tc, &TelemetryConfig_to_json);
@@ -156,6 +167,7 @@ fn test_telemetry_config_golden_null_endpoint() {
 
 # ─── v1.1.0 LLM additions ─────────────────────
 
+# Test: llm_provider_name for the v1.1.0 Together/Fireworks/Bedrock/Vertex/Cohere providers.
 fn test_v110_new_llm_providers() {
     assert_eq(streq(llm_provider_name(LLM_TOGETHER),  "Together"),  1, "llm: Together");
     assert_eq(streq(llm_provider_name(LLM_FIREWORKS), "Fireworks"), 1, "llm: Fireworks");
@@ -165,6 +177,7 @@ fn test_v110_new_llm_providers() {
     return 0;
 }
 
+# Test: the v1.1.0 LlmProvider tags all sit above LLM_CUSTOM.
 fn test_v110_llm_provider_tags_distinct() {
     # New providers must have tag values > LLM_CUSTOM to preserve
     # wire-format tags 0..12 for existing consumers.
@@ -176,6 +189,8 @@ fn test_v110_llm_provider_tags_distinct() {
     return 0;
 }
 
+# Test: the v1.1.0 ModelCapabilities video/caching/parallel-tool flags default 0, set to 1,
+# and leave the existing vision/thinking flags alone.
 fn test_v110_new_mcap_flags() {
     var mc = model_capabilities_new(str_from("test-model"), LLM_ANTHROPIC);
     # New v1.1.0 flags default to 0
@@ -195,6 +210,7 @@ fn test_v110_new_mcap_flags() {
     return 0;
 }
 
+# Test-file entry: runs every serde golden + LLM test above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.1.0 serde golden + LLM additions ===");
     test_resource_limits_golden();

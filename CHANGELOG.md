@@ -2,6 +2,284 @@
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-14
+
+**Minor:** the last enum gets its name/parse pair, every function is documented (`cyrius audit` now
+exits 0), and three defects the documentation pass found are fixed:
+- OTLP and every other construction-time timestamp were monotonic, not Unix time;
+- span-id text was byte-reversed against the OTLP bytes;
+- two JSON string fields were written unescaped.
+
+Public API 977 → **979** (+2, no removals, no signature or layout change). 21 test files, **2,045
+assertions, 0 failures**, on x86_64-linux and on aarch64. All five `[deps.agnostik]` consumers build
+and pass their tests against it.
+
+### Fixed — timestamps are Unix time (OTLP `start_time_unix_nano` was boot-relative)
+
+Every construction-time stamp came from `clock_now_ns()`. That is the stdlib's monotonic clock:
+`CLOCK_MONOTONIC` on Linux, uptime on agnos, QPC on Windows. `Span_to_otlp_proto` wrote it as
+`start_time_unix_nano` (and `end_time_unix_nano`), so an OTLP collector placed every span a few
+days after 1970. The same stamp sat in audit entries, agent and topic messages, and secret
+metadata. There it crosses process and machine boundaries, sits in an audit chain, and lives beside
+an `expires_at` meant in wall-clock time. All ten stamp sites now use **`clock_epoch_ns()`**, Unix
+time in ns on every target (whole seconds on agnos):
+
+| struct | accessor |
+|---|---|
+| Span | `span_started_at` |
+| LogRecord | `logrec_timestamp` |
+| CrashReport | `crash_timestamp` |
+| SpanEvent | `sevt_timestamp` |
+| Exemplar | `exem_timestamp` |
+| MetricDataPoint | `mdp_timestamp` |
+| AuditEntry | `aentry_timestamp` |
+| AgentMessage | `amsg_timestamp` |
+| TopicMessage | `tmsg_timestamp` |
+| SecretMetadata | `smeta_created_at` |
+
+Span durations are unaffected: they come from `span_set_duration_ms`, never from the clock. Nothing
+in agnostik compared a stamp against `clock_now_ns()`. No consumer reads any of these fields, and
+the tests only asserted `> 0`.
+
+### Fixed — span-id text is the bytes in memory order, as OTLP and W3C use
+
+`span_id_to_str` printed `load64(id)` most significant byte first, and `span_id_from_str` stored the
+parsed value with `store64`. Both were self-consistent, so round-trips passed, but on a
+little-endian target the 16 hex digits were the **reverse** of the 8 bytes `Span_to_otlp_proto`
+emits. A span correlated by its traceparent `parent-id` showed a different id in the collector. Both
+now work byte by byte, as `trace_id_to_str` / `trace_id_from_str` always did: digits 2i..2i+1 are
+byte i.
+
+- **Text round-trips are unchanged.** `tctx_from_traceparent` → `tctx_to_traceparent` is still
+  byte-exact.
+- **What changes** is the text printed for a given in-memory id, and the bytes a given text parses
+  to. Both now agree with OTLP.
+- **Consumer impact:** none of the five consumers calls the span-id text functions, the traceparent
+  functions or `Span_to_otlp_proto`.
+
+### Fixed — JSON string fields are escaped (F-026)
+
+`TelemetryConfig_to_json` wrote `export_endpoint`, and `AgentInfo_to_json` wrote the agent `name`,
+between hand-placed quotes with no escaping. A `"` ended the string early, and the rest was parsed
+as JSON. A name like `x","status":"Failed` injected a key, and it came first, so even agnostik's own
+`AgentInfo_from_json` read the injected status. Both now use the stdlib's
+`str_builder_add_json_str` (escapes `"`, `\`, `\b \t \n \f \r`, and other control characters as
+`\u00XX`). Output for ordinary strings is byte-identical, so `test_v110_serde_golden` is
+unchanged. A sweep of every hand-written `_to_json` found no other raw string field; the remaining
+raw adds are a hex UUID, internal search keys, protobuf bytes and traceparent hex. See Security.
+
+### Tests — `tests/tcyr/test_v190_fixes.tcyr` (27 assertions)
+
+- **All ten stamps are plausible Unix time.** Each is after 2020-09-13 and within 60 s of
+  `clock_epoch_ns()`. The OTLP encoding carries the same value as field 7 (tag `0x39` followed by
+  the 8 bytes).
+- **Span id:** `"0102030405060708"` parses to bytes 01..08. A raw byte id prints in order, and
+  uppercase input prints lowercase. The OTLP `span_id` field (`0x12 0x08` and the 8 bytes) matches
+  the text, and a traceparent round-trips byte-exact.
+- **Escaping:** an endpoint containing `"`, `\` and a newline serializes to the exact escaped JSON
+  and round-trips. An injection-shaped agent name round-trips as one string, with the real status
+  intact.
+
+Mutation-checked. Restoring the monotonic span stamp fails one assertion, restoring the reversed
+span-id printing fails four, and restoring either raw JSON write (the endpoint or the name) fails
+two.
+
+### Changed — every function is documented; `cyrius audit` passes for the first time
+
+All **849** grandfathered undocumented fns in `src/` now carry a doc comment, as do the **195**
+test and bench fns. **`cyrius audit` exits 0** — fmt, lint, docs, tests and bench all pass. Since
+1.3.6 its docs phase had been the one reason it could not serve as a single-command gate.
+
+| module | fns | module | fns |
+|---|---:|---|---:|
+| agent | 174 | hardware | 55 |
+| security | 152 | audit | 44 |
+| llm | 148 | types | 40 |
+| telemetry | 126 | validation | 26 |
+| error | 18 | main (test harness) | 23 |
+| config | 22 | secrets | 21 |
+
+Plus tests/ and benches: 195 across 21 files.
+
+**Comments only, proven three ways:**
+- Each file with its full-line `#` comments stripped is byte-identical to the pre-pass copy, for
+  all 12 `src/` modules and all 21 test and bench files.
+- The `CYRIUS_DCE=1` x86_64 and aarch64 binaries are byte-identical to the pre-pass builds. The
+  build is deterministic, and an added comment line alone was shown to leave the binary unchanged
+  first, so this check would catch any code change.
+- Every test file's assertion count is unchanged.
+
+**How the comments were written.** Constructors carry a block with the struct's size and its
+`+offset field (default)` layout, read from the constructor body. Getters say what the field is:
+its kind (`Str` vs cstr, vec of what, enum type, pointer to which struct) and its unit where the
+code establishes one. Setters say so and that they return 0. Where the code does not settle a
+meaning, the comment says only what is certain, e.g. "zeroed, no accessor" or "this module fixes
+no unit". Units were taken from the pre-port Rust original only where the Cyrius defaults match it
+exactly: the 1000 / 30000 / 60000 ms retry delays, and the 2000 = 2.0x backoff multipliers.
+
+**The gate is now absolute.** `docs/undocumented.baseline` is deleted. `scripts/doc-debt.sh check`
+fails on **any** undocumented fn in `src/`, naming it, and its `update` mode is gone. It passes on
+this tree, and a planted `fn doc_gate_mutant` fails it. CI's step is renamed "Verify
+documentation", and CLAUDE.md's rule and Quick Start, and README's gate list, describe the new
+rule.
+
+The audit counts differently from `cyrius doc --check`. It reported **585** for what the per-file
+check counts as 195 test and bench fns, and documenting those 195 brought it to "docs complete".
+The two counts were never comparable, as `state.md` had noted. Track the per-file figure.
+
+### Found while documenting
+
+Writing a comment for every fn meant reading every fn, and a few read wrong. The first three are
+fixed above. The rest are slotted on the roadmap (v1.11.0):
+- **OTLP timestamps.** Spans, log records, exemplars and data points are stamped with
+  `clock_now_ns()`. That is `CLOCK_MONOTONIC` on Linux, uptime on agnos and QPC on Windows.
+  `Span_to_otlp_proto` writes it as `start_time_unix_nano`, so a collector sees boot-relative
+  times. Audit and secret timestamps have the same source.
+- **Span ID text vs bytes.** `span_id_to_str` prints `load64(id)` most significant byte first,
+  while `Span_to_otlp_proto` emits the 8 raw bytes. On little-endian targets the traceparent form
+  and the OTLP form of one span ID differ. Text round-trips still work.
+- **`TelemetryConfig_to_json`** writes `export_endpoint` between quotes without JSON escaping.
+- **Getters with no setter** (the F-021 class), across the modules. Among them:
+  - `samp_freq_penalty`, `samp_pres_penalty`, `ireq_prompt`, `RateLimitInfo`;
+  - the UTS / IPC / cgroup / time namespace flags, `sandbox_isolate_net`, the device-rule
+    major / minor numbers;
+  - several config, validation and audit-retention fields.
+
+  Some structs (SecurityContext, SandboxCapabilities, TokenPayload) have no setters at all. The
+  AppArmor and SELinux setters have no getters.
+- **Unset optional vtable slots.** The vtable constructors leave the optional slots at 0, and
+  `as_verify_entry` and `as_seal` dispatch without checking, so they call address 0. The audit
+  `query` and secret-store `rotate` / `search_by_tag` slots have no dispatcher, so callers face
+  the same hazard.
+- **Global hand-offs** (`textmap_set`, `propagator_inject`, `ss_put`) pass an argument through a
+  global, so they are not reentrant.
+- `agent_id_from_str` skips the four dash positions without checking that they hold a `-`, and
+  does not check the UUID version and variant bits.
+- Newer Landlock rights (`FS_IOCTL_DEV`, `FS_RESOLVE_UNIX`, `NET_BIND_UDP`,
+  `NET_CONNECT_SEND_UDP`) are missing from the enums, and `RlimitType` has no mapping to
+  `RLIMIT_*`. Both were found at 1.8.0.
+
+
+### Added — `restart_policy_name` / `restart_policy_parse`: the last enum gets its pair
+
+The 26th enum, held back from 1.8.0. `"Never"`, `"Always"`, `"OnFailure"`: the Kubernetes
+`restartPolicy` spelling, by the same rule as the other 25. Exact match. argonaut's
+systemd-style `"on-failure"` is rejected here, because it belongs to
+`argonaut_restart_policy_parse`. Public API 977 → **979**. Every public enum with a member now
+has both `*_name` and `*_parse`, as CLAUDE.md requires.
+
+The hold-back's three steps landed in order:
+1. **argonaut 1.15.4** made its `RestartPolicy` and `SeccompAction` value-identical to agnostik's
+   and renamed its parser `argonaut_restart_policy_parse`.
+2. **kybernet 1.7.9** took that release, renamed its one call, and added a test that pins the
+   values its link uses.
+3. This pair is the third step.
+
+`scripts/consumer-sweep.sh` against kybernet 1.7.9, which links this tree and argonaut 1.15.4:
+**882 of 882, 0 agnostik-involved duplicate definitions**. The 1.8.0-era sweep had reported
+kybernet REGRESSED on `restart_policy_parse`. All five consumers are green.
+
+`tests/tcyr/test_v180_enum_parse.tcyr` gains the generated-style roundtrip block for the three
+members, the Kubernetes spellings pinned by hand, rejections of argonaut's `"on-failure"` and of
+lowercase `"never"`, and the three values pinned as the argonaut lockstep: 427 → **444**
+assertions. Suite: 20 files, **2,018 assertions, 0 failures**, on x86_64 and aarch64.
+
+### Security
+
+The minor-cut pass is recorded in [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md)
+§"v1.9.0 minor-cut pass". **One finding, fixed in this release:**
+
+- **F-026 (LOW): two JSON string fields were serialized unescaped.** `TelemetryConfig_to_json`'s
+  `export_endpoint` and `AgentInfo_to_json`'s `name` could break or inject JSON when they held a
+  `"`. The `name` is caller-supplied, and the endpoint usually comes from config. Fixed by
+  `str_builder_add_json_str` (above).
+
+The other defects the documentation pass found are correctness and robustness issues, not security
+findings: the timestamps and span-id order (both fixed), and the getter-only fields, unset
+optional vtable slots, global hand-offs and `agent_id_from_str` validation (roadmap v1.11.0). The
+re-scan of `src/` is clean (no raw `syscall(`, no `sys_system`, no system-path literal, no 64 KB
+stack buffer), and the private-helper gate passes. F-001..F-025 remain closed.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 21 files, 2,045 assertions, 0 failures, on x86_64 and on aarch64. `cyrius audit` exits
+  0.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor:** of 955 fn
+  definitions, 887 public fns are not called by library code. That count now excludes comment
+  mentions; 1.8.0's 790 included them. The untested count stays at **294**.
+- **Refactor:** none; the fixes are local.
+- **Code review:** the comments-only proofs for the documentation pass, and mutation checks for
+  every fix. The doc comments the documentation pass wrote that the fixes made false were
+  corrected:
+  - "monotonic, not Unix time" on the stamp accessors;
+  - "the 8 bytes are read as one 64-bit value" on `span_id_to_str`;
+  - "written verbatim, not JSON-escaped" on `TelemetryConfig_to_json`.
+- **Cleanup:** `docs/undocumented.baseline` removed with the gate change.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 of 5 green, 0 regressed, 0
+  agnostik-involved duplicate definitions; kybernet 1.7.9 links this with argonaut 1.15.4.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read
+  1.9.0.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.8.0 baseline, taken at load 1.2: **25 checked, 0 new,
+0 regressions.** The A/B column is 15 interleaved rounds of the 1.8.0 tag tree against this tree,
+both on cyrius 6.7.9. Each row is the median of per-round paired ratios.
+
+| benchmark | 1.8.0 baseline | 1.9.0 gate | Δ gate | 1.8.0 → 1.9.0, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| token_usage_from_json | 430 | 391 | -9.1% | -14.1% | 0/15 |
+| accelerator_device_full | 101 | 95 | -5.9% | -10.9% | 0/15 |
+| accel_flags_from_json | 671 | 666 | -0.7% | -3.3% | 1/15 |
+| injection_scores_to_json | 721 | 735 | +1.9% | -0.9% | 2/15 |
+| security_context_full | 617 | 662 | +7.3% | -0.5% | 5/15 |
+| agent_stats_from_json | 262 | 273 | +4.2% | -0.4% | 2/15 |
+| injection_scores_from_json | 281 | 292 | +3.9% | -0.3% | 3/15 |
+| resource_limits_to_json | 905 | 930 | +2.8% | -0.3% | 3/15 |
+| agent_id_roundtrip | 941 | 1006 | +6.9% | -0.3% | 4/15 |
+| token_usage_to_json | 811 | 842 | +3.8% | -0.2% | 2/15 |
+| resource_limits_from_json | 414 | 427 | +3.1% | -0.2% | 3/15 |
+| agent_id_to_str | 679 | 708 | +4.3% | +0.0% | 7/15 |
+| sandbox_config_default | 21 | 23 | +9.5% | +0.0% | 1/15 |
+| token_usage_update | 31 | 32 | +3.2% | +0.0% | 0/15 |
+| version_to_str | 99 | 104 | +5.1% | +0.0% | 4/15 |
+| traceparent_format | 1704 | 1814 | +6.5% | +0.1% | 8/15 |
+| audit_entry_full | 2165 | 2207 | +1.9% | +0.1% | 9/15 |
+| agent_stats_to_json | 624 | 643 | +3.0% | +0.1% | 10/15 |
+| accel_flags_to_json | 1537 | 1592 | +3.6% | +0.2% | 9/15 |
+| agent_id_new | 547 | 546 | -0.2% | +0.4% | 8/15 |
+| trace_context_child | 532 | 567 | +6.6% | +0.5% | 8/15 |
+| version_roundtrip | 235 | 253 | +7.7% | +0.8% | 14/15 |
+| trace_context_new | 1083 | 1132 | +4.5% | +0.8% | 11/15 |
+| inference_request_full | 338 | 358 | +5.9% | +1.4% | 14/15 |
+| message_build_3turn | 334 | 360 | +7.8% | +2.8% | 15/15 |
+
+**Neutral.** The paired median row is **0.0%**, and 23 of 25 rows are within ±5%.
+`traceparent_format`, which now runs the byte-order span-id path, is flat (+0.1%). The two rows 1.8.0
+attributed to code placement in the non-DCE bench build moved back down:
+`token_usage_from_json` −14.1% and `accelerator_device_full` −10.9%, faster in all 15 rounds. That
+is consistent with the explanation: this release shifts the layout again. `message_build_3turn` is
++2.8% (slower in 15 of 15), about 10 ns.
+
+The release run is appended to `docs/benchmarks/history.csv` (25 rows, commit column `61c875f`,
+HEAD at the time), taken at load 1.85. The gate passes against it.
+
+Binaries (`CYRIUS_DCE=1`): x86_64 134,408 → **134,456 B**, aarch64 896,144 → **896,192 B**, agnos
+134,808 B, Windows 875,520 B. The doc comments add nothing to a binary (shown byte-identical
+above); the bytes are the fixes and the two new fns. `dist/agnostik.cyr` grows 197,447 →
+**279,466 B**, almost all of it the new comments.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was
+  committed into a throwaway repo. Every `ci.yml` step except the bench passed, 17 of 17. So did
+  the aarch64 step's script (21 files, 2,045 assertions under `qemu-aarch64`), and `cyrius audit`
+  exits 0.
+- **Gates:** api-surface 979 = snapshot; `scripts/doc-debt.sh check`: every fn in `src/`
+  documented; `cyrius distlib --check` fresh; `deps --verify` 32 / 32; lint, fmt, vet and
+  type-check clean.
+- **Downstream:** 5 of 5 green.
+
 ## [1.8.0] - 2026-10-14
 
 **Minor: cyrius 6.7.9, and `*_name` / `*_parse` for 25 more enums.** Public API 927 → **977**

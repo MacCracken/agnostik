@@ -126,6 +126,8 @@ agent::resource_limits_new/0
 agent::resource_request_new/2
 agent::resource_usage_new/0
 agent::restart_backoff_new/0
+agent::restart_policy_name/1
+agent::restart_policy_parse/1
 agent::retry_policy_new/0
 agent::rgrant_agent_id/1
 agent::rgrant_approved/1

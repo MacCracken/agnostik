@@ -929,6 +929,7 @@ fn test_f021_secret_metadata_setters() {
     return 0;
 }
 
+# Test: the seven original mcap_supports_* flags start 0 and their new setters set them (F-021).
 fn test_f021_mcap_flag_setters() {
     var m = model_capabilities_new(str_from("claude-opus-5"), LLM_ANTHROPIC);
     assert_eq(mcap_supports_vision(m), 0, "F-021: vision starts 0");
@@ -955,6 +956,8 @@ fn test_f021_mcap_flag_setters() {
     return 0;
 }
 
+# Test-file entry: runs every enum name/parse roundtrip (F-018) and the F-021 setter tests;
+# returns the assertion summary.
 fn main() {
     println("=== agnostik v1.4.0 enum parse roundtrip (F-018) + setters (F-021) ===");
     test_agent_status_roundtrip();

@@ -14,6 +14,7 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# Test: resource_new stores service name/version/instance, has attributes, no schema URL.
 fn test_telemetry_resource() {
     var r = resource_new(str_from("svc"), str_from("1.0"), str_from("i1"));
     assert_eq(str_eq(res_service_name(r), str_from("svc")), 1, "res name");
@@ -25,6 +26,8 @@ fn test_telemetry_resource() {
     return 0;
 }
 
+# Test: Span defaults (unset status, internal kind, empty events/links, zero drop counts)
+# and the kind / status / duration setters.
 fn test_telemetry_span() {
     var ctx = trace_context_new();
     var s = span_new(str_from("op"), tctx_trace_id(ctx), tctx_span_id(ctx));
@@ -47,6 +50,7 @@ fn test_telemetry_span() {
     return 0;
 }
 
+# Test: span_event_new name + timestamp, and span_link_new storing the trace ID.
 fn test_telemetry_events_links() {
     var se = span_event_new(str_from("exc"));
     assert_eq(str_eq(sevt_name(se), str_from("exc")), 1, "se name");
@@ -57,6 +61,7 @@ fn test_telemetry_events_links() {
     return 0;
 }
 
+# Test: a root TraceContext has no parent span; its child's parent is the root's span ID.
 fn test_telemetry_context() {
     var ctx = trace_context_new();
     assert(tctx_span_id(ctx) != 0, "has sid");
@@ -66,6 +71,7 @@ fn test_telemetry_context() {
     return 0;
 }
 
+# Test: int and float MetricValue types, and MetricDataPoint defaults (cumulative, non-mono).
 fn test_telemetry_metrics() {
     var mv = metric_int(42);
     assert_eq(metric_value_type(mv), MV_INT, "mv int");
@@ -79,6 +85,7 @@ fn test_telemetry_metrics() {
     return 0;
 }
 
+# Test: LogRecord severity/timestamp, empty trace/span IDs, and their setters.
 fn test_telemetry_log() {
     var lr = log_record_new(LOG_WARN, str_from("full"));
     assert_eq(logrec_severity(lr), LOG_WARN, "lr warn");
@@ -94,6 +101,7 @@ fn test_telemetry_log() {
     return 0;
 }
 
+# Test: exemplar_new stores trace ID, value and a timestamp.
 fn test_telemetry_exemplar() {
     var tid = trace_id_new();
     var sid = span_id_new();
@@ -104,6 +112,7 @@ fn test_telemetry_exemplar() {
     return 0;
 }
 
+# Test: trace ID, span ID and traceparent parsers reject short or empty input.
 fn test_telemetry_parse_errors() {
     assert_eq(is_ok(trace_id_from_str(str_from("short"))), 0, "tid short");
     assert_eq(is_ok(span_id_from_str(str_from("short"))), 0, "sid short");
@@ -111,6 +120,7 @@ fn test_telemetry_parse_errors() {
     return 0;
 }
 
+# Test-file entry: runs every telemetry coverage test above; returns the assertion summary.
 fn main() {
     println("=== agnostik coverage 2 (telemetry) ===");
     test_telemetry_resource();

@@ -2,9 +2,9 @@
 
 ## Status
 
-**v1.8.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
-modules plus `src/proto.cyr` (OTLP wire helpers), 977 public fns, and 2,001
-test assertions across 20 `.tcyr` files, passing on x86_64-linux and on aarch64
+**v1.9.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+modules plus `src/proto.cyr` (OTLP wire helpers), 979 public fns (every fn
+documented), and 2,045 test assertions across 21 `.tcyr` files, passing on x86_64-linux and on aarch64
 under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
@@ -13,7 +13,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1 and v1.8.0 passes).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1, v1.8.0 and v1.9.0 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -21,56 +21,11 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.9.0](#v190--restartpolicy-nameparse-and-documentation-debt-minor) | minor | `RestartPolicy` name/parse (after kybernet takes argonaut 1.15.4); documentation debt 849 → 0 |
 | [v1.10.0](#v1100--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
+| [v1.11.0](#v1110--contract-gaps-from-the-documentation-pass-minor) | minor | Missing setters / getters, unset vtable slots, reentrancy, `agent_id_from_str` validation, newer Landlock rights, `RlimitType` → `RLIMIT_*` |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
 
 ---
-
-## v1.9.0 — RestartPolicy name/parse and documentation debt (minor)
-
-### `RestartPolicy` name/parse
-
-v1.8.0 added `*_name` / `*_parse` to 25 of the last 26 enums. `RestartPolicy` was held back:
-argonaut ≤ 1.15.3 has its own `enum RestartPolicy`, with the same constant names but other values,
-and its own one-argument `restart_policy_parse`. kybernet compiles both libraries, so agnostik's
-pair would have been silently replaced there (F-025's class), and the consumer sweep flagged it.
-The order agreed on 2026-10-14:
-1. ✅ **argonaut 1.15.4** (cut 2026-10-14) makes `RestartPolicy` and `SeccompAction`
-   value-identical to agnostik's, and renames its parser `argonaut_restart_policy_parse`.
-2. ⏳ **kybernet** bumps `[deps.argonaut]` to 1.15.4 and renames its one call
-   (`src/lib/svc_config.cyr:530`) in the same change. Left unrenamed, the call fails the build
-   against agnostik ≤ 1.8.x, but once this pair lands it compiles and binds to agnostik's
-   PascalCase parser, so kybernet's config tests fail.
-3. **agnostik** adds `restart_policy_name` / `_parse` (`"Never"`, `"Always"`, `"OnFailure"`,
-   the Kubernetes spelling), and the sweep must show kybernet green with no duplicate.
-
-An end-to-end scratch build of kybernet against argonaut 1.15.4 and this pair passed 876 of 876
-with no duplicate warning.
-
-### Documentation debt: 849 → 0
-
-Documentation does not get a release of its own; it rides this minor (it moved here from
-v1.8.0, which shipped the pin move and the enum work).
-`scripts/doc-debt.sh` has gated CI since v1.6.3. A new undocumented fn fails,
-and so does a grandfathered one that was documented without recording it. The
-849 fns in `docs/undocumented.baseline` are documented module by module,
-smallest first, recording each module with `scripts/doc-debt.sh update`:
-
-| Order | Modules (undocumented fns) | Running total |
-|---|---|---|
-| 1 | `error` (18), `secrets` (21), `config` (22) | 849 → 788 |
-| 2 | `main` (23), `validation` (26), `types` (40) | 788 → 699 |
-| 3 | `audit` (44), `hardware` (55) | 699 → 600 |
-| 4 | `telemetry` (126) | 600 → 474 |
-| 5 | `llm` (148) | 474 → 326 |
-| 6 | `security` (152) | 326 → 174 |
-| 7 | `agent` (174) | 174 → 0 |
-
-At 0, the baseline file goes and the gate becomes "no undocumented fn in
-`src/`". `cyrius audit` will still exit non-zero on its docs phase, because
-that phase counts the test and bench files too. Whether to document test
-helpers or narrow the audit's scope is decided at the end of this slot.
 
 ## v1.10.0 — OTLP wire-format completion (minor)
 
@@ -88,8 +43,73 @@ OpenTelemetry data plane, using the existing `src/proto.cyr` primitives:
 Golden-byte tests against reference protobuf encodings, plus a fuzz target per
 encoder. Map enum values at the encoder, as `_stik_span_kind_to_otlp` does for
 `SpanKind`: `AggregationTemporality`'s values are agnostik ordinals
-(CUMULATIVE = 0, DELTA = 1), while OTLP has DELTA = 1 and CUMULATIVE = 2. If a consumer needs this sooner, it can move ahead of v1.9.0.
-No consumer has asked yet.
+(CUMULATIVE = 0, DELTA = 1), while OTLP has DELTA = 1 and CUMULATIVE = 2.
+Since v1.9.0 every stamp is Unix time (`clock_epoch_ns()`), so the new
+encoders can write `time_unix_nano` as stored. No consumer has asked for this
+yet, and it does not depend on v1.11.0: either order works.
+
+---
+
+## v1.11.0 — Contract gaps from the documentation pass (minor)
+
+The v1.9.0 documentation pass read every fn. It fixed the three defects it found, and recorded
+these gaps, which are additive or local fixes. None breaks the public API.
+
+### Missing accessors (the F-021 class)
+
+🔧 Fields with a getter and no setter:
+- **llm:** `samp_freq_penalty`, `samp_pres_penalty`, `ireq_prompt`, the `RateLimitInfo` fields.
+- **security:** the UTS / IPC / cgroup / time namespace flags, `sandbox_isolate_net`, the
+  device-rule major / minor numbers.
+- **config, validation, audit, telemetry:** several fields, including `telcfg_endpoint` and the
+  audit-retention fields.
+
+Some structs (`SecurityContext`, `SandboxCapabilities`, `TokenPayload`) have no setters at all,
+and the AppArmor and SELinux setters have no getters. Take the census from the source before
+starting: list every field offset, its getter and its setter. Each new setter gets a round-trip
+test, as v1.7.0's `ClassificationResult` setters did.
+
+### Unset optional vtable slots
+
+🔧 `audit_sink_vtable` and `secret_store_vtable` leave their optional slots at 0. `as_verify_entry`
+and `as_seal` dispatch through theirs without checking, so a sink built without
+`audit_sink_set_verify_entry` / `_set_seal` crashes on a call to address 0. The audit sink's
+`query` slot and the secret store's `rotate` / `search_by_tag` slots have no dispatcher at all:
+callers use `trait_call*` directly, with the same hazard. Check the slot in the two dispatchers,
+returning an unsupported-operation `Err` (or the fn's documented "none" value), and add checked
+dispatchers for the other three.
+
+### Global hand-offs
+
+🔧 `textmap_set`, `propagator_inject` and `ss_put` dispatch with `trait_call1`, which passes one
+argument after the data pointer, so each hands its second argument (`value`, `carrier`, `value`)
+to the callback through a module global. A nested or concurrent call overwrites it. The stdlib
+has no `trait_call2`, so dispatch through the slot with `fncall3(fp, data, a, b)` instead, and the
+callback receives the argument directly. That changes the callback
+signature consumers implement, so check every consumer's implementations first. If any exist,
+keep the global path working alongside, or move the change to v2.0.0.
+
+### `agent_id_from_str` validation
+
+🔧 It skips positions 8, 13, 18 and 23 without checking that they hold a `-`, so any byte is
+accepted there. Check them. Whether to also require the v4 version and
+variant bits is a decision: a consumer may parse ids from elsewhere, so check every consumer's
+calls first, and record the choice in an ADR.
+
+### Newer Landlock rights
+
+✨ The kernel uapi header (`linux/landlock.h`) defines four rights the enums lack:
+`LANDLOCK_ACCESS_FS_IOCTL_DEV` (bit 15), `LANDLOCK_ACCESS_FS_RESOLVE_UNIX` (bit 16),
+`LANDLOCK_ACCESS_NET_BIND_UDP` (bit 2) and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` (bit 3).
+Append them to `LandlockFsAccess` / `LandlockNetAccess` at those values, with names in the
+`landlock` crate's spelling. Appending keeps every existing value.
+
+### `RlimitType` → `RLIMIT_*`
+
+✨ `RlimitType`'s values are agnostik ordinals, not the kernel's `RLIMIT_*` numbers (`RLIM_NOFILE`
+is 0, which is `RLIMIT_CPU`). No repo passes them to `setrlimit(2)` today. Add a mapping fn that
+returns the `RLIMIT_*` resource number. Renumbering the enum itself would be a break, so it stays
+out of a minor.
 
 ---
 

@@ -3,6 +3,9 @@ enum ValidationSeverity {
     VSEV_MEDIUM;
     VSEV_HIGH;
 }
+# Display name of a ValidationSeverity: "Low", "Medium" or "High", and
+# "Unknown" for a value outside the enum. validation_severity_parse is the
+# inverse.
 fn validation_severity_name(s) {
     if (s == VSEV_LOW)         { return "Low"; }
     elif (s == VSEV_MEDIUM)    { return "Medium"; }
@@ -18,6 +21,12 @@ fn validation_severity_parse(s: Str) {
     elif (str_eq_cstr(s, "High") == 1) { return Ok(VSEV_HIGH); }
     return stik_err_invalid_argument(str_from("unknown ValidationSeverity name"));
 }
+# A ValidationWarning. 40 bytes, all 8-byte slots, read through the vwarn_*
+# accessors:
+#   +0 code, +8 message (a Str), +16 severity (a ValidationSeverity),
+#   +24 position, +32 pattern.
+# code, message and severity are stored as passed; position and pattern start
+# at 0 and this module has no setter for them.
 fn validation_warning_new(code, message: Str, severity) {
     var w = alloc(40);
     store64(w, code);
@@ -27,10 +36,15 @@ fn validation_warning_new(code, message: Str, severity) {
     store64(w + 32, 0);
     return w;
 }
+# Warning code, as passed to validation_warning_new.
 fn vwarn_code(w)     { return load64(w); }
+# Warning message Str.
 fn vwarn_message(w)  { return load64(w + 8); }
+# ValidationSeverity of the warning.
 fn vwarn_severity(w) { return load64(w + 16); }
+# Position field; 0 at construction and never set by this module.
 fn vwarn_position(w) { return load64(w + 24); }
+# Pattern field; 0 at construction and never set by this module.
 fn vwarn_pattern(w)  { return load64(w + 32); }
 # v1.1.1: widened to i8 (range 0..100 fits comfortably in i7).
 # 40 B → 5 B per instance. Comments must live OUTSIDE the struct
@@ -42,23 +56,49 @@ struct InjectionScores {
     sql: i8; xss: i8; command: i8;
     path_traversal: i8; prompt_injection: i8;
 }
+# An InjectionScores: one score per injection class, 0..100. 5 bytes, one i8
+# per score, read through the iscore_* accessors:
+#   +0 sql, +1 xss, +2 command, +3 path_traversal, +4 prompt_injection.
+# All start at 0. InjectionScores_to_json (#derive) serializes it.
 fn injection_scores_new() {
     var s = alloc(5);
     var i = 0;
     while (i < 5) { store8(s + i, 0); i = i + 1; }
     return s;
 }
+# SQL-injection score (0..100).
 fn iscore_sql(s)              { return load8(s); }
+# Cross-site-scripting (XSS) score (0..100).
 fn iscore_xss(s)              { return load8(s + 1); }
+# Command-injection score (0..100).
 fn iscore_command(s)          { return load8(s + 2); }
+# Path-traversal score (0..100).
 fn iscore_path_traversal(s)   { return load8(s + 3); }
+# Prompt-injection score (0..100).
 fn iscore_prompt_injection(s) { return load8(s + 4); }
 # v1.1.1: explicit setters added so callers don't need raw store8.
+# Set the SQL-injection score, 0..100. Only the low byte of `v` is stored and
+# the range is not enforced. Returns 0.
 fn iscore_set_sql(s, v)              { store8(s, v); return 0; }
+# Set the XSS score, 0..100. Only the low byte of `v` is stored and the range
+# is not enforced. Returns 0.
 fn iscore_set_xss(s, v)              { store8(s + 1, v); return 0; }
+# Set the command-injection score, 0..100. Only the low byte of `v` is stored
+# and the range is not enforced. Returns 0.
 fn iscore_set_command(s, v)          { store8(s + 2, v); return 0; }
+# Set the path-traversal score, 0..100. Only the low byte of `v` is stored and
+# the range is not enforced. Returns 0.
 fn iscore_set_path_traversal(s, v)   { store8(s + 3, v); return 0; }
+# Set the prompt-injection score, 0..100. Only the low byte of `v` is stored
+# and the range is not enforced. Returns 0.
 fn iscore_set_prompt_injection(s, v) { store8(s + 4, v); return 0; }
+# A ValidationResult: the outcome of validating one input. 56 bytes, all
+# 8-byte slots, read through the vresult_* accessors:
+#   +0 valid, +8 sanitized, +16 warnings, +24 blocked, +32 block_reason,
+#   +40 injection_score, +48 injection_scores.
+# valid (0/1) and sanitized (a Str) come from the arguments, warnings starts as
+# an empty vec, and the other slots start at 0. vresult_set_blocked is the only
+# setter.
 fn validation_result_new(valid, sanitized: Str) {
     var r = alloc(56);
     store64(r, valid);
@@ -70,13 +110,24 @@ fn validation_result_new(valid, sanitized: Str) {
     store64(r + 48, 0);
     return r;
 }
+# Valid flag (0/1), as passed to validation_result_new.
 fn vresult_valid(r)            { return load64(r); }
+# Sanitized form of the input, the Str passed to validation_result_new.
 fn vresult_sanitized(r)        { return load64(r + 8); }
+# vec for ValidationWarning records, created empty; push to it directly.
 fn vresult_warnings(r)         { return load64(r + 16); }
+# 1 once vresult_set_blocked has been called, else 0.
 fn vresult_blocked(r)          { return load64(r + 24); }
+# Reason Str given to vresult_set_blocked; 0 until then.
 fn vresult_block_reason(r)     { return load64(r + 32); }
+# Scalar injection score, separate from the per-class injection_scores; 0 at
+# construction and never set by this module.
 fn vresult_injection_score(r)  { return load64(r + 40); }
+# InjectionScores pointer; 0 (none) at construction and never set by this
+# module.
 fn vresult_injection_scores(r) { return load64(r + 48); }
+# Mark the input blocked: set blocked to 1 and store `reason`. valid is left
+# unchanged. Returns 0.
 fn vresult_set_blocked(r, reason: Str) {
     store64(r + 24, 1);
     store64(r + 32, reason);

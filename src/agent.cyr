@@ -32,10 +32,15 @@ enum StopReason {
     STOP_TIMEOUT;
     STOP_SYSTEM_SHUTDOWN;
 }
+# A StopReason: why an agent stopped. A 16-byte tagged box (tagged_new) whose
+# tag is a StopReason member and whose payload is a message Str, or 0 when
+# there is none. Read it with stop_reason_kind / stop_reason_message.
 fn stop_reason_new(kind, message: Str) {
     return tagged_new(kind, message);
 }
+# StopReason member, the box's tag.
 fn stop_reason_kind(sr) { return boxed_tag(sr); }
+# Message Str, the box's payload; 0 when stop_reason_new was given none.
 fn stop_reason_message(sr) { return boxed_payload(sr); }
 enum CircuitBreakerState {
     CB_CLOSED;
@@ -47,6 +52,11 @@ struct ResourceLimits {
     max_memory: i64; max_cpu_time: i64; max_fds: i64;
     max_procs: i64; max_disk: i64; net_bw: i64;
 }
+# A ResourceLimits: per-agent resource caps. 48 bytes, all 8-byte slots:
+#   +0 max_memory (bytes, default 256 MB), +8 max_cpu_time (seconds, default
+#   3600), +16 max_fds (256), +24 max_procs (64), +32 max_disk (0),
+#   +40 net_bw (0).
+# agnostik only stores the caps; enforcing them is the runtime's job.
 fn resource_limits_new() {
     var r = alloc(48);
     store64(r, 268435456);     # 256 MB default
@@ -57,22 +67,37 @@ fn resource_limits_new() {
     store64(r + 40, 0);
     return r;
 }
+# Memory cap in bytes (default 256 MB).
 fn rlim_max_memory(r)           { return load64(r); }
+# CPU-time cap in seconds (default 3600, one hour).
 fn rlim_max_cpu_time(r)         { return load64(r + 8); }
+# Cap on open file descriptors (default 256).
 fn rlim_max_fds(r)              { return load64(r + 16); }
+# Cap on processes (default 64).
 fn rlim_max_procs(r)            { return load64(r + 24); }
+# Disk-usage cap, the max_disk field (default 0).
 fn rlim_max_disk(r)             { return load64(r + 32); }
+# Network-bandwidth cap, the net_bw field (default 0).
 fn rlim_net_bandwidth(r)        { return load64(r + 40); }
+# Set the memory cap, in bytes. Returns 0.
 fn rlim_set_max_memory(r, v)    { store64(r, v); return 0; }
+# Set the CPU-time cap (max_cpu_time), in seconds. Returns 0.
 fn rlim_set_max_cpu(r, v)       { store64(r + 8, v); return 0; }
+# Set the open-file-descriptor cap. Returns 0.
 fn rlim_set_max_fds(r, v)       { store64(r + 16, v); return 0; }
+# Set the process cap. Returns 0.
 fn rlim_set_max_procs(r, v)     { store64(r + 24, v); return 0; }
+# Set the disk-usage cap (max_disk). Returns 0.
 fn rlim_set_max_disk(r, v)      { store64(r + 32, v); return 0; }
+# Set the network-bandwidth cap (net_bw). Returns 0.
 fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
 #derive(Serialize)
 struct ResourceUsage {
     mem_used: i64; cpu_used: i64; fds_used: i64; procs_used: i64;
 }
+# A ResourceUsage: what an agent is currently consuming, the counterpart of
+# ResourceLimits. 32 bytes, all 0: +0 mem_used, +8 cpu_used, +16 fds_used,
+# +24 procs_used. This file has no setters for it.
 fn resource_usage_new() {
     var u = alloc(32);
     store64(u, 0);
@@ -81,10 +106,18 @@ fn resource_usage_new() {
     store64(u + 24, 0);
     return u;
 }
+# Memory in use, the mem_used field.
 fn rusage_memory(u)  { return load64(u); }
+# CPU time used, the cpu_used field.
 fn rusage_cpu(u)     { return load64(u + 8); }
+# File descriptors in use, the fds_used field.
 fn rusage_fds(u)     { return load64(u + 16); }
+# Processes in use, the procs_used field.
 fn rusage_procs(u)   { return load64(u + 24); }
+# A HealthCheck: probe settings for an agent. 40 bytes, all 8-byte slots:
+#   +0 probe_type (ProbeType, default PROBE_LIVENESS_READINESS),
+#   +8 interval (30 s), +16 timeout (5 s), +24 retries (3), +32 initial_delay (0).
+# AgentConfig's health_check slot points to one.
 # ⚠ PREFIXED NAME, DELIBERATELY. `health_check_new` collided with argonaut's
 # `health_check_new(check_type, target, port, interval_ms, timeout_ms, retries)` —
 # a DIFFERENT type with the same name at a different arity. kybernet vendors both and
@@ -101,19 +134,32 @@ fn agnostik_health_check_new() {
     store64(h + 32, 0);    # no initial delay
     return h;
 }
+# ProbeType member (default PROBE_LIVENESS_READINESS).
 fn hc_probe_type(h)      { return load64(h); }
+# Seconds between checks (default 30).
 fn hc_interval(h)        { return load64(h + 8); }
+# Per-check timeout in seconds (default 5).
 fn hc_timeout(h)         { return load64(h + 16); }
+# Retry count (default 3).
 fn hc_retries(h)         { return load64(h + 24); }
+# Delay before the first check (default 0, none).
 fn hc_initial_delay(h)   { return load64(h + 32); }
+# A LifecycleHook: one command to run at a point in an agent's lifecycle.
+# 16 bytes, each stored as given: +0 command (a vec), +8 timeout.
+# Attach it to a LifecycleHooks slot.
 fn lifecycle_hook_new(cmd_vec, timeout) {
     var h = alloc(16);
     store64(h, cmd_vec);
     store64(h + 8, timeout);
     return h;
 }
+# Command vec, as passed to lifecycle_hook_new.
 fn lhook_command(h)  { return load64(h); }
+# Hook timeout, as passed to lifecycle_hook_new.
 fn lhook_timeout(h)  { return load64(h + 8); }
+# A LifecycleHooks: the hooks run around an agent's start and stop. 32 bytes,
+# all 0: +0 pre_start, +8 post_start, +16 pre_stop, +24 post_stop, each a
+# LifecycleHook pointer or 0 for none.
 fn lifecycle_hooks_new() {
     var h = alloc(32);
     store64(h, 0);
@@ -122,14 +168,31 @@ fn lifecycle_hooks_new() {
     store64(h + 24, 0);
     return h;
 }
+# LifecycleHook run before the agent starts, or 0 for none.
 fn lhooks_pre_start(h)  { return load64(h); }
+# LifecycleHook run after the agent starts, or 0 for none.
 fn lhooks_post_start(h) { return load64(h + 8); }
+# LifecycleHook run before the agent stops, or 0 for none.
 fn lhooks_pre_stop(h)   { return load64(h + 16); }
+# LifecycleHook run after the agent stops, or 0 for none.
 fn lhooks_post_stop(h)  { return load64(h + 24); }
+# Set the pre_start LifecycleHook (0 clears it). Returns 0.
 fn lhooks_set_pre_start(h, v)  { store64(h, v); return 0; }
+# Set the post_start LifecycleHook (0 clears it). Returns 0.
 fn lhooks_set_post_start(h, v) { store64(h + 8, v); return 0; }
+# Set the pre_stop LifecycleHook (0 clears it). Returns 0.
 fn lhooks_set_pre_stop(h, v)   { store64(h + 16, v); return 0; }
+# Set the post_stop LifecycleHook (0 clears it). Returns 0.
 fn lhooks_set_post_stop(h, v)  { store64(h + 24, v); return 0; }
+# An AgentConfig: the configuration of one agent. 104 bytes, all 8-byte
+# slots, read through the aconf_* accessors:
+#   +0 name (Str), +8 agent_type (AgentType, default AGENT_TYPE_USER),
+#   +16 limits (a fresh resource_limits_new()), +24 sandbox (0),
+#   +32 permissions (vec, created on first access), +40 metadata (0),
+#   +48 restart_policy (RESTART_NEVER), +56 max_restarts (3),
+#   +64 health_check (0), +72 startup_timeout (0), +80 shutdown_timeout (0),
+#   +88 lifecycle_hooks (0), +96 restart_backoff (0).
+# A pointer slot holding 0 means that part is not configured.
 fn agent_config_new(name: Str) {
     var c = alloc(104);
     store64(c, name);
@@ -147,25 +210,49 @@ fn agent_config_new(name: Str) {
     store64(c + 96, 0);
     return c;
 }
+# Agent name Str, as passed to agent_config_new.
 fn aconf_name(c)             { return load64(c); }
+# AgentType member (default AGENT_TYPE_USER).
 fn aconf_type(c)             { return load64(c + 8); }
+# ResourceLimits pointer; agent_config_new allocates one with the defaults.
 fn aconf_limits(c)           { return load64(c + 16); }
+# SandboxConfig pointer (sandbox_config_new), or 0 until aconf_set_sandbox.
 fn aconf_sandbox(c)          { return load64(c + 24); }
+# vec of Permission members granted to the agent; created empty on first access.
 fn aconf_permissions(c)      { return _stik_lazy_vec(c + 32); }
+# RestartPolicy member (default RESTART_NEVER).
 fn aconf_restart_policy(c)   { return load64(c + 48); }
+# Maximum restart attempts (default 3).
 fn aconf_max_restarts(c)     { return load64(c + 56); }
+# HealthCheck pointer (agnostik_health_check_new), or 0 when none is set.
 fn aconf_health_check(c)     { return load64(c + 64); }
+# Metadata slot at +40: 0 by default, with no setter in this file. agnostik
+# does not interpret it.
 fn aconf_metadata(c)         { return load64(c + 40); }
+# Startup timeout at +72: 0 by default, with no setter in this file.
 fn aconf_startup_timeout(c)  { return load64(c + 72); }
+# Shutdown timeout at +80: 0 by default, with no setter in this file.
 fn aconf_shutdown_timeout(c) { return load64(c + 80); }
+# LifecycleHooks pointer (lifecycle_hooks_new), or 0 when none is set.
 fn aconf_lifecycle_hooks(c)  { return load64(c + 88); }
+# RestartBackoff pointer (restart_backoff_new), or 0, the default. This file
+# has no setter for it.
 fn aconf_restart_backoff(c)  { return load64(c + 96); }
+# Set the AgentType member. Returns 0.
 fn aconf_set_type(c, v)             { store64(c + 8, v); return 0; }
+# Set the SandboxConfig pointer. Returns 0.
 fn aconf_set_sandbox(c, v)          { store64(c + 24, v); return 0; }
+# Set the RestartPolicy member. Returns 0.
 fn aconf_set_restart_policy(c, v)   { store64(c + 48, v); return 0; }
+# Set the maximum restart attempts. Returns 0.
 fn aconf_set_max_restarts(c, v)     { store64(c + 56, v); return 0; }
+# Set the HealthCheck pointer (0 clears it). Returns 0.
 fn aconf_set_health_check(c, v)     { store64(c + 64, v); return 0; }
+# Set the LifecycleHooks pointer (0 clears it). Returns 0.
 fn aconf_set_lifecycle_hooks(c, v)  { store64(c + 88, v); return 0; }
+# An AgentRateLimit: per-agent LLM usage limits. 24 bytes, all 0:
+#   +0 tokens_per_hour, +8 requests_per_min, +16 concurrent.
+# This file has no setters for it.
 fn agent_rate_limit_new() {
     var r = alloc(24);
     store64(r, 0);
@@ -173,9 +260,15 @@ fn agent_rate_limit_new() {
     store64(r + 16, 0);
     return r;
 }
+# Token budget per hour (default 0).
 fn arl_tokens_per_hour(r) { return load64(r); }
+# Request budget per minute (default 0).
 fn arl_requests_per_min(r) { return load64(r + 8); }
+# Concurrent-request limit (default 0).
 fn arl_concurrent(r)       { return load64(r + 16); }
+# An AgentEvent: an event about an agent, for pub/sub. 24 bytes, each stored
+# as given: +0 agent_id, +8 event_type, +16 payload. agnostik defines no
+# encoding for event_type or payload.
 fn agent_event_new(id, event_type, payload) {
     var e = alloc(24);
     store64(e, id);
@@ -183,13 +276,17 @@ fn agent_event_new(id, event_type, payload) {
     store64(e + 16, payload);
     return e;
 }
+# Id of the agent the event concerns, as passed to agent_event_new.
 fn aevent_agent_id(e)   { return load64(e); }
+# Event type value, as passed; agnostik does not interpret it.
 fn aevent_type(e)       { return load64(e + 8); }
+# Payload value, as passed; agnostik does not interpret it.
 fn aevent_payload(e)    { return load64(e + 16); }
 struct AgentInfo { id; name; agent_type; status; }
 # Serialize an AgentInfo as compact JSON: `{"id":"<uuid>","name":"<name>",
 # "agent_type":"<AgentType name>","status":"<AgentStatus name>"}`. An id or
-# name of 0 is written as null. AgentInfo_from_json reads the output back.
+# name of 0 is written as null; the name is JSON-escaped (since 1.9.0).
+# AgentInfo_from_json reads the output back.
 fn AgentInfo_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. Custom
     # field semantics (UUID stringification + enum-name lookup +
@@ -210,9 +307,9 @@ fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, ",\"name\":");
     var name = load64(ptr + 8);
     if (name != 0) {
-        str_builder_putc(sb, '"');
-        str_builder_add(sb, name);
-        str_builder_putc(sb, '"');
+        # Escaped: a quote, backslash or control character in the name must
+        # not end the string or inject keys.
+        str_builder_add_json_str(sb, name);
     } else {
         str_builder_add_cstr(sb, "null");
     }
@@ -257,6 +354,10 @@ fn AgentInfo_from_json(src: Str) {
     store64(info + 24, astatus);
     return info;
 }
+# An AgentInfo: an agent's identity and state, the struct AgentInfo_to_json
+# and AgentInfo_from_json read and write. 32 bytes, each stored as given:
+#   +0 id (AgentId), +8 name (Str), +16 agent_type (AgentType),
+#   +24 status (AgentStatus).
 fn agent_info_new(id, name: Str, atype, status) {
     var info = alloc(32);
     store64(info, id);
@@ -265,14 +366,21 @@ fn agent_info_new(id, name: Str, atype, status) {
     store64(info + 24, status);
     return info;
 }
+# AgentId pointer (a 16-byte UUID); 0 when AgentInfo_from_json found no valid id.
 fn ainfo_id(i)     { return load64(i); }
+# Agent name Str; 0 when AgentInfo_from_json found none.
 fn ainfo_name(i)   { return load64(i + 8); }
+# AgentType member.
 fn ainfo_type(i)   { return load64(i + 16); }
+# AgentStatus member.
 fn ainfo_status(i) { return load64(i + 24); }
 #derive(Serialize)
 struct AgentStats {
     total_requests: i64; total_tokens: i64; uptime_seconds: i64;
 }
+# An AgentStats: cumulative counters for one agent. 24 bytes, all 0:
+#   +0 total_requests, +8 total_tokens, +16 uptime_seconds.
+# This file has no setters for it.
 fn agent_stats_new() {
     var s = alloc(24);
     store64(s, 0);
@@ -280,9 +388,19 @@ fn agent_stats_new() {
     store64(s + 16, 0);
     return s;
 }
+# Total request count, the total_requests field.
 fn astats_requests(s)  { return load64(s); }
+# Total token count, the total_tokens field.
 fn astats_tokens(s)    { return load64(s + 8); }
+# Uptime in seconds, the uptime_seconds field.
 fn astats_uptime(s)    { return load64(s + 16); }
+# An AgentManifest: the declarative description of an agent. 80 bytes:
+#   +0 name (Str), +8 description, +16 author (Strs, default ""),
+#   +24 version (Version, default 0.0.0), +32 homepage (Str, default ""),
+#   +40 permissions (empty vec), +48 limits (a fresh resource_limits_new()),
+#   +56 and +64 (empty vecs), +72 (empty map).
+# Every collection is allocated up front. No accessor in this file reads
+# +56, +64 or +72.
 fn agent_manifest_new(name: Str) {
     var m = alloc(80);
     store64(m, name);
@@ -297,17 +415,33 @@ fn agent_manifest_new(name: Str) {
     store64(m + 72, map_new());
     return m;
 }
+# Agent name Str, as passed to agent_manifest_new.
 fn amanifest_name(m)        { return load64(m); }
+# Description Str (default "").
 fn amanifest_description(m) { return load64(m + 8); }
+# Author Str (default "").
 fn amanifest_author(m)      { return load64(m + 16); }
+# Version pointer (default 0.0.0, from version_default).
 fn amanifest_version(m)     { return load64(m + 24); }
+# Homepage Str (default "").
 fn amanifest_homepage(m)    { return load64(m + 32); }
+# vec of the Permission members the agent requests; starts empty.
 fn amanifest_permissions(m) { return load64(m + 40); }
+# ResourceLimits pointer, allocated with the resource_limits_new defaults.
 fn amanifest_limits(m)      { return load64(m + 48); }
+# A fresh random TaskId, identifying a unit of agent work: a 16-byte RFC 4122
+# v4 UUID, the same representation as an AgentId (agent_id_new).
 fn task_id_new()      { return agent_id_new(); }
+# TaskId as a 36-character lowercase hyphenated UUID Str (agent_id_to_str).
 fn task_id_to_str(t)  { return agent_id_to_str(t); }
+# A fresh random ExecutionId, identifying one execution attempt of a task: a
+# 16-byte RFC 4122 v4 UUID, the same representation as an AgentId.
 fn execution_id_new()      { return agent_id_new(); }
+# ExecutionId as a 36-character lowercase hyphenated UUID Str (agent_id_to_str).
 fn execution_id_to_str(e)  { return agent_id_to_str(e); }
+# AgentStatus display name (a cstr): "Pending", "Starting", "Running",
+# "Paused", "Stopping", "Stopped", "Restarting", "Terminated" or "Failed", and
+# "Unknown" for a value outside the enum. agent_status_parse is the inverse.
 fn agent_status_name(s) {
     if (s == AGENT_PENDING)          { return "Pending"; }
     elif (s == AGENT_STARTING)       { return "Starting"; }
@@ -335,6 +469,8 @@ fn agent_status_parse(s: Str) {
     elif (str_eq_cstr(s, "Failed") == 1) { return Ok(AGENT_FAILED); }
     return stik_err_invalid_argument(str_from("unknown AgentStatus name"));
 }
+# AgentType display name (a cstr): "System", "User" or "Service", and
+# "Unknown" for a value outside the enum. agent_type_parse is the inverse.
 fn agent_type_name(t) {
     if (t == AGENT_TYPE_SYSTEM)      { return "System"; }
     elif (t == AGENT_TYPE_USER)      { return "User"; }
@@ -349,6 +485,25 @@ fn agent_type_parse(s: Str) {
     elif (str_eq_cstr(s, "User") == 1) { return Ok(AGENT_TYPE_USER); }
     elif (str_eq_cstr(s, "Service") == 1) { return Ok(AGENT_TYPE_SERVICE); }
     return stik_err_invalid_argument(str_from("unknown AgentType name"));
+}
+# RestartPolicy display name: "Never", "Always" or "OnFailure", and "Unknown"
+# for a value outside the enum. restart_policy_parse is the inverse. Spelling:
+# the Kubernetes restartPolicy values. argonaut's systemd-style parser is the
+# separate argonaut_restart_policy_parse ("on-failure"); the two enums are
+# value-identical since argonaut 1.15.4.
+fn restart_policy_name(p) {
+    if (p == RESTART_NEVER)        { return "Never"; }
+    elif (p == RESTART_ALWAYS)     { return "Always"; }
+    elif (p == RESTART_ON_FAILURE) { return "OnFailure"; }
+    return "Unknown";
+}
+# Parse a RestartPolicy display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn restart_policy_parse(s: Str) {
+    if (str_eq_cstr(s, "Never") == 1) { return Ok(RESTART_NEVER); }
+    elif (str_eq_cstr(s, "Always") == 1) { return Ok(RESTART_ALWAYS); }
+    elif (str_eq_cstr(s, "OnFailure") == 1) { return Ok(RESTART_ON_FAILURE); }
+    return stik_err_invalid_argument(str_from("unknown RestartPolicy name"));
 }
 # ProbeType display name: "LivenessReadiness", "Liveness", "Readiness" or
 # "Startup", and "Unknown" for a value outside the enum. probe_type_parse is
@@ -427,6 +582,10 @@ fn label_operator_parse(s: Str) {
     return stik_err_invalid_argument(str_from("unknown LabelOperator name"));
 }
 enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST; }
+# An AgentMessage: a point-to-point message between two agents. 56 bytes:
+#   +0 id (a fresh UUID from agent_id_new), +8 sender, +16 receiver (agent
+#   ids, as given), +24 correlation_id (Str, 0), +32 reply_to (Str, 0),
+#   +40 payload (Str, as given), +48 timestamp (clock_epoch_ns at construction).
 fn agent_message_new(sender, receiver, payload_str: Str) {
     var m = alloc(56);
     store64(m, agent_id_new());
@@ -435,18 +594,31 @@ fn agent_message_new(sender, receiver, payload_str: Str) {
     store64(m + 24, 0);
     store64(m + 32, 0);
     store64(m + 40, payload_str);
-    store64(m + 48, clock_now_ns());
+    store64(m + 48, clock_epoch_ns());
     return m;
 }
+# Message id: a fresh 16-byte UUID (agent_id_new) assigned at construction.
 fn amsg_id(m)             { return load64(m); }
+# Sending agent's id, as passed to agent_message_new.
 fn amsg_sender(m)         { return load64(m + 8); }
+# Receiving agent's id, as passed to agent_message_new.
 fn amsg_receiver(m)       { return load64(m + 16); }
+# Correlation id Str pairing a request with its response, or 0 when unset.
 fn amsg_correlation_id(m) { return load64(m + 24); }
+# Reply-to Str, the id of the message this one answers, or 0 when unset.
 fn amsg_reply_to(m)       { return load64(m + 32); }
+# Payload Str, as passed to agent_message_new.
 fn amsg_payload(m)        { return load64(m + 40); }
+# Construction time from clock_epoch_ns(): Unix time in nanoseconds (wall
+# clock; whole seconds on agnos).
 fn amsg_timestamp(m)      { return load64(m + 48); }
+# Set the correlation id Str. Returns 0.
 fn amsg_set_correlation_id(m, v: Str) { store64(m + 24, v); return 0; }
+# Set the reply-to Str. Returns 0.
 fn amsg_set_reply_to(m, v: Str)       { store64(m + 32, v); return 0; }
+# An AgentDependency: one agent's dependency on another. 24 bytes, each
+# stored as given: +0 required_agent (Str, the agent's name),
+# +8 min_version (Version), +16 required (1 = mandatory, 0 = optional).
 fn agent_dependency_new(required_agent: Str, min_ver, required) {
     var d = alloc(24);
     store64(d, required_agent);
@@ -454,9 +626,15 @@ fn agent_dependency_new(required_agent: Str, min_ver, required) {
     store64(d + 16, required);
     return d;
 }
+# Name Str of the agent depended on.
 fn adep_required_agent(d) { return load64(d); }
+# Minimum Version of the required agent, as passed; agnostik does not check it.
 fn adep_min_version(d)    { return load64(d + 8); }
+# Required flag as passed: 1 when the dependency is mandatory, 0 when optional.
 fn adep_required(d)       { return load64(d + 16); }
+# A ResourceRequest: an agent asking the runtime for resources. 24 bytes:
+#   +0 agent_id, +8 limits (the ResourceLimits requested), both as given,
+#   +16 justification (Str, 0 until set).
 fn resource_request_new(agent_id, limits) {
     var r = alloc(24);
     store64(r, agent_id);
@@ -464,10 +642,17 @@ fn resource_request_new(agent_id, limits) {
     store64(r + 16, 0);
     return r;
 }
+# Id of the requesting agent.
 fn rreq_agent_id(r)      { return load64(r); }
+# ResourceLimits pointer: the limits requested.
 fn rreq_limits(r)        { return load64(r + 8); }
+# Justification Str, or 0 until rreq_set_justification.
 fn rreq_justification(r) { return load64(r + 16); }
+# Set the justification Str. Returns 0.
 fn rreq_set_justification(r, v: Str) { store64(r + 16, v); return 0; }
+# A ResourceGrant: the runtime's answer to a ResourceRequest. 32 bytes:
+#   +0 agent_id, +8 limits (the ResourceLimits granted), +16 approved (flag),
+#   all as given, +24 reason (Str, 0 until set).
 fn resource_grant_new(agent_id, limits, approved) {
     var g = alloc(32);
     store64(g, agent_id);
@@ -476,11 +661,20 @@ fn resource_grant_new(agent_id, limits, approved) {
     store64(g + 24, 0);
     return g;
 }
+# Id of the agent the grant is for.
 fn rgrant_agent_id(g) { return load64(g); }
+# ResourceLimits pointer: the limits granted.
 fn rgrant_limits(g)   { return load64(g + 8); }
+# Approval flag, as passed to resource_grant_new: 1 approved, 0 denied.
 fn rgrant_approved(g) { return load64(g + 16); }
+# Reason Str, or 0 until rgrant_set_reason.
 fn rgrant_reason(g)   { return load64(g + 24); }
+# Set the reason Str. Returns 0.
 fn rgrant_set_reason(g, v: Str) { store64(g + 24, v); return 0; }
+# A RetryPolicy: exponential-backoff settings for retrying a failed operation.
+# 40 bytes: +0 max_retries (3), +8 initial_delay (1000 ms), +16 backoff_mult
+# (2000), +24 max_delay (30000 ms), +32 jitter (1). agnostik only stores the
+# policy; the retrying code applies it. This file has no setters for it.
 fn retry_policy_new() {
     var p = alloc(40);
     store64(p, 3);
@@ -490,11 +684,20 @@ fn retry_policy_new() {
     store64(p + 32, 1);
     return p;
 }
+# Maximum retry attempts (default 3).
 fn rpol_max_retries(p)     { return load64(p); }
+# Delay before the first retry, in ms (default 1000).
 fn rpol_initial_delay(p)   { return load64(p + 8); }
+# Delay multiplier applied after each retry, in thousandths: the default 2000
+# is 2.0x, the fixed-point form of the Rust original's float.
 fn rpol_backoff_mult(p)    { return load64(p + 16); }
+# Upper bound on the delay, in ms (default 30000).
 fn rpol_max_delay(p)       { return load64(p + 24); }
+# Jitter flag: 1 to add random jitter to each delay (default 1).
 fn rpol_jitter(p)          { return load64(p + 32); }
+# A RestartBackoff: delay settings between restarts of an agent, the struct
+# AgentConfig's restart_backoff slot points to. 32 bytes: +0 initial_delay
+# (1000 ms), +8 multiplier (2000), +16 max_delay (60000 ms), +24 jitter (1).
 fn restart_backoff_new() {
     var b = alloc(32);
     store64(b, 1000);
@@ -503,10 +706,18 @@ fn restart_backoff_new() {
     store64(b + 24, 1);
     return b;
 }
+# Delay before the first restart, in ms (default 1000).
 fn rback_initial_delay(b) { return load64(b); }
+# Delay multiplier applied after each restart, in thousandths: the default
+# 2000 is 2.0x, the fixed-point form of the Rust original's float.
 fn rback_multiplier(b)    { return load64(b + 8); }
+# Upper bound on the delay, in ms (default 60000).
 fn rback_max_delay(b)     { return load64(b + 16); }
+# Jitter flag: 1 to add random jitter to each delay (default 1).
 fn rback_jitter(b)        { return load64(b + 24); }
+# An AgentPool: a set of identical agents run from one AgentConfig template.
+# 40 bytes: +0 name (Str), +8 config (AgentConfig), +16 replicas (1),
+# +24 min_replicas (1), +32 max_replicas (10).
 fn agent_pool_new(pool_name: Str, config) {
     var p = alloc(40);
     store64(p, pool_name);
@@ -516,14 +727,25 @@ fn agent_pool_new(pool_name: Str, config) {
     store64(p + 32, 10);
     return p;
 }
+# Pool name Str.
 fn apool_name(p)         { return load64(p); }
+# AgentConfig pointer: the template every member of the pool runs.
 fn apool_config(p)       { return load64(p + 8); }
+# Desired replica count (default 1).
 fn apool_replicas(p)     { return load64(p + 16); }
+# Minimum replica count (default 1).
 fn apool_min_replicas(p) { return load64(p + 24); }
+# Maximum replica count (default 10).
 fn apool_max_replicas(p) { return load64(p + 32); }
+# Set the desired replica count. Returns 0; not checked against min/max.
 fn apool_set_replicas(p, v)     { store64(p + 16, v); return 0; }
+# Set the minimum replica count. Returns 0; not checked against the others.
 fn apool_set_min_replicas(p, v) { store64(p + 24, v); return 0; }
+# Set the maximum replica count. Returns 0; not checked against the others.
 fn apool_set_max_replicas(p, v) { store64(p + 32, v); return 0; }
+# An AgentCapabilities: what an agent advertises it can do. 32 bytes, all 0:
+#   +0 skills, +8 input_types, +16 output_types (vecs, each created empty on
+#   first access), +24 max_tasks (0).
 fn agent_capabilities_new() {
     var c = alloc(32);
     store64(c, 0);
@@ -532,24 +754,44 @@ fn agent_capabilities_new() {
     store64(c + 24, 0);
     return c;
 }
+# vec of skill-name Strs the agent provides; created empty on first access.
 fn acap_skills(c)      { return _stik_lazy_vec(c); }
+# vec of input-type Strs the agent accepts; created empty on first access.
 fn acap_input_types(c) { return _stik_lazy_vec(c + 8); }
+# vec of output-type Strs the agent produces; created empty on first access.
 fn acap_output_types(c){ return _stik_lazy_vec(c + 16); }
+# Maximum concurrent tasks (default 0).
 fn acap_max_tasks(c)   { return load64(c + 24); }
+# Set the maximum concurrent tasks. Returns 0.
 fn acap_set_max_tasks(c, v) { store64(c + 24, v); return 0; }
+# A SchedulingConstraints: placement rules for an agent. 48 bytes, zeroed:
+#   +0 node_affinity, +8 node_anti_affinity, +16 pod_affinity,
+#   +24 pod_anti_affinity (vecs, each created empty on first access),
+#   +32 priority (0), +40 preemptible (0).
 fn scheduling_constraints_new() {
     var s = alloc(48);
     var i = 0;
     while (i < 48) { store64(s + i, 0); i = i + 8; }
     return s;
 }
+# vec of node-affinity LabelSelectors; created empty on first access.
 fn sched_node_affinity(s)      { return _stik_lazy_vec(s); }
+# vec of node-anti-affinity LabelSelectors; created empty on first access.
 fn sched_node_anti_affinity(s) { return _stik_lazy_vec(s + 8); }
+# vec of agents to co-locate with (pod affinity); created empty on first access.
 fn sched_pod_affinity(s)       { return _stik_lazy_vec(s + 16); }
+# vec of agents not to co-locate with (pod anti-affinity); created empty on
+# first access.
 fn sched_pod_anti_affinity(s)  { return _stik_lazy_vec(s + 24); }
+# Scheduling priority (default 0).
 fn sched_priority(s)           { return load64(s + 32); }
+# Preemptible flag at +40 (default 0). This file has no setter for it.
 fn sched_preemptible(s)        { return load64(s + 40); }
+# Set the scheduling priority. Returns 0.
 fn sched_set_priority(s, v)    { store64(s + 32, v); return 0; }
+# A LabelSelector: matches node labels by key. 24 bytes: +0 key (Str),
+# +8 operator (LabelOperator), both as given, +16 values (vec, created empty
+# on first access).
 fn label_selector_new(key: Str, operator) {
     var l = alloc(24);
     store64(l, key);
@@ -557,9 +799,14 @@ fn label_selector_new(key: Str, operator) {
     store64(l + 16, 0);
     return l;
 }
+# Label key Str.
 fn lsel_key(l)      { return load64(l); }
+# LabelOperator member.
 fn lsel_operator(l) { return load64(l + 8); }
+# vec of the values the operator matches against; created empty on first access.
 fn lsel_values(l)   { return _stik_lazy_vec(l + 16); }
+# A Topic: a named pub/sub channel. 24 bytes: +0 name (Str), +8 description
+# (Str, default ""), +16 ttl (0).
 fn topic_new(tname: Str) {
     var t = alloc(24);
     store64(t, tname);
@@ -567,11 +814,19 @@ fn topic_new(tname: Str) {
     store64(t + 16, 0);
     return t;
 }
+# Topic name Str.
 fn topic_name(t)        { return load64(t); }
+# Description Str (default "").
 fn topic_description(t) { return load64(t + 8); }
+# Message TTL for the topic (default 0).
 fn topic_ttl(t)         { return load64(t + 16); }
+# Set the description Str. Returns 0.
 fn topic_set_description(t, v: Str) { store64(t + 8, v); return 0; }
+# Set the topic's message TTL. Returns 0.
 fn topic_set_ttl(t, v)         { store64(t + 16, v); return 0; }
+# A Subscription: one agent's subscription to a topic. 24 bytes:
+#   +0 agent_id (the subscriber), +8 topic (Str, the topic's name),
+#   +16 filter (Str, 0 for none).
 fn subscription_new(agent_id, topic_name: Str) {
     var s = alloc(24);
     store64(s, agent_id);
@@ -579,28 +834,47 @@ fn subscription_new(agent_id, topic_name: Str) {
     store64(s + 16, 0);
     return s;
 }
+# Subscribing agent's id.
 fn sub_agent_id(s) { return load64(s); }
+# Name Str of the subscribed topic.
 fn sub_topic(s)    { return load64(s + 8); }
+# Filter expression Str, or 0 for none; agnostik does not parse it.
 fn sub_filter(s)   { return load64(s + 16); }
+# Set the filter expression Str. Returns 0.
 fn sub_set_filter(s, v: Str) { store64(s + 16, v); return 0; }
+# A TopicMessage: one message published to a topic. 56 bytes:
+#   +0 id (a fresh UUID from agent_id_new), +8 topic (Str), +16 publisher
+#   (agent id), +24 payload (Str, default "{}"), +32 timestamp
+#   (clock_epoch_ns at construction), +40 priority (0), +48 ttl (0).
 fn topic_message_new(topic_name: Str, publisher) {
     var m = alloc(56);
     store64(m, agent_id_new());
     store64(m + 8, topic_name);
     store64(m + 16, publisher);
     store64(m + 24, str_from("{}"));
-    store64(m + 32, clock_now_ns());
+    store64(m + 32, clock_epoch_ns());
     store64(m + 40, 0);
     store64(m + 48, 0);
     return m;
 }
+# Message id: a fresh 16-byte UUID (agent_id_new) assigned at construction.
 fn tmsg_id(m)        { return load64(m); }
+# Name Str of the topic the message was published to.
 fn tmsg_topic(m)     { return load64(m + 8); }
+# Publishing agent's id.
 fn tmsg_publisher(m) { return load64(m + 16); }
+# Payload Str; "{}" (an empty JSON object) until tmsg_set_payload.
 fn tmsg_payload(m)   { return load64(m + 24); }
+# Construction time from clock_epoch_ns(): Unix time in nanoseconds (wall
+# clock; whole seconds on agnos).
 fn tmsg_timestamp(m) { return load64(m + 32); }
+# Message priority (default 0).
 fn tmsg_priority(m)  { return load64(m + 40); }
+# Message TTL (default 0).
 fn tmsg_ttl(m)       { return load64(m + 48); }
+# Set the payload Str. Returns 0.
 fn tmsg_set_payload(m, v: Str)  { store64(m + 24, v); return 0; }
+# Set the message priority. Returns 0.
 fn tmsg_set_priority(m, v) { store64(m + 40, v); return 0; }
+# Set the message TTL. Returns 0.
 fn tmsg_set_ttl(m, v)      { store64(m + 48, v); return 0; }

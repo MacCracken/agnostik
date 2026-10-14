@@ -1,5 +1,9 @@
 var TRACE_FLAG_SAMPLED = 1;
+# New random trace id: 16 bytes from agent_id_new, so random apart from the
+# RFC 4122 v4 version and variant bits that it sets. Compare with trace_id_eq.
 fn trace_id_new() { return agent_id_new(); }
+# Trace id as 32 lowercase hex chars, its 16 bytes in memory order, no dashes.
+# trace_id_from_str is the inverse.
 fn trace_id_to_str(id): Str {
     # 32 hex chars (no dashes)
     var buf = alloc(33);
@@ -11,6 +15,9 @@ fn trace_id_to_str(id): Str {
     store8(buf + 32, 0);
     return str_new(buf, 32);
 }
+# Parse exactly 32 hex digits (either case) into a new 16-byte trace id.
+# Returns Ok(id), or an invalid-argument Err on a wrong length or a non-hex
+# digit. An all-zero id is accepted here; tctx_from_traceparent rejects it.
 fn trace_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
@@ -27,41 +34,49 @@ fn trace_id_from_str(s: Str) {
     }
     return Ok(id);
 }
+# 1 when the two 16-byte trace ids hold the same bytes, else 0.
 fn trace_id_eq(a, b) { return agent_id_eq(a, b); }
+# New random span id: 8 bytes from the OS random source (_stik_fill_random).
 fn span_id_new() {
     var id = alloc(8);
     _stik_fill_random(id, 8);
     return id;
 }
+# Span id as 16 lowercase hex chars: the 8 bytes in memory order, as
+# trace_id_to_str does for the trace id. That is the W3C traceparent span-id
+# field, and the same bytes Span_to_otlp_proto emits as the OTLP span_id.
+# span_id_from_str is the inverse.
 fn span_id_to_str(id): Str {
     # 16 hex chars
     var buf = alloc(17);
-    var val = load64(id);
     var i = 0;
     while (i < 8) {
-        var byte = (val >> ((7 - i) * 8)) & 0xFF;
-        _stik_hex_byte(buf, i * 2, byte);
+        _stik_hex_byte(buf, i * 2, load8(id + i));
         i = i + 1;
     }
     store8(buf + 16, 0);
     return str_new(buf, 16);
 }
+# Parse exactly 16 hex digits (either case) into a new 8-byte span id, byte i
+# from hex digits 2i and 2i+1 (the order span_id_to_str prints). Returns Ok(id),
+# or an invalid-argument Err on a wrong length or a non-hex digit.
 fn span_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
     if (slen != 16) { return stik_err_invalid_argument(str_from("expected 16 hex digits")); }
     var id = alloc(8);
-    var val = 0;
     var i = 0;
-    while (i < 16) {
-        var nibble = _stik_hex_nibble(load8(data + i));
-        if (nibble < 0) { return stik_err_invalid_argument(str_from("invalid hex in span id")); }
-        val = (val << 4) | nibble;
+    while (i < 8) {
+        var hi = _stik_hex_nibble(load8(data + i * 2));
+        var lo = _stik_hex_nibble(load8(data + i * 2 + 1));
+        if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in span id")); }
+        if (lo < 0) { return stik_err_invalid_argument(str_from("invalid hex in span id")); }
+        store8(id + i, hi << 4 | lo);
         i = i + 1;
     }
-    store64(id, val);
     return Ok(id);
 }
+# 1 when the two 8-byte span ids hold the same bytes, else 0.
 fn span_id_eq(a, b) {
     if (load64(a) == load64(b)) { return 1; }
     return 0;
@@ -71,6 +86,8 @@ enum SpanStatus {
     SPAN_OK;
     SPAN_ERROR;
 }
+# SpanStatus display name: "Unset", "Ok" or "Error", and "Unknown" for a value
+# outside the enum. span_status_parse is the inverse.
 fn span_status_name(s) {
     if (s == SPAN_UNSET)       { return "Unset"; }
     elif (s == SPAN_OK)        { return "Ok"; }
@@ -86,6 +103,10 @@ fn span_status_parse(s: Str) {
     elif (str_eq_cstr(s, "Error") == 1) { return Ok(SPAN_ERROR); }
     return stik_err_invalid_argument(str_from("unknown SpanStatus name"));
 }
+# An error status with a description: a tagged box with tag SPAN_ERROR and
+# `message` as payload, read with boxed_tag / boxed_payload. It is not a bare
+# SpanStatus: a span's status slot (span_set_status, Span_to_otlp_proto) holds
+# the plain enum value.
 fn span_status_error(message: Str) {
     return tagged_new(SPAN_ERROR, message);
 }
@@ -96,6 +117,9 @@ enum SpanKind {
     SPAN_PRODUCER;
     SPAN_CONSUMER;
 }
+# SpanKind display name: "Internal", "Server", "Client", "Producer" or
+# "Consumer", and "Unknown" for a value outside the enum. span_kind_parse is
+# the inverse.
 fn span_kind_name(k) {
     if (k == SPAN_INTERNAL)      { return "Internal"; }
     elif (k == SPAN_SERVER)      { return "Server"; }
@@ -142,6 +166,10 @@ enum LogSeverity {
     LOG_ERROR = 17;
     LOG_FATAL = 21;
 }
+# LogSeverity display name: "TRACE", "DEBUG", "INFO", "WARN", "ERROR" or
+# "FATAL". Only the six exact member values (1, 5, 9 … 21) are named; any other
+# value, including one between two members, is "UNKNOWN".
+# log_severity_parse is the inverse.
 fn log_severity_name(s) {
     if (s == LOG_TRACE) { return "TRACE"; }
     elif (s == LOG_DEBUG) { return "DEBUG"; }
@@ -243,6 +271,9 @@ fn metric_value_type_parse(s: Str) {
     elif (str_eq_cstr(s, "ExponentialHistogram") == 1) { return Ok(MV_EXP_HISTOGRAM); }
     return stik_err_invalid_argument(str_from("unknown MetricValueType name"));
 }
+# A Resource: the entity that produces telemetry. 40 bytes, all 8-byte slots:
+#   +0 service name (Str), +8 service version (Str), +16 instance id (Str),
+#   +24 attributes (map, created empty), +32 schema URL (0 = unset).
 fn resource_new(name: Str, version: Str, instance_id: Str) {
     var r = alloc(40);
     store64(r, name);
@@ -252,14 +283,25 @@ fn resource_new(name: Str, version: Str, instance_id: Str) {
     store64(r + 32, 0);
     return r;
 }
+# A Resource whose service name, version and instance id are all empty Strs.
 fn resource_default() {
     return resource_new(str_from(""), str_from(""), str_from(""));
 }
+# Name of the service the resource describes (Str).
 fn res_service_name(r)    { return load64(r); }
+# Version of that service (Str).
 fn res_service_version(r) { return load64(r + 8); }
+# Id of this instance of the service (Str).
 fn res_instance_id(r)     { return load64(r + 16); }
+# Further resource attributes: a cstr-keyed map, created empty by resource_new.
 fn res_attributes(r)      { return load64(r + 24); }
+# Schema URL; resource_new leaves it 0 (unset).
 fn res_schema_url(r)      { return load64(r + 32); }
+# A TraceContext for a new root span: the identity a W3C traceparent carries.
+# 40 bytes, all 8-byte slots:
+#   +0 trace id (fresh 16-byte id), +8 span id (fresh 8-byte id),
+#   +16 parent span id (0 = none), +24 trace flags (TRACE_FLAG_SAMPLED),
+#   +32 trace state (Str, empty).
 fn trace_context_new() {
     var ctx = alloc(40);
     store64(ctx, trace_id_new());
@@ -269,15 +311,27 @@ fn trace_context_new() {
     store64(ctx + 32, str_from(""));
     return ctx;
 }
+# Trace id: pointer to its 16 bytes.
 fn tctx_trace_id(c)       { return load64(c); }
+# This context's span id: pointer to its 8 bytes.
 fn tctx_span_id(c)        { return load64(c + 8); }
+# Parent span id (pointer to 8 bytes), or 0 when there is none: trace_context_new
+# and tctx_from_traceparent leave it 0, tctx_child sets it.
 fn tctx_parent_span_id(c) { return load64(c + 16); }
+# Trace flags as an integer; bit 0 is TRACE_FLAG_SAMPLED. tctx_to_traceparent
+# writes only the low byte.
 fn tctx_trace_flags(c)    { return load64(c + 24); }
+# Trace state (Str). The constructors set it empty and tctx_child copies the
+# parent's; the traceparent functions do not carry it.
 fn tctx_trace_state(c)    { return load64(c + 32); }
+# 1 when the TRACE_FLAG_SAMPLED bit of the trace flags is set, else 0.
 fn tctx_is_sampled(c) {
     if ((load64(c + 24) & TRACE_FLAG_SAMPLED) != 0) { return 1; }
     return 0;
 }
+# A new 40-byte TraceContext for a child span: the parent's trace id, a fresh
+# span id, the parent's span id as its parent span id, and the parent's flags
+# and trace state. The id pointers are shared with the parent, not copied.
 fn tctx_child(parent) {
     var child = alloc(40);
     store64(child, load64(parent));          # same trace_id
@@ -287,6 +341,9 @@ fn tctx_child(parent) {
     store64(child + 32, load64(parent + 32)); # propagate state
     return child;
 }
+# The context as a W3C traceparent header value, version 00:
+# "00-<32 hex trace id>-<16 hex span id>-<2 hex flags>", 55 lowercase chars.
+# Only the low byte of the flags is written; trace state is not included.
 fn tctx_to_traceparent(c): Str {
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "00-");
@@ -313,6 +370,12 @@ fn _stik_all_zero_bytes(p, len) {
     if (nz == 1) { return 0; }
     return 1;
 }
+# Parse a W3C traceparent header value into a new TraceContext. Requires exactly
+# 55 chars, dashes at offsets 2, 35 and 52, lowercase hex everywhere else, a
+# version other than ff (versions above 00 are accepted), and a trace id and
+# parent id that are not all zero. Returns Ok(ctx), or an invalid-argument Err
+# naming the failed check. The header's parent id becomes the context's span
+# id; parent span id is 0 and trace state is empty.
 fn tctx_from_traceparent(s: Str) {
     # Format: "VV-TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT-SSSSSSSSSSSSSSSS-FF"
     # Total: 55 chars
@@ -379,6 +442,15 @@ fn tctx_from_traceparent(s: Str) {
     store64(ctx + 32, str_from(""));
     return Ok(ctx);
 }
+# A Span: one timed operation within a trace. 112 bytes, all 8-byte slots:
+#   +0 name (Str), +8 trace id, +16 span id, +24 parent span id (0 = none),
+#   +32 status (SpanStatus, SPAN_UNSET), +40 kind (SpanKind, SPAN_INTERNAL),
+#   +48 start time (clock_epoch_ns at creation), +56 duration in ms (0),
+#   +64 attributes (map), +72 events (vec), +80 links (vec), all created empty,
+#   +88 / +96 / +104 dropped attribute / event / link counts (0).
+# The id pointers are stored as given, not copied. The start time is
+# clock_epoch_ns(), Unix time in nanoseconds, which OTLP's start_time_unix_nano
+# requires.
 fn span_new(name: Str, trace_id, span_id) {
     var s = alloc(112);
     store64(s, name);
@@ -387,7 +459,7 @@ fn span_new(name: Str, trace_id, span_id) {
     store64(s + 24, 0);
     store64(s + 32, SPAN_UNSET);
     store64(s + 40, SPAN_INTERNAL);
-    store64(s + 48, clock_now_ns());
+    store64(s + 48, clock_epoch_ns());
     store64(s + 56, 0);
     store64(s + 64, map_new());
     store64(s + 72, vec_new());
@@ -397,23 +469,42 @@ fn span_new(name: Str, trace_id, span_id) {
     store64(s + 104, 0);
     return s;
 }
+# Operation name (Str).
 fn span_name(s)           { return load64(s); }
+# Id of the trace the span belongs to: pointer to its 16 bytes.
 fn span_trace_id(s)       { return load64(s + 8); }
+# The span's own id: pointer to its 8 bytes.
 fn span_span_id(s)        { return load64(s + 16); }
+# Parent span id (pointer to 8 bytes), or 0 for a span with no parent.
 fn span_parent_id(s)      { return load64(s + 24); }
+# Status: a SpanStatus value, SPAN_UNSET until span_set_status.
 fn span_status(s)         { return load64(s + 32); }
+# Kind: a SpanKind value, SPAN_INTERNAL until span_set_kind.
 fn span_kind(s)           { return load64(s + 40); }
+# Start time, Unix ns from clock_epoch_ns, taken in span_new.
 fn span_started_at(s)     { return load64(s + 48); }
+# Duration in milliseconds; 0 until span_set_duration_ms.
 fn span_duration_ms(s)    { return load64(s + 56); }
+# Span attributes: a cstr-keyed map, created empty by span_new.
 fn span_attributes(s)     { return load64(s + 64); }
+# vec of the span's events, created empty by span_new.
 fn span_events(s)         { return load64(s + 72); }
+# vec of the span's links, created empty by span_new.
 fn span_links(s)          { return load64(s + 80); }
+# Set the status to a SpanStatus value, stored as given (not validated). Returns 0.
 fn span_set_status(s, v)      { store64(s + 32, v); return 0; }
+# Set the kind to a SpanKind value, stored as given (not validated). Returns 0.
 fn span_set_kind(s, v)        { store64(s + 40, v); return 0; }
+# Set the duration in milliseconds; Span_to_otlp_proto derives the end time
+# from it. Returns 0.
 fn span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
+# Set the parent span id (pointer to an 8-byte span id, or 0 for none). Returns 0.
 fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
+# Number of attributes dropped from the span; span_new sets 0.
 fn span_dropped_attrs(s)  { return load64(s + 88); }
+# Number of events dropped from the span; span_new sets 0.
 fn span_dropped_events(s) { return load64(s + 96); }
+# Number of links dropped from the span; span_new sets 0.
 fn span_dropped_links(s)  { return load64(s + 104); }
 # v1.2.0 — OTLP wire-format encoder for Span. Maps to
 # opentelemetry.proto.trace.v1.Span. Covers scalar fields:
@@ -499,6 +590,9 @@ fn Span_to_otlp_proto(ptr, sb) {
     return 0;
 }
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
+# Append the config to `sb` as compact JSON,
+# {"enabled":N,"sample_rate":N,"export_endpoint":"..."}, with null for a 0
+# endpoint. The endpoint is JSON-escaped (since 1.9.0). Returns 0.
 fn TelemetryConfig_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. The Str
     # field with null-for-0 handling prevents derive adoption (cyrius
@@ -511,15 +605,19 @@ fn TelemetryConfig_to_json(ptr, sb) {
     str_builder_add_cstr(sb, ",\"export_endpoint\":");
     var ep = load64(ptr + 16);
     if (ep != 0) {
-        str_builder_putc(sb, '"');
-        str_builder_add(sb, ep);
-        str_builder_putc(sb, '"');
+        # Escaped: a quote, backslash or control character in the endpoint
+        # must not end the string or inject keys.
+        str_builder_add_json_str(sb, ep);
     } else {
         str_builder_add_cstr(sb, "null");
     }
     str_builder_putc(sb, '}');
     return 0;
 }
+# Build a new TelemetryConfig from JSON text. A missing or non-numeric integer
+# key reads 0, not telemetry_config_new's default, so a missing "enabled" means
+# disabled; export_endpoint is 0 when missing, null or not a string. Never
+# fails: returns the config pointer, not a Result.
 fn TelemetryConfig_from_json(src: Str) {
     var c = alloc(24);
     store64(c, _stik_json_int(src, str_from("enabled")));
@@ -527,6 +625,9 @@ fn TelemetryConfig_from_json(src: Str) {
     store64(c + 16, _stik_json_str(src, str_from("export_endpoint")));
     return c;
 }
+# A TelemetryConfig with defaults. 24 bytes, all 8-byte slots:
+#   +0 enabled (1), +8 sample rate (1000, a rate of 1.0 in thousandths),
+#   +16 export endpoint (Str, 0 = none).
 fn telemetry_config_new() {
     var c = alloc(24);
     store64(c, 1);       # enabled = true
@@ -534,12 +635,20 @@ fn telemetry_config_new() {
     store64(c + 16, 0);
     return c;
 }
+# Enabled flag: 1 when telemetry is enabled, 0 when disabled.
 fn telcfg_enabled(c)    { return load64(c); }
+# Sampling rate in thousandths: 1000 is a rate of 1.0, the default.
 fn telcfg_sample_rate(c){ return load64(c + 8); }
+# Export endpoint (Str), or 0 when none is configured.
 fn telcfg_endpoint(c)   { return load64(c + 16); }
+# A LogRecord. 64 bytes, all 8-byte slots:
+#   +0 timestamp (clock_epoch_ns at creation), +8 0 (no accessor reads it),
+#   +16 severity (LogSeverity, stored as given), +24 body (Str),
+#   +32 attributes (map, created empty), +40 trace id, +48 span id,
+#   +56 resource; the last three are 0 until set.
 fn log_record_new(severity, body: Str) {
     var lr = alloc(64);
-    store64(lr, clock_now_ns());
+    store64(lr, clock_epoch_ns());
     store64(lr + 8, 0);
     store64(lr + 16, severity);
     store64(lr + 24, body);
@@ -549,28 +658,50 @@ fn log_record_new(severity, body: Str) {
     store64(lr + 56, 0);
     return lr;
 }
+# Creation time, Unix ns from clock_epoch_ns.
 fn logrec_timestamp(lr)  { return load64(lr); }
+# Severity: a LogSeverity value.
 fn logrec_severity(lr)   { return load64(lr + 16); }
+# Message body (Str).
 fn logrec_body(lr)       { return load64(lr + 24); }
+# Record attributes: a cstr-keyed map, created empty by log_record_new.
 fn logrec_attributes(lr) { return load64(lr + 32); }
+# Id of the trace the record belongs to (pointer to 16 bytes), or 0 when unset.
 fn logrec_trace_id(lr)   { return load64(lr + 40); }
+# Id of the span the record belongs to (pointer to 8 bytes), or 0 when unset.
 fn logrec_span_id(lr)    { return load64(lr + 48); }
+# Resource that produced the record (see resource_new), or 0 when unset.
 fn logrec_resource(lr)   { return load64(lr + 56); }
+# Set the trace id (pointer to a 16-byte trace id, or 0). Returns 0.
 fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
+# Set the span id (pointer to an 8-byte span id, or 0). Returns 0.
 fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
+# Set the resource (a resource_new pointer, or 0). Returns 0.
 fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
+# A CrashReport. 32 bytes, all 8-byte slots:
+#   +0 agent id (AgentId pointer, stored as given), +8 error message (Str),
+#   +16 backtrace (0), +24 timestamp (clock_epoch_ns at creation).
 fn crash_report_new(agent_id, error_msg: Str) {
     var cr = alloc(32);
     store64(cr, agent_id);
     store64(cr + 8, error_msg);
     store64(cr + 16, 0);
-    store64(cr + 24, clock_now_ns());
+    store64(cr + 24, clock_epoch_ns());
     return cr;
 }
+# Id of the agent that crashed (AgentId pointer).
 fn crash_agent_id(cr)  { return load64(cr); }
+# Error message describing the crash (Str).
 fn crash_error(cr)     { return load64(cr + 8); }
+# Backtrace slot. crash_report_new sets it to 0 and no fn in this module sets
+# it, so the code does not fix its form.
 fn crash_backtrace(cr) { return load64(cr + 16); }
+# Time the report was created, Unix ns from clock_epoch_ns.
 fn crash_timestamp(cr) { return load64(cr + 24); }
+# An InstrumentationScope: the instrumenting library or component that emits
+# telemetry. 32 bytes, all 8-byte slots:
+#   +0 name (Str), +8 version (Str), +16 schema URL (0 = unset),
+#   +24 attributes (map, created on first access).
 fn instrumentation_scope_new(scope_name: Str, scope_version: Str) {
     var s = alloc(32);
     store64(s, scope_name);
@@ -579,20 +710,33 @@ fn instrumentation_scope_new(scope_name: Str, scope_version: Str) {
     store64(s + 24, 0);
     return s;
 }
+# Scope name (Str).
 fn iscope_name(s)       { return load64(s); }
+# Scope version (Str).
 fn iscope_version(s)    { return load64(s + 8); }
+# Schema URL; instrumentation_scope_new leaves it 0 (unset).
 fn iscope_schema_url(s) { return load64(s + 16); }
+# Scope attributes: a cstr-keyed map, created empty on first access.
 fn iscope_attributes(s) { return _stik_lazy_map(s + 24); }
+# A SpanEvent: a named, timestamped event within a span. 24 bytes:
+#   +0 name (Str), +8 timestamp (clock_epoch_ns at creation),
+#   +16 attributes (map, created on first access).
 fn span_event_new(evt_name: Str) {
     var e = alloc(24);
     store64(e, evt_name);
-    store64(e + 8, clock_now_ns());
+    store64(e + 8, clock_epoch_ns());
     store64(e + 16, 0);
     return e;
 }
+# Event name (Str).
 fn sevt_name(e)       { return load64(e); }
+# Event time, Unix ns from clock_epoch_ns.
 fn sevt_timestamp(e)  { return load64(e + 8); }
+# Event attributes: a cstr-keyed map, created empty on first access.
 fn sevt_attributes(e) { return _stik_lazy_map(e + 16); }
+# A SpanLink: a reference from a span to another span, which may be in another
+# trace. 24 bytes: +0 trace id, +8 span id (pointers, stored as given),
+#   +16 attributes (map, created on first access).
 fn span_link_new(link_trace_id, link_span_id) {
     var l = alloc(24);
     store64(l, link_trace_id);
@@ -600,36 +744,59 @@ fn span_link_new(link_trace_id, link_span_id) {
     store64(l + 16, 0);
     return l;
 }
+# Trace id of the linked span (pointer to 16 bytes).
 fn slink_trace_id(l)   { return load64(l); }
+# Span id of the linked span (pointer to 8 bytes).
 fn slink_span_id(l)    { return load64(l + 8); }
+# Link attributes: a cstr-keyed map, created empty on first access.
 fn slink_attributes(l) { return _stik_lazy_map(l + 16); }
+# An Exemplar: a sample measurement tied to the trace and span it was recorded
+# in. 40 bytes, all 8-byte slots:
+#   +0 trace id, +8 span id (pointers, stored as given), +16 value (as given),
+#   +24 timestamp (clock_epoch_ns at creation), +32 attributes (map, created on
+#   first access).
 fn exemplar_new(ex_trace_id, ex_span_id, value) {
     var e = alloc(40);
     store64(e, ex_trace_id);
     store64(e + 8, ex_span_id);
     store64(e + 16, value);
-    store64(e + 24, clock_now_ns());
+    store64(e + 24, clock_epoch_ns());
     store64(e + 32, 0);
     return e;
 }
+# Id of the trace the measurement was recorded in (pointer to 16 bytes).
 fn exem_trace_id(e)   { return load64(e); }
+# Id of the span the measurement was recorded in (pointer to 8 bytes).
 fn exem_span_id(e)    { return load64(e + 8); }
+# The measured value: the raw 8-byte value passed to exemplar_new.
 fn exem_value(e)      { return load64(e + 16); }
+# Time the exemplar was created, Unix ns from clock_epoch_ns.
 fn exem_timestamp(e)  { return load64(e + 24); }
+# Exemplar attributes: a cstr-keyed map, created empty on first access.
 fn exem_attributes(e) { return _stik_lazy_map(e + 32); }
+# A Baggage: key/value entries carried alongside a trace context. 8 bytes:
+#   +0 entries (map, created on first access).
 fn baggage_new() {
     var b = alloc(8);
     store64(b, 0);
     return b;
 }
+# The baggage entries: a cstr-keyed map, created empty on first access.
 fn baggage_entries(b) { return _stik_lazy_map(b); }
+# Set entry `key` (a NUL-terminated cstr) to `value`, replacing any existing
+# value. The value is stored as given, not copied. Returns 0.
 fn baggage_set(b, key, value) {
     map_set(baggage_entries(b), key, value);
     return 0;
 }
+# Value stored under `key` (a NUL-terminated cstr), or 0 when there is none;
+# an absent key and a stored 0 read the same.
 fn baggage_get(b, key) {
     return map_get(baggage_entries(b), key);
 }
+# An InstrumentDescriptor: the identity of a metric instrument. 32 bytes, all
+# 8-byte slots: +0 name (Str), +8 description (Str), +16 unit (Str),
+#   +24 kind (MetricKind, stored as given).
 fn instrument_descriptor_new(inst_name: Str, desc: Str, unit: Str, kind) {
     var d = alloc(32);
     store64(d, inst_name);
@@ -638,66 +805,110 @@ fn instrument_descriptor_new(inst_name: Str, desc: Str, unit: Str, kind) {
     store64(d + 24, kind);
     return d;
 }
+# Instrument name (Str).
 fn idesc_name(d) { return load64(d); }
+# Description of the instrument (Str).
 fn idesc_desc(d) { return load64(d + 8); }
+# Unit of the instrument's measurements (Str).
 fn idesc_unit(d) { return load64(d + 16); }
+# Instrument kind: a MetricKind value.
 fn idesc_kind(d) { return load64(d + 24); }
 enum MetricValueType { MV_INT; MV_FLOAT; MV_HISTOGRAM; MV_EXP_HISTOGRAM; }
+# An integer metric value: a tagged box with tag MV_INT and `val` as payload.
+# Read it with metric_value_type / metric_value_val.
 fn metric_int(val)   { return tagged_new(MV_INT, val); }
+# A float metric value: a tagged box with tag MV_FLOAT and `val` as payload,
+# stored as the raw 8-byte value given (no conversion).
 fn metric_float(val) { return tagged_new(MV_FLOAT, val); }
+# MetricValueType tag of a metric value box (MV_INT or MV_FLOAT from metric_int / metric_float).
 fn metric_value_type(mv) { return boxed_tag(mv); }
+# Payload of a metric value box: the raw 8-byte value it was built with.
 fn metric_value_val(mv)  { return boxed_payload(mv); }
+# A MetricDataPoint: one recorded value of an instrument. 48 bytes, all 8-byte
+# slots: +0 instrument name (Str), +8 value (a metric_int / metric_float box),
+#   +16 attributes (map, created on first access), +24 timestamp
+#   (clock_epoch_ns at creation), +32 temporality (TEMPORALITY_CUMULATIVE), +40 monotonic flag (0).
 fn metric_data_point_new(inst_name: Str, mv) {
     var dp = alloc(48);
     store64(dp, inst_name);
     store64(dp + 8, mv);
     store64(dp + 16, 0);
-    store64(dp + 24, clock_now_ns());
+    store64(dp + 24, clock_epoch_ns());
     store64(dp + 32, TEMPORALITY_CUMULATIVE);
     store64(dp + 40, 0);
     return dp;
 }
+# Name of the instrument the point belongs to (Str), not an InstrumentDescriptor.
 fn mdp_instrument(dp)   { return load64(dp); }
+# The recorded value: a metric value box (metric_int / metric_float).
 fn mdp_value(dp)         { return load64(dp + 8); }
+# Data-point attributes: a cstr-keyed map, created empty on first access.
 fn mdp_attributes(dp)   { return _stik_lazy_map(dp + 16); }
+# Time the point was created, Unix ns from clock_epoch_ns.
 fn mdp_timestamp(dp)    { return load64(dp + 24); }
+# AggregationTemporality of the value; metric_data_point_new sets TEMPORALITY_CUMULATIVE.
 fn mdp_temporality(dp)  { return load64(dp + 32); }
+# Monotonic flag: 1 when the value never decreases, else 0. metric_data_point_new
+# sets 0 and this module has no setter for it.
 fn mdp_is_monotonic(dp) { return load64(dp + 40); }
 var TEXTMAP_GET = 0;
 var TEXTMAP_SET = 1;
+# Vtable for a TextMap carrier: 16 bytes, slot 0 (TEXTMAP_GET) = get_fn, slot 1
+# (TEXTMAP_SET) = set_fn. Both are called as fn(data, key), `data` being the
+# carrier's data pointer; set_fn gets the value from the global _textmap_extra,
+# which textmap_set fills just before the call.
 fn textmap_carrier_vtable(get_fn, set_fn) {
     var vt = alloc(16);
     store64(vt, get_fn);
     store64(vt + 8, set_fn);
     return vt;
 }
+# A TextMap carrier: a trait object pairing a textmap_carrier_vtable with the
+# caller's data pointer.
 fn textmap_carrier_new(vtable, data) { return trait_obj_new(vtable, data); }
+# Call the carrier's get_fn(data, key) and return its result.
 fn textmap_get(carrier, key) { return trait_call1(carrier, TEXTMAP_GET, key); }
 var _textmap_extra = 0;
+# Call the carrier's set_fn(data, key) and return its result. `value` travels
+# in the global _textmap_extra, set just before the call, so concurrent calls
+# are unsafe and set_fn must read it before making another textmap_set.
 fn textmap_set(carrier, key, value) {
     _textmap_extra = value;
     return trait_call1(carrier, TEXTMAP_SET, key);
 }
 var PROPAGATOR_INJECT = 0;
 var PROPAGATOR_EXTRACT = 1;
+# Vtable for a TextMap propagator: 16 bytes, slot 0 (PROPAGATOR_INJECT) =
+# inject_fn, slot 1 (PROPAGATOR_EXTRACT) = extract_fn, each called with the
+# propagator's data pointer first. inject_fn gets its carrier from the global
+# _propagator_extra, which propagator_inject fills just before the call.
 fn textmap_propagator_vtable(inject_fn, extract_fn) {
     var vt = alloc(16);
     store64(vt, inject_fn);
     store64(vt + 8, extract_fn);
     return vt;
 }
+# A TextMap propagator: a trait object pairing a textmap_propagator_vtable with
+# the caller's data pointer.
 fn propagator_new(vtable, data) { return trait_obj_new(vtable, data); }
 var _propagator_extra = 0;
+# Call the propagator's inject_fn(data, context) and return its result. The
+# carrier travels in the global _propagator_extra, set just before the call, so
+# concurrent calls are unsafe.
 fn propagator_inject(prop, context, carrier) {
     _propagator_extra = carrier;
     return trait_call1(prop, PROPAGATOR_INJECT, context);
 }
+# Call the propagator's extract_fn(data, carrier) and return its result.
 fn propagator_extract(prop, carrier) {
     return trait_call1(prop, PROPAGATOR_EXTRACT, carrier);
 }
 var SC_EXPORT = 0;
 var SC_FLUSH = 1;
 var SC_SHUTDOWN = 2;
+# Vtable for a span collector: 24 bytes, slot 0 (SC_EXPORT) = export_fn,
+# slot 1 (SC_FLUSH) = flush_fn, slot 2 (SC_SHUTDOWN) = shutdown_fn, each called
+# with the collector's data pointer first.
 fn span_collector_vtable(export_fn, flush_fn, shutdown_fn) {
     var vt = alloc(24);
     store64(vt, export_fn);
@@ -705,18 +916,31 @@ fn span_collector_vtable(export_fn, flush_fn, shutdown_fn) {
     store64(vt + 16, shutdown_fn);
     return vt;
 }
+# A span collector: a trait object pairing a span_collector_vtable with the
+# caller's data pointer.
 fn span_collector_new(vtable, data) { return trait_obj_new(vtable, data); }
+# Call the collector's export_fn(data, spans) and return its result; `spans` is
+# passed through as given.
 fn sc_export(collector, spans)  { return trait_call1(collector, SC_EXPORT, spans); }
+# Call the collector's flush_fn(data) and return its result.
 fn sc_flush(collector)          { return trait_call0(collector, SC_FLUSH); }
+# Call the collector's shutdown_fn(data) and return its result.
 fn sc_shutdown(collector)       { return trait_call0(collector, SC_SHUTDOWN); }
 var MS_EXPORT = 0;
 var MS_FLUSH = 1;
+# Vtable for a metric sink: 16 bytes, slot 0 (MS_EXPORT) = export_fn, slot 1
+# (MS_FLUSH) = flush_fn, each called with the sink's data pointer first.
 fn metric_sink_vtable(export_fn, flush_fn) {
     var vt = alloc(16);
     store64(vt, export_fn);
     store64(vt + 8, flush_fn);
     return vt;
 }
+# A metric sink: a trait object pairing a metric_sink_vtable with the caller's
+# data pointer.
 fn metric_sink_new(vtable, data) { return trait_obj_new(vtable, data); }
+# Call the sink's export_fn(data, metrics) and return its result; `metrics` is
+# passed through as given.
 fn ms_export(sink, metrics) { return trait_call1(sink, MS_EXPORT, metrics); }
+# Call the sink's flush_fn(data) and return its result.
 fn ms_flush(sink)           { return trait_call0(sink, MS_FLUSH); }

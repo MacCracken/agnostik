@@ -23,6 +23,8 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# Test-file entry: checks LinuxCapability values against the kernel numbers, that they are
+# distinct, the name/parse roundtrip over all 41, and parse rejections; returns the summary.
 fn main() {
     alloc_init();
     println("--- v1.5.0 capability numbers ---");

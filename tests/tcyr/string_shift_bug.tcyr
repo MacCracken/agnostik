@@ -24,6 +24,8 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# Test-file entry: prints and checks a prerelease version_to_str (bug #30 regression) plus two
+# *_name() strings; returns the assertion summary.
 fn main() {
     # This test passes in isolation but FAILS in agnostik.tcyr when
     # message_type_name() and system_status_name() are added to types.cyr

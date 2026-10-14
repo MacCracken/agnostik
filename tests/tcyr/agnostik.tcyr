@@ -27,6 +27,7 @@ include "src/classification.cyr"
 include "src/validation.cyr"
 include "src/hardware.cyr"
 
+# Test: AgnostikError kind/code/retriable for timeout vs permission-denied, plus Ok/Err tags.
 fn test_error() {
     var e = agnostik_err_new(STIK_ERR_TIMEOUT, 0);
     assert_eq(agnostik_err_kind(e), STIK_ERR_TIMEOUT, "error kind");
@@ -41,6 +42,7 @@ fn test_error() {
     assert_eq(is_ok(err_t), 0, "Err not ok");
     return 0;
 }
+# Test: AgentId uniqueness + to_str/from_str roundtrip, Version to_str/parse, Capabilities gpu.
 fn test_types() {
     var id1 = agent_id_new();
     var id2 = agent_id_new();
@@ -64,6 +66,7 @@ fn test_types() {
     assert_eq(capabilities_gpu(caps), 1, "caps set");
     return 0;
 }
+# Test: ResourceLimits / AgentConfig / HealthCheck defaults and agent_status_name.
 fn test_agent() {
     var rl = resource_limits_new();
     assert_eq(rlim_max_memory(rl), 268435456, "mem 256MB");
@@ -75,6 +78,7 @@ fn test_agent() {
     assert_eq(streq(agent_status_name(AGENT_RUNNING), "Running"), 1, "status name");
     return 0;
 }
+# Test: SandboxConfig and SecurityContext defaults, namespace + cgroup setters, role_name.
 fn test_security() {
     var sb = sandbox_config_new();
     assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "net localhost");
@@ -91,6 +95,8 @@ fn test_security() {
     assert_eq(streq(role_name(ROLE_ADMIN), "Admin"), 1, "role name");
     return 0;
 }
+# Test: TraceContext child propagation, trace/span ID formatting and parsing (incl. uppercase
+# hex), traceparent length + roundtrip, and log-severity ordering.
 fn test_telemetry() {
     var ctx = trace_context_new();
     assert_eq(tctx_is_sampled(ctx), 1, "sampled");
@@ -123,6 +129,7 @@ fn test_telemetry() {
     assert_eq(tctx_trace_flags(tp_ctx), TRACE_FLAG_SAMPLED, "tp flags");
     return 0;
 }
+# Test: genesis IntegrityFields and AuditEntry default result plus set_result.
 fn test_audit() {
     var ig = integrity_fields_genesis(str_from("sig"));
     assert_eq(integrity_is_genesis(ig), 1, "genesis");
@@ -133,6 +140,7 @@ fn test_audit() {
     assert_eq(aentry_result(entry), AUDIT_DENIED, "set denied");
     return 0;
 }
+# Test: message_text role/content, TokenUsage total, InferenceRequest max_tokens, provider name.
 fn test_llm() {
     var msg = message_text(ROLE_USER, str_from("Hello"));
     assert_eq(msg_role(msg), ROLE_USER, "role user");
@@ -146,6 +154,7 @@ fn test_llm() {
     assert_eq(streq(llm_provider_name(LLM_ANTHROPIC), "Anthropic"), 1, "provider");
     return 0;
 }
+# Test: Secret length, expose, and destroy zeroing the length.
 fn test_secrets() {
     var s = secret_new(str_from("my-key-12345"));
     assert_eq(secret_len(s), 12, "secret len");
@@ -155,6 +164,7 @@ fn test_secrets() {
     assert_eq(secret_len(s), 0, "zeroed");
     return 0;
 }
+# Test: AgnosConfig defaults to the Development profile and set_profile changes it.
 fn test_config() {
     var cfg = agnos_config_new();
     assert_eq(acfg_profile(cfg), ENV_DEVELOPMENT, "dev default");
@@ -162,6 +172,7 @@ fn test_config() {
     assert_eq(acfg_profile(cfg), ENV_PRODUCTION, "set prod");
     return 0;
 }
+# Test: ClassificationResult level and PII list, and classification-level ordering.
 fn test_classification() {
     var r = classification_result_new(CLASS_CONFIDENTIAL);
     assert_eq(cresult_level(r), CLASS_CONFIDENTIAL, "confidential");
@@ -170,6 +181,7 @@ fn test_classification() {
     assert(CLASS_PUBLIC < CLASS_RESTRICTED, "pub<restricted");
     return 0;
 }
+# Test: ValidationResult valid flag and set_blocked marking it blocked.
 fn test_validation() {
     var r = validation_result_new(1, str_from("clean"));
     assert_eq(vresult_valid(r), 1, "valid");
@@ -177,6 +189,7 @@ fn test_validation() {
     assert_eq(vresult_blocked(r), 1, "blocked");
     return 0;
 }
+# Test: AcceleratorDevice VRAM/health and AcceleratorSummary total VRAM + by_family.
 fn test_hardware() {
     var dev = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
     adev_set_vram_total(dev, 24576);
@@ -199,6 +212,7 @@ fn _json_has(json, key) {
     if (str_contains(json, k) == 1) { return 1; }
     return 0;
 }
+# Test: TokenUsage_to_json emits every field key and the set prompt/completion/total values.
 fn test_serde_token_usage() {
     var u = token_usage_new();
     tusage_set_prompt(u, 100);
@@ -216,6 +230,7 @@ fn test_serde_token_usage() {
     assert(_json_has(j, "150"), "tu: total=150");
     return 0;
 }
+# Test: AgentInfo_to_json emits the id, name, agent_type and status keys.
 fn test_serde_agent_info() {
     var info = agent_info_new(agent_id_new(), str_from("test-agent"), AGENT_TYPE_SERVICE, AGENT_RUNNING);
     var j = _to_json(info, &AgentInfo_to_json);
@@ -226,6 +241,7 @@ fn test_serde_agent_info() {
     assert(_json_has(j, "status"), "ai: has status");
     return 0;
 }
+# Test: AgentStats_to_json emits its three keys and the stored request/uptime values.
 fn test_serde_agent_stats() {
     var s = agent_stats_new();
     store64(s, 42);
@@ -239,6 +255,7 @@ fn test_serde_agent_stats() {
     assert(_json_has(j, "3600"), "as: uptime=3600");
     return 0;
 }
+# Test: ResourceLimits_to_json emits all six keys and the 256 MB default max_memory.
 fn test_serde_resource_limits() {
     var rl = resource_limits_new();
     var j = _to_json(rl, &ResourceLimits_to_json);
@@ -251,6 +268,7 @@ fn test_serde_resource_limits() {
     assert(_json_has(j, "268435456"), "rl: mem=256MB");
     return 0;
 }
+# Test: ResourceUsage_to_json emits its four keys and the stored mem_used value.
 fn test_serde_resource_usage() {
     var ru = resource_usage_new();
     store64(ru, 512);
@@ -265,6 +283,7 @@ fn test_serde_resource_usage() {
     assert(_json_has(j, "512"), "ru: mem=512");
     return 0;
 }
+# Test: InjectionScores_to_json emits all five score keys and the set sql score.
 fn test_serde_injection_scores() {
     var sc = injection_scores_new();
     iscore_set_sql(sc, 85);
@@ -278,6 +297,7 @@ fn test_serde_injection_scores() {
     assert(_json_has(j, "85"), "is: sql=85");
     return 0;
 }
+# Test: AcceleratorFlags_to_json emits the cuda/rocm/vulkan/directml availability keys.
 fn test_serde_accelerator_flags() {
     var f = accelerator_flags_new();
     aflags_set_cuda(f, 1);
@@ -289,6 +309,7 @@ fn test_serde_accelerator_flags() {
     assert(_json_has(j, "directml_available"), "af: has directml");
     return 0;
 }
+# Test: EdgeResourceOverrides_to_json emits its three keys and the stored 1 GB max_memory.
 fn test_serde_edge_overrides() {
     var e = edge_overrides_new();
     store64(e, 1073741824);
@@ -300,6 +321,7 @@ fn test_serde_edge_overrides() {
     assert(_json_has(j, "1073741824"), "eo: mem=1GB");
     return 0;
 }
+# Test: TelemetryConfig_to_json emits its three keys and the default sample_rate of 1000.
 fn test_serde_telemetry_config() {
     var tc = telemetry_config_new();
     var j = _to_json(tc, &TelemetryConfig_to_json);
@@ -512,6 +534,8 @@ fn test_integration() {
     assert_eq(integrity_is_genesis(ig2), 0, "non-genesis check");
     return 0;
 }
+# Test: the *_name() string forms across types, llm, telemetry, hardware, classification,
+# validation, secrets and audit enums.
 fn test_name_functions() {
     # types
     assert_eq(streq(message_type_name(MSG_COMMAND), "Command"), 1, "msg Command");
@@ -548,6 +572,7 @@ fn test_name_functions() {
     assert_eq(streq(audit_result_name(AUDIT_FAILURE), "Failure"), 1, "ares Failure");
     return 0;
 }
+# Test-file entry: runs every test above and returns the assertion summary.
 fn main() {
     println("=== agnostik test suite ===");
     test_error();

@@ -1,0 +1,151 @@
+# test_v190_fixes.tcyr — the three defects the v1.9.0 documentation pass found.
+#
+# 1. Timestamps were clock_now_ns(): CLOCK_MONOTONIC on Linux (uptime on
+#    agnos, QPC on Windows). Span_to_otlp_proto wrote that as
+#    start_time_unix_nano, so a collector saw boot-relative times near 1970,
+#    and audit, message and secret stamps carried no wall-clock meaning.
+#    All ten construction-time stamps are now clock_epoch_ns().
+# 2. span_id_to_str printed load64(id) most significant byte first, so on a
+#    little-endian target the traceparent text was the reverse of the 8 bytes
+#    Span_to_otlp_proto emits as the OTLP span_id. Both now use memory order,
+#    as the trace id always did.
+# 3. TelemetryConfig_to_json and AgentInfo_to_json wrote export_endpoint and
+#    name between quotes without escaping, so a `"` ended the string early and
+#    could inject keys. Both now go through str_builder_add_json_str.
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# 1 if `ts` is plausible Unix time in ns: after 2020-09-13 (1.6e18 ns) and
+# within 60 s of the wall clock read just before the check.
+fn is_wall_ns(ts) {
+    var now = clock_epoch_ns();
+    if (ts < 1600000000000000000) { return 0; }
+    var d = now - ts;
+    if (d < 0) { d = 0 - d; }
+    if (d > 60000000000) { return 0; }
+    return 1;
+}
+
+# 1 if the `n` bytes at `pat` occur anywhere in the `len` bytes at `buf`.
+fn has_bytes(buf, len, pat, n) {
+    var i = 0;
+    var found = 0;
+    while (i + n <= len) {
+        if (memeq(buf + i, pat, n) == 1) { found = 1; }
+        i = i + 1;
+    }
+    return found;
+}
+
+# Fix 1: every construction-time stamp is wall-clock Unix ns.
+fn test_timestamps_are_unix_time() {
+    var tid = trace_id_new();
+    var sid = span_id_new();
+    assert(is_wall_ns(span_started_at(span_new(str_from("op"), tid, sid))) == 1, "span start is Unix ns");
+    assert(is_wall_ns(logrec_timestamp(log_record_new(LOG_INFO, str_from("b")))) == 1, "log record is Unix ns");
+    var cr = crash_report_new(agent_id_new(), str_from("e"));
+    assert(is_wall_ns(crash_timestamp(cr)) == 1, "crash report is Unix ns");
+    assert(is_wall_ns(sevt_timestamp(span_event_new(str_from("ev")))) == 1, "span event is Unix ns");
+    assert(is_wall_ns(exem_timestamp(exemplar_new(tid, sid, 7))) == 1, "exemplar is Unix ns");
+    assert(is_wall_ns(mdp_timestamp(metric_data_point_new(str_from("m"), 1))) == 1, "data point is Unix ns");
+    var ae = audit_entry_new(str_from("a1"), agent_id_new(), str_from("act"), AUDIT_INFO);
+    assert(is_wall_ns(aentry_timestamp(ae)) == 1, "audit entry is Unix ns");
+    var am = agent_message_new(agent_id_new(), agent_id_new(), str_from("{}"));
+    assert(is_wall_ns(amsg_timestamp(am)) == 1, "agent message is Unix ns");
+    var tm = topic_message_new(str_from("t"), agent_id_new());
+    assert(is_wall_ns(tmsg_timestamp(tm)) == 1, "topic message is Unix ns");
+    var sm = secret_metadata_new(str_from("s"), SECRET_OPAQUE);
+    assert(is_wall_ns(smeta_created_at(sm)) == 1, "secret created_at is Unix ns");
+    # And the OTLP encoding carries that same value as start_time_unix_nano
+    # (field 7, fixed64: tag 0x39, then 8 little-endian bytes).
+    var sp = span_new(str_from("op"), tid, sid);
+    var sb = str_builder_new();
+    Span_to_otlp_proto(sp, sb);
+    var out = str_builder_build(sb);
+    var pat = alloc(9);
+    store8(pat, 57);
+    store64(pat + 1, span_started_at(sp));
+    assert(has_bytes(str_data(out), str_len(out), pat, 9) == 1, "OTLP start_time_unix_nano is the span's Unix start");
+    return 0;
+}
+
+# Fix 2: span id text is the bytes in memory order, which OTLP emits too.
+fn test_span_id_text_is_byte_order() {
+    var r_t, id = span_id_from_str(str_from("0102030405060708"));
+    assert(is_ok(r_t) == 1, "span id parses");
+    assert_eq(load8(id), 1, "hex digits 0-1 are byte 0");
+    assert_eq(load8(id + 7), 8, "hex digits 14-15 are byte 7");
+    assert(str_eq_cstr(span_id_to_str(id), "0102030405060708") == 1, "text round-trips");
+    var u_t, up = span_id_from_str(str_from("A1B2C3D4E5F60718"));
+    assert(is_ok(u_t) == 1, "uppercase parses");
+    assert(str_eq_cstr(span_id_to_str(up), "a1b2c3d4e5f60718") == 1, "printed lowercase, same order");
+    # A raw byte id prints in memory order (the old code printed it reversed).
+    var raw = alloc(8);
+    var i = 0;
+    while (i < 8) { store8(raw + i, 16 + i); i = i + 1; }
+    assert(str_eq_cstr(span_id_to_str(raw), "1011121314151617") == 1, "raw bytes print in order");
+    # OTLP span_id (field 2, length-delimited: 0x12 0x08 then the 8 bytes)
+    # carries the same bytes the text names.
+    var tid_t, tid = trace_id_from_str(str_from("0af7651916cd43dd8448eb211c80319c"));
+    var sp = span_new(str_from("op"), tid, id);
+    var sb = str_builder_new();
+    Span_to_otlp_proto(sp, sb);
+    var out = str_builder_build(sb);
+    var pat = alloc(10);
+    store8(pat, 18);
+    store8(pat + 1, 8);
+    i = 0;
+    while (i < 8) { store8(pat + 2 + i, i + 1); i = i + 1; }
+    assert(has_bytes(str_data(out), str_len(out), pat, 10) == 1, "OTLP span_id bytes match the text");
+    # traceparent: the parent-id field is the same text, both ways.
+    var tp = str_from("00-0af7651916cd43dd8448eb211c80319c-0102030405060708-01");
+    var c_t, c = tctx_from_traceparent(tp);
+    assert(is_ok(c_t) == 1, "traceparent parses");
+    assert_eq(load8(tctx_span_id(c)), 1, "traceparent parent-id byte 0");
+    assert(str_eq(tctx_to_traceparent(c), tp) == 1, "traceparent round-trips byte-exact");
+    return 0;
+}
+
+# Fix 3: a quote, backslash or newline in a JSON string field is escaped.
+fn test_json_strings_are_escaped() {
+    var cfg = telemetry_config_new();
+    var ep = str_from("http://h\"x\\y\nz");
+    store64(cfg + 16, ep);
+    var sb = str_builder_new();
+    TelemetryConfig_to_json(cfg, sb);
+    var js = str_builder_build(sb);
+    assert(str_eq_cstr(js, "{\"enabled\":1,\"sample_rate\":1000,\"export_endpoint\":\"http://h\\\"x\\\\y\\nz\"}") == 1,
+      "endpoint escaped");
+    var back = TelemetryConfig_from_json(js);
+    assert(str_eq(telcfg_endpoint(back), ep) == 1, "endpoint round-trips");
+    assert_eq(telcfg_sample_rate(back), 1000, "a field after the endpoint still parses");
+    # An agent name crafted to inject a key stays one string value.
+    var nm = str_from("x\",\"status\":\"Failed");
+    var ai = agent_info_new(agent_id_new(), nm, AGENT_TYPE_SERVICE, AGENT_RUNNING);
+    var sb2 = str_builder_new();
+    AgentInfo_to_json(ai, sb2);
+    var aj = str_builder_build(sb2);
+    var a2 = AgentInfo_from_json(aj);
+    assert(str_eq(ainfo_name(a2), nm) == 1, "agent name round-trips");
+    assert_eq(ainfo_status(a2), AGENT_RUNNING, "injected status key has no effect");
+    return 0;
+}
+
+# Test-file entry: runs the three fix tests and returns the assertion summary.
+fn main() {
+    println("--- v1.9.0 fixes: Unix timestamps, span id byte order, JSON escaping ---");
+    test_timestamps_are_unix_time();
+    test_span_id_text_is_byte_order();
+    test_json_strings_are_escaped();
+    return assert_summary();
+}

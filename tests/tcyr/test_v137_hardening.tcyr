@@ -67,6 +67,8 @@ fn _f014_replica(n, fail_first) {
     return iters;
 }
 
+# Test: with no read failure the F-014 replica finishes in one pass, offset never negative,
+# never asking for more than n bytes.
 fn test_f014_clean_read_completes() {
     var it = _f014_replica(16, 0);
     assert_eq(it, 1, "F-014: clean read completes in one iteration");
@@ -75,6 +77,8 @@ fn test_f014_clean_read_completes() {
     return 0;
 }
 
+# Test: a failed first read makes the F-014 replica exit flagged after one pass, with no
+# negative offset and no n+1 request.
 fn test_f014_failed_read_exits_loop() {
     var it = _f014_replica(16, 1);
     # Negative return encodes "failed"; magnitude is the iteration count.
@@ -102,6 +106,7 @@ fn test_f015_all_zero_trace_id() {
     return 0;
 }
 
+# Test: tctx_from_traceparent rejects an all-zero parent-id (F-015).
 fn test_f015_all_zero_parent_id() {
     var s = str_from("00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01");
     assert_eq(is_ok(tctx_from_traceparent(s)), 0, "F-015: all-zero parent-id rejected");
@@ -125,6 +130,7 @@ fn test_f016_version_must_be_hex() {
     return 0;
 }
 
+# Test: tctx_from_traceparent rejects the spec-forbidden version "ff" (F-016).
 fn test_f016_version_ff_forbidden() {
     var s = str_from("ff-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01");
     assert_eq(is_ok(tctx_from_traceparent(s)), 0, "F-016: version ff rejected");
@@ -172,6 +178,7 @@ fn test_f019_user_id_roundtrip() {
     return 0;
 }
 
+# Test: user_id_from_str rejects a non-UUID string and the empty string (F-019).
 fn test_f019_user_id_rejects_garbage() {
     assert_eq(is_ok(user_id_from_str(str_from("not-a-uuid"))), 0, "F-019: garbage rejected");
     assert_eq(is_ok(user_id_from_str(str_from(""))), 0, "F-019: empty rejected");
@@ -197,6 +204,7 @@ fn test_traceparent_format_roundtrip_still_holds() {
     return 0;
 }
 
+# Test-file entry: runs every F-014..F-019 hardening test above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.3.7 hardening (F-014..F-019) ===");
     test_f014_clean_read_completes();

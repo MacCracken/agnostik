@@ -21,6 +21,7 @@ include "src/lib.cyr"
 
 # ─── \u decoder — single BMP codepoint paths ─────────────────────
 
+# Test: a \u0041 escape decodes to the single byte 'A'.
 fn test_unicode_ascii_via_u_escape() {
     # A = 'A' (0x41) — falls in 1-byte UTF-8 range.
     var src = str_from("{\"v\": \"\\u0041\"}");
@@ -30,6 +31,7 @@ fn test_unicode_ascii_via_u_escape() {
     return 0;
 }
 
+# Test: \u00E9 decodes to the 2-byte UTF-8 sequence C3 A9.
 fn test_unicode_2byte_utf8() {
     # é = 'é' (U+00E9) — 2-byte UTF-8: 0xC3 0xA9.
     var src = str_from("{\"v\": \"\\u00E9\"}");
@@ -41,6 +43,7 @@ fn test_unicode_2byte_utf8() {
     return 0;
 }
 
+# Test: \u4E2D decodes to the 3-byte UTF-8 sequence E4 B8 AD.
 fn test_unicode_3byte_utf8() {
     # 中 = '中' (U+4E2D) — 3-byte UTF-8: 0xE4 0xB8 0xAD.
     var src = str_from("{\"v\": \"\\u4E2D\"}");
@@ -53,6 +56,7 @@ fn test_unicode_3byte_utf8() {
     return 0;
 }
 
+# Test: the surrogate pair \uD83D\uDE00 decodes to 4-byte UTF-8 for U+1F600.
 fn test_unicode_surrogate_pair() {
     # 😀 = '😀' (U+1F600) — 4-byte UTF-8: 0xF0 0x9F 0x98 0x80.
     var src = str_from("{\"v\": \"\\uD83D\\uDE00\"}");
@@ -76,6 +80,7 @@ fn _assert_replacement_3bytes(s, label) {
     return 0;
 }
 
+# Test: \u with non-hex digits decodes to U+FFFD.
 fn test_unicode_invalid_hex() {
     # \uGHIJ — invalid hex digits → U+FFFD.
     var src = str_from("{\"v\": \"\\uGHIJ\"}");
@@ -85,6 +90,7 @@ fn test_unicode_invalid_hex() {
     return 0;
 }
 
+# Test: a high surrogate with no low surrogate after it decodes to U+FFFD.
 fn test_unicode_orphan_high_surrogate() {
     # \uD800 with no low surrogate following → U+FFFD.
     var src = str_from("{\"v\": \"\\uD800\"}");
@@ -94,6 +100,7 @@ fn test_unicode_orphan_high_surrogate() {
     return 0;
 }
 
+# Test: a lone low surrogate decodes to U+FFFD.
 fn test_unicode_orphan_low_surrogate() {
     # \uDC00 alone (low without preceding high) → U+FFFD.
     var src = str_from("{\"v\": \"\\uDC00\"}");
@@ -103,6 +110,7 @@ fn test_unicode_orphan_low_surrogate() {
     return 0;
 }
 
+# Test: a high surrogate followed by a non-surrogate \u yields U+FFFD then that char.
 fn test_unicode_high_then_non_low() {
     # \uD83D followed by non-surrogate A — the high surrogate
     # is invalid alone → U+FFFD; then the 'A' decodes normally.
@@ -120,6 +128,7 @@ fn test_unicode_high_then_non_low() {
 
 # ─── \u escapes mixed with ASCII + other escapes ─────────────────
 
+# Test: a \u escape between ASCII runs decodes in place ("hiAyo").
 fn test_unicode_mixed_with_ascii() {
     # ASCII + A + ASCII roundtrip.
     var src = str_from("{\"v\": \"hi\\u0041yo\"}");
@@ -128,6 +137,7 @@ fn test_unicode_mixed_with_ascii() {
     return 0;
 }
 
+# Test: \u decodes correctly alongside the \" and \n escapes in one string.
 fn test_unicode_mixed_with_other_escapes() {
     # \" + A + \n in same string.
     var src = str_from("{\"v\": \"\\\"\\u0041\\n\"}");
@@ -142,6 +152,7 @@ fn test_unicode_mixed_with_other_escapes() {
 
 # ─── PiiKind v1.0.7 additions ──────────────────
 
+# Test: pii_kind_name for the v1.0.7 Genetic, BiometricTemplate and PreciseGeolocation kinds.
 fn test_pii_new_variant_names() {
     assert_eq(streq(pii_kind_name(PII_GENETIC),             "Genetic"),            1, "pii: Genetic");
     assert_eq(streq(pii_kind_name(PII_BIOMETRIC_TEMPLATE),  "BiometricTemplate"),  1, "pii: BiometricTemplate");
@@ -149,6 +160,7 @@ fn test_pii_new_variant_names() {
     return 0;
 }
 
+# Test: pii_kind_name for pre-v1.0.7 kinds is unchanged by the additions.
 fn test_pii_existing_variants_unchanged() {
     # Sanity — the new appendings shouldn't perturb existing names.
     assert_eq(streq(pii_kind_name(PII_EMAIL),          "Email"),         1, "pii: Email unchanged");
@@ -157,6 +169,7 @@ fn test_pii_existing_variants_unchanged() {
     return 0;
 }
 
+# Test: the three v1.0.7 PiiKind tags sit above PII_CUSTOM and are mutually distinct.
 fn test_pii_new_variants_distinct_tags() {
     # The 3 new variants must have tag values distinct from existing
     # ones (otherwise wire-format collision). Existing range is 0..15
@@ -171,6 +184,7 @@ fn test_pii_new_variants_distinct_tags() {
     return 0;
 }
 
+# Test-file entry: runs every \u-decoder and PiiKind test above; returns the assertion summary.
 fn main() {
     println("=== agnostik v1.0.7: \\u decoder + PiiKind additions ===");
     test_unicode_ascii_via_u_escape();

@@ -6,6 +6,9 @@ enum EnvironmentProfile {
     ENV_PRODUCTION;
     ENV_EDGE;
 }
+# Display name of an EnvironmentProfile: "Development", "Testing", "Staging",
+# "Canary", "Production" or "Edge", and "Unknown" for a value outside the enum.
+# env_profile_parse is the inverse.
 fn env_profile_name(p) {
     if (p == ENV_DEVELOPMENT) { return "Development"; }
     if (p == ENV_TESTING)     { return "Testing"; }
@@ -27,6 +30,11 @@ fn env_profile_parse(s: Str) {
     elif (str_eq_cstr(s, "Edge") == 1) { return Ok(ENV_EDGE); }
     return stik_err_invalid_argument(str_from("unknown EnvironmentProfile name"));
 }
+# An AgnosConfig. 40 bytes, all 8-byte slots, read through the acfg_*
+# accessors:
+#   +0 profile, +8 hostname, +16 components, +24 generation, +32 content_hash.
+# profile starts ENV_DEVELOPMENT, hostname an empty Str, components an empty
+# cstr-keyed map, and generation and content_hash 0.
 fn agnos_config_new() {
     var c = alloc(40);
     store64(c, ENV_DEVELOPMENT);
@@ -36,17 +44,28 @@ fn agnos_config_new() {
     store64(c + 32, 0);
     return c;
 }
+# EnvironmentProfile in effect, ENV_DEVELOPMENT by default.
 fn acfg_profile(c)      { return load64(c); }
+# Hostname Str, empty by default.
 fn acfg_hostname(c)     { return load64(c + 8); }
+# Components map (map_new, cstr keys), created empty at construction.
 fn acfg_components(c)   { return load64(c + 16); }
+# Generation number; 0 at construction and never set by this module.
 fn acfg_generation(c)   { return load64(c + 24); }
+# Content-hash slot; 0 at construction and never set by this module.
 fn acfg_content_hash(c) { return load64(c + 32); }
+# Set the EnvironmentProfile. Stored without validation. Returns 0.
 fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
+# Set the hostname Str. Not validated. Returns 0.
 fn acfg_set_hostname(c, v: Str) { store64(c + 8, v); return 0; }
 #derive(Serialize)
 struct EdgeResourceOverrides {
     max_memory: i64; max_cpu_time: i64; max_agents: i64;
 }
+# An EdgeResourceOverrides: resource-limit overrides a ProfileDefinition can
+# carry. 24 bytes, the #derive(Serialize) struct's three i64 fields:
+#   +0 max_memory, +8 max_cpu_time, +16 max_agents.
+# All start at 0. This module has no setters for them.
 fn edge_overrides_new() {
     var e = alloc(24);
     store64(e, 0);
@@ -54,9 +73,18 @@ fn edge_overrides_new() {
     store64(e + 16, 0);
     return e;
 }
+# Maximum-memory override (the max_memory field), 0 at construction.
 fn eovr_max_memory(e) { return load64(e); }
+# Maximum-CPU-time override (the max_cpu_time field), 0 at construction.
 fn eovr_max_cpu(e)    { return load64(e + 8); }
+# Maximum-agent-count override (the max_agents field), 0 at construction.
 fn eovr_max_agents(e) { return load64(e + 16); }
+# A ProfileDefinition: a named environment profile. 40 bytes, all 8-byte
+# slots, read through the profdef_* accessors:
+#   +0 name (a Str), +8 profile (an EnvironmentProfile), +16 inherits_from,
+#   +24 edge_overrides, +32 settings.
+# inherits_from starts at -1, edge_overrides at 0 (none), and settings is an
+# empty cstr-keyed map. This module has no setters.
 fn profile_definition_new(name: Str, profile) {
     var p = alloc(40);
     store64(p, name);
@@ -66,16 +94,27 @@ fn profile_definition_new(name: Str, profile) {
     store64(p + 32, map_new());
     return p;
 }
+# Profile name Str, as passed.
 fn profdef_name(p)           { return load64(p); }
+# EnvironmentProfile the definition describes, as passed.
 fn profdef_profile(p)        { return load64(p + 8); }
+# Profile this one inherits from; -1 at construction and never set by this
+# module.
 fn profdef_inherits_from(p)  { return load64(p + 16); }
+# EdgeResourceOverrides pointer; 0 (none) at construction and never set by
+# this module.
 fn profdef_edge_overrides(p) { return load64(p + 24); }
+# Settings map (map_new, cstr keys), created empty at construction.
 fn profdef_settings(p)       { return load64(p + 32); }
+# A FleetConfig. 16 bytes: +0 profiles (a vec, starts empty), +8 default
+# (starts at 0).
 fn fleet_config_new() {
     var f = alloc(16);
     store64(f, vec_new());
     store64(f + 8, 0);
     return f;
 }
+# vec of the fleet's profiles, created empty; push to it directly.
 fn fleet_profiles(f)     { return load64(f); }
+# Default-profile slot; 0 at construction and never set by this module.
 fn fleet_default(f)      { return load64(f + 8); }
