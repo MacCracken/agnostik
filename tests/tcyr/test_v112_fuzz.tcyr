@@ -112,12 +112,12 @@ fn fuzz_json_int(_seed) {
     while (i < _FUZZ_ITERS) {
         var src = fuzz_json_like(rng_len(150));
         var key = fuzz_random_bytes(rng_len(20));
-        _json_int(src, key);
+        _stik_json_int(src, key);
         i = i + 1;
     }
-    _json_int(str_from("{\"x\":-9999999999999999999}"), str_from("x"));
-    _json_int(str_from("{\"x\":1234567890123456789012}"), str_from("x"));
-    _json_int(str_from("{\"x\":99999999999999999999}"), str_from("x"));
+    _stik_json_int(str_from("{\"x\":-9999999999999999999}"), str_from("x"));
+    _stik_json_int(str_from("{\"x\":1234567890123456789012}"), str_from("x"));
+    _stik_json_int(str_from("{\"x\":99999999999999999999}"), str_from("x"));
     return _FUZZ_ITERS + 3;
 }
 
@@ -126,18 +126,18 @@ fn fuzz_json_str(_seed) {
     while (i < _FUZZ_ITERS) {
         var src = fuzz_json_like(rng_len(150));
         var key = fuzz_random_bytes(rng_len(20));
-        _json_str(src, key);
+        _stik_json_str(src, key);
         i = i + 1;
     }
-    _json_str(str_from("{\"v\":\"abc\\\"xyz\"}"), str_from("v"));
-    _json_str(str_from("{\"v\":\"a\\\\b\\nc\\td\\re\\b\\f\\/\"}"), str_from("v"));
-    _json_str(str_from("{\"a\":nu}"), str_from("a"));
-    _json_str(str_from("{\"a\":n}"), str_from("a"));
-    _json_str(str_from("{\"note\":\"see \\\"max\\\":9 below\",\"max\":42}"), str_from("max"));
-    _json_str(str_from("{\"v\":\"\\uD83D\\uDE00\"}"), str_from("v"));
-    _json_str(str_from("{\"v\":\"\\uGHIJ\"}"), str_from("v"));
-    _json_str(str_from("{\"v\":\"\\uD800\"}"), str_from("v"));
-    _json_str(str_from("{\"v\":\"\\u\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"v\":\"abc\\\"xyz\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"v\":\"a\\\\b\\nc\\td\\re\\b\\f\\/\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"a\":nu}"), str_from("a"));
+    _stik_json_str(str_from("{\"a\":n}"), str_from("a"));
+    _stik_json_str(str_from("{\"note\":\"see \\\"max\\\":9 below\",\"max\":42}"), str_from("max"));
+    _stik_json_str(str_from("{\"v\":\"\\uD83D\\uDE00\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"v\":\"\\uGHIJ\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"v\":\"\\uD800\"}"), str_from("v"));
+    _stik_json_str(str_from("{\"v\":\"\\u\"}"), str_from("v"));
     return _FUZZ_ITERS + 9;
 }
 
@@ -146,13 +146,13 @@ fn fuzz_json_find_value(_seed) {
     while (i < _FUZZ_ITERS) {
         var src = fuzz_json_like(rng_len(150));
         var key = fuzz_random_bytes(rng_len(20));
-        _json_find_value(src, key);
+        _stik_json_find_value(src, key);
         i = i + 1;
     }
-    _json_find_value(str_from("{\"a\":\"\\\"k\\\":7\",\"k\":3}"), str_from("k"));
-    _json_find_value(str_from("{\"x\":\t42}"), str_from("x"));
-    _json_find_value(str_from("{\"x\":\n42}"), str_from("x"));
-    _json_find_value(str_from("{\"x\":\r42}"), str_from("x"));
+    _stik_json_find_value(str_from("{\"a\":\"\\\"k\\\":7\",\"k\":3}"), str_from("k"));
+    _stik_json_find_value(str_from("{\"x\":\t42}"), str_from("x"));
+    _stik_json_find_value(str_from("{\"x\":\n42}"), str_from("x"));
+    _stik_json_find_value(str_from("{\"x\":\r42}"), str_from("x"));
     return _FUZZ_ITERS + 4;
 }
 
@@ -250,21 +250,21 @@ fn fuzz_agent_info_json(_seed) {
 fn test_fuzz_json_int() {
     rng_init(0xCAFEBABE);
     var n = fuzz_json_int(0);
-    assert_eq(n, _FUZZ_ITERS + 3, "_json_int survived all iterations");
+    assert_eq(n, _FUZZ_ITERS + 3, "_stik_json_int survived all iterations");
     return 0;
 }
 
 fn test_fuzz_json_str() {
     rng_init(0xDEADBEEF);
     var n = fuzz_json_str(0);
-    assert_eq(n, _FUZZ_ITERS + 9, "_json_str survived all iterations");
+    assert_eq(n, _FUZZ_ITERS + 9, "_stik_json_str survived all iterations");
     return 0;
 }
 
 fn test_fuzz_json_find_value() {
     rng_init(0xFACEFEED);
     var n = fuzz_json_find_value(0);
-    assert_eq(n, _FUZZ_ITERS + 4, "_json_find_value survived all iterations");
+    assert_eq(n, _FUZZ_ITERS + 4, "_stik_json_find_value survived all iterations");
     return 0;
 }
 

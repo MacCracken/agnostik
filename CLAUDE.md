@@ -50,6 +50,7 @@ cyrius distlib                                         # regenerate dist/agnosti
 bash scripts/bench-regression.sh                       # benchmark gate — mandatory before every release
 bash scripts/api-surface.sh check                      # public-API snapshot gate (`update` after an intentional API change)
 bash scripts/doc-debt.sh check                         # doc gate: no new undocumented fn in src/ (`update` after documenting)
+bash scripts/consumer-sweep.sh                         # build + test every [deps.agnostik] consumer against this working tree, on its own pin
 cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — read per-phase verdicts, not the exit code
 ```
 
@@ -170,7 +171,7 @@ cites benchmark figures from this gate.
 5. **Code review pass** — walk diffs end-to-end for missed guards, ABI leaks, off-by-ones, silently-ignored errors
 6. **Cleanup sweep** — stale comments, dead branches, unused includes, orphaned files
 7. **Security re-scan** — quick grep for new `sys_system`, raw `syscall(` numbers, unchecked writes, unsanitized input, buffer size mismatches
-8. **Downstream check** — every consumer in `state.md` still builds and passes tests against the new version
+8. **Downstream check** — `bash scripts/consumer-sweep.sh`: every repo that declares `[deps.agnostik]` builds and passes its tests against the in-flight tree, on its own pin, with no new agnostik-involved duplicate definitions
 9. **Doc sync** — CHANGELOG, roadmap, `docs/development/state.md`, `docs/doc-health.md` (re-bucket any rows touched this cycle and refresh the at-a-glance counts), CLAUDE.md (if durable content changed)
 10. **Version verify** — `VERSION`, `cyrius.cyml`, CHANGELOG header, intended git tag all match (tags are bare: `1.6.2`, not `v1.6.2`)
 11. **Full build from clean** — `rm -rf build && cyrius lib sync && cyrius deps && CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik` passes clean
@@ -195,7 +196,8 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
 - Struct fields default to 8 bytes (`i64`), accessed via `load64` / `store64` with offset. Sub-byte widths (`i8`/`i16`/`i32`) are allowed when the value range fits — see `InjectionScores` and `AcceleratorFlags` (v1.1.1 — both are 5- and 9-byte structs of i8 fields respectively). When narrowing a struct, every accessor + setter must use the matching `load8`/`store8` (etc.) and direct `store64(s + N, v)` callers must migrate before the alloc shrinks (otherwise OOB-write).
 - Allocate with `alloc()` (bump). The freelist (`fl_alloc` / `fl_free`) is not a declared dependency of this repo.
 - Heap-allocate large buffers. A `var buf[N]` array is static storage in the binary image: a fn-local one adds N bytes, a global one reserves 8 bytes per unit (8·N).
-- Lazy initialization pattern: `_lazy_vec(ptr)` / `_lazy_map(ptr)` (in `src/security.cyr`) for deferred collection creation
+- Lazy initialization pattern: `_stik_lazy_vec(ptr)` / `_stik_lazy_map(ptr)` (in `src/security.cyr`) for deferred collection creation
+- **Private helpers are `_stik_`-prefixed.** Consumers compile agnostik in one unit with other libraries, where a same-named fn silently replaces another or, at a different arity, fails the build (`_hex_nibble` collided with sigil, `_json_int` / `_json_str` with ai-hwaccel). Every `_`-prefixed fn in a shipped module is `_stik_<name>`; CI's "Private helpers are namespaced" step enforces it. Test-harness helpers in `src/main.cyr` and `tests/` are exempt, since they never ship
 - **`Result` is a value form (cyrius ≥ 6.6.0).** `Ok(v)` / `Err(e)` return a `(tag, payload)` register pair and allocate nothing. Always bind both halves — `var r_t, r = f();` (a single-variable bind is a compile error). Test the tag with `is_ok(r_t)` / `is_err_result(r_t)`; propagate with `f()?`. A fn returning a Result must return a pair on every path. A one-argument fn cannot receive a Result, because the payload never reaches a parameter — pass the tag too, as `result_print_agnostik_err(res_t, res)` does.
 - **Tagged boxes**: `tagged_new(tag, value)` builds a 16-byte heap box for enums with data. Read a box only with `boxed_tag(b)` / `boxed_payload(b)`. The Result predicates (`is_ok` etc.) compile against a box and silently answer wrongly; `tag()` / `payload()` no longer exist.
 - Trait objects via vtable dispatch: `trait_obj_new(vtable, data)`

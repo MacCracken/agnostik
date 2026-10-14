@@ -245,6 +245,24 @@ jobs:
           echo "security scan complete (fail: $FAIL)"
           exit $FAIL
 
+      - name: Private helpers are namespaced
+        # Consumers vendor agnostik next to other libraries in one compilation
+        # unit, where a same-named fn either silently replaces another (last
+        # definition wins) or, at a different arity, is a hard error. Generic
+        # helper names collided: `_hex_nibble` with sigil (in 4 of 5
+        # consumers), `_json_int` / `_json_str` with ai-hwaccel and itihas,
+        # `_hex_byte` with bote. So every `_`-prefixed fn in a shipped module
+        # is `_stik_`-prefixed. src/main.cyr is the test harness and never
+        # ships in dist/agnostik.cyr. v1.7.0+ gate.
+        run: |
+          hits=$(grep -nE '^(pub |public )?fn _' src/*.cyr | grep -v '^src/main\.cyr:' | grep -vE ':(pub |public )?fn _stik_' || true)
+          if [ -n "$hits" ]; then
+            echo "FAIL: private helpers without the _stik_ prefix:"
+            echo "$hits"
+            exit 1
+          fi
+          echo "ok: every private helper in a shipped module is _stik_-prefixed"
+
   docs:
     name: Documentation
     runs-on: ubuntu-latest

@@ -151,7 +151,7 @@ fn aconf_name(c)             { return load64(c); }
 fn aconf_type(c)             { return load64(c + 8); }
 fn aconf_limits(c)           { return load64(c + 16); }
 fn aconf_sandbox(c)          { return load64(c + 24); }
-fn aconf_permissions(c)      { return _lazy_vec(c + 32); }
+fn aconf_permissions(c)      { return _stik_lazy_vec(c + 32); }
 fn aconf_restart_policy(c)   { return load64(c + 48); }
 fn aconf_max_restarts(c)     { return load64(c + 56); }
 fn aconf_health_check(c)     { return load64(c + 64); }
@@ -230,26 +230,26 @@ fn AgentInfo_to_json(ptr, sb) {
 fn AgentInfo_from_json(src: Str) {
     var info = alloc(32);
     store64(info, 0);
-    var id_str = _json_str(src, str_from("id"));
+    var id_str = _stik_json_str(src, str_from("id"));
     if (id_str != 0) {
         var parsed_t, parsed = agent_id_from_str(id_str);
         if (is_ok(parsed_t) == 1) { store64(info, parsed); }
     }
-    store64(info + 8, _json_str(src, str_from("name")));
+    store64(info + 8, _stik_json_str(src, str_from("name")));
     # AgentInfo_to_json writes agent_type / status as their *_name
     # strings, so read those. Through 1.6.2 this read integer
     # agent_type_id / status_id keys instead, and its own output parsed
     # back as type 0 / status 0. Those keys stay as the fallback when the
     # name is absent or unrecognised, so that shape still parses.
-    var atype = _json_int(src, str_from("agent_type_id"));
-    var tname = _json_str(src, str_from("agent_type"));
+    var atype = _stik_json_int(src, str_from("agent_type_id"));
+    var tname = _stik_json_str(src, str_from("agent_type"));
     if (tname != 0) {
         var t_t, t = agent_type_parse(tname);
         if (is_ok(t_t) == 1) { atype = t; }
     }
     store64(info + 16, atype);
-    var astatus = _json_int(src, str_from("status_id"));
-    var sname = _json_str(src, str_from("status"));
+    var astatus = _stik_json_int(src, str_from("status_id"));
+    var sname = _stik_json_str(src, str_from("status"));
     if (sname != 0) {
         var s_t, s = agent_status_parse(sname);
         if (is_ok(s_t) == 1) { astatus = s; }
@@ -456,9 +456,9 @@ fn agent_capabilities_new() {
     store64(c + 24, 0);
     return c;
 }
-fn acap_skills(c)      { return _lazy_vec(c); }
-fn acap_input_types(c) { return _lazy_vec(c + 8); }
-fn acap_output_types(c){ return _lazy_vec(c + 16); }
+fn acap_skills(c)      { return _stik_lazy_vec(c); }
+fn acap_input_types(c) { return _stik_lazy_vec(c + 8); }
+fn acap_output_types(c){ return _stik_lazy_vec(c + 16); }
 fn acap_max_tasks(c)   { return load64(c + 24); }
 fn acap_set_max_tasks(c, v) { store64(c + 24, v); return 0; }
 fn scheduling_constraints_new() {
@@ -467,10 +467,10 @@ fn scheduling_constraints_new() {
     while (i < 48) { store64(s + i, 0); i = i + 8; }
     return s;
 }
-fn sched_node_affinity(s)      { return _lazy_vec(s); }
-fn sched_node_anti_affinity(s) { return _lazy_vec(s + 8); }
-fn sched_pod_affinity(s)       { return _lazy_vec(s + 16); }
-fn sched_pod_anti_affinity(s)  { return _lazy_vec(s + 24); }
+fn sched_node_affinity(s)      { return _stik_lazy_vec(s); }
+fn sched_node_anti_affinity(s) { return _stik_lazy_vec(s + 8); }
+fn sched_pod_affinity(s)       { return _stik_lazy_vec(s + 16); }
+fn sched_pod_anti_affinity(s)  { return _stik_lazy_vec(s + 24); }
 fn sched_priority(s)           { return load64(s + 32); }
 fn sched_preemptible(s)        { return load64(s + 40); }
 fn sched_set_priority(s, v)    { store64(s + 32, v); return 0; }
@@ -483,7 +483,7 @@ fn label_selector_new(key: Str, operator) {
 }
 fn lsel_key(l)      { return load64(l); }
 fn lsel_operator(l) { return load64(l + 8); }
-fn lsel_values(l)   { return _lazy_vec(l + 16); }
+fn lsel_values(l)   { return _stik_lazy_vec(l + 16); }
 fn topic_new(tname: Str) {
     var t = alloc(24);
     store64(t, tname);

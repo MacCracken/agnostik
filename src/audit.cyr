@@ -50,7 +50,7 @@ var GENESIS_HASH = "000000000000000000000000000000000000000000000000000000000000
 # 64-char constant via str_from on every call cost a strlen + 16-byte
 # alloc each time. Cache the wrapper (the underlying bytes are constant).
 var _genesis_hash_str = 0;
-fn _genesis_hash_cached() {
+fn _stik_genesis_hash_cached() {
     if (_genesis_hash_str == 0) { _genesis_hash_str = str_from(GENESIS_HASH); }
     return _genesis_hash_str;
 }
@@ -58,7 +58,7 @@ fn integrity_fields_genesis(signature: Str) {
     var f = alloc(24);
     store64(f, version_default());
     store64(f + 8, signature);
-    store64(f + 16, _genesis_hash_cached());
+    store64(f + 16, _stik_genesis_hash_cached());
     return f;
 }
 fn integrity_fields_new(version, signature: Str, prev_hash: Str) {
@@ -73,7 +73,7 @@ fn integrity_signature(f) { return load64(f + 8); }
 fn integrity_prev_hash(f) { return load64(f + 16); }
 fn integrity_is_genesis(f) {
     var hash = load64(f + 16);
-    return str_eq(hash, _genesis_hash_cached());
+    return str_eq(hash, _stik_genesis_hash_cached());
 }
 fn audit_entry_new(id: Str, agent_id, action: Str, severity) {
     var e = alloc(112);

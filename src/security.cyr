@@ -208,23 +208,23 @@ fn sandbox_config_new() {
     store64(s + 80, 0);
     return s;
 }
-fn _lazy_vec(ptr) {
+fn _stik_lazy_vec(ptr) {
     var v = load64(ptr);
     if (v == 0) { v = vec_new(); store64(ptr, v); }
     return v;
 }
-fn _lazy_map(ptr) {
+fn _stik_lazy_map(ptr) {
     var m = load64(ptr);
     if (m == 0) { m = map_new(); store64(ptr, m); }
     return m;
 }
-fn sandbox_fs_rules(s)      { return _lazy_vec(s); }
+fn sandbox_fs_rules(s)      { return _stik_lazy_vec(s); }
 fn sandbox_net_access(s)    { return load64(s + 8); }
 fn sandbox_seccomp(s)       { return load64(s + 16); }
 fn sandbox_isolate_net(s)   { return load64(s + 24); }
-fn sandbox_masked_paths(s)  { return _lazy_vec(s + 64); }
-fn sandbox_readonly_paths(s){ return _lazy_vec(s + 72); }
-fn sandbox_sysctl(s)        { return _lazy_map(s + 80); }
+fn sandbox_masked_paths(s)  { return _stik_lazy_vec(s + 64); }
+fn sandbox_readonly_paths(s){ return _stik_lazy_vec(s + 72); }
+fn sandbox_sysctl(s)        { return _stik_lazy_map(s + 80); }
 fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
 fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
 fn sandbox_set_apparmor(s, v: Str) { store64(s + 40, v); return 0; }
@@ -319,9 +319,9 @@ fn seccomp_rule_new(action) {
     store64(r + 16, 0);
     return r;
 }
-fn scrule_names(r)  { return _lazy_vec(r); }
+fn scrule_names(r)  { return _stik_lazy_vec(r); }
 fn scrule_action(r) { return load64(r + 8); }
-fn scrule_args(r)   { return _lazy_vec(r + 16); }
+fn scrule_args(r)   { return _stik_lazy_vec(r + 16); }
 fn seccomp_profile_new(default_action) {
     var p = alloc(48);
     store64(p, default_action);
@@ -333,9 +333,9 @@ fn seccomp_profile_new(default_action) {
     return p;
 }
 fn scprof_default_action(p) { return load64(p); }
-fn scprof_architectures(p)  { return _lazy_vec(p + 8); }
-fn scprof_flags(p)          { return _lazy_vec(p + 16); }
-fn scprof_syscalls(p)       { return _lazy_vec(p + 24); }
+fn scprof_architectures(p)  { return _stik_lazy_vec(p + 8); }
+fn scprof_flags(p)          { return _stik_lazy_vec(p + 16); }
+fn scprof_syscalls(p)       { return _stik_lazy_vec(p + 24); }
 fn encrypted_storage_new() {
     var e = alloc(24);
     store64(e, 0);
@@ -398,7 +398,7 @@ fn landlock_fs_rule_new(path: Str) {
     return r;
 }
 fn llfsr_path(r)           { return load64(r); }
-fn llfsr_allowed_access(r) { return _lazy_vec(r + 8); }
+fn llfsr_allowed_access(r) { return _stik_lazy_vec(r + 8); }
 fn landlock_net_rule_new(port) {
     var r = alloc(16);
     store64(r, port);
@@ -406,7 +406,7 @@ fn landlock_net_rule_new(port) {
     return r;
 }
 fn llnr_port(r)            { return load64(r); }
-fn llnr_allowed_access(r)  { return _lazy_vec(r + 8); }
+fn llnr_allowed_access(r)  { return _stik_lazy_vec(r + 8); }
 fn landlock_ruleset_new() {
     var r = alloc(24);
     store64(r, 0);
@@ -414,9 +414,9 @@ fn landlock_ruleset_new() {
     store64(r + 16, 0);
     return r;
 }
-fn llrs_fs_rules(r)  { return _lazy_vec(r); }
-fn llrs_net_rules(r) { return _lazy_vec(r + 8); }
-fn llrs_scoped(r)    { return _lazy_vec(r + 16); }
+fn llrs_fs_rules(r)  { return _stik_lazy_vec(r); }
+fn llrs_net_rules(r) { return _stik_lazy_vec(r + 8); }
+fn llrs_scoped(r)    { return _stik_lazy_vec(r + 16); }
 fn permission_condition_new(field: Str, operator, value) {
     var c = alloc(24);
     store64(c, field);
@@ -435,8 +435,8 @@ fn role_permission_new(resource: Str) {
     return p;
 }
 fn rperm_resource(p)   { return load64(p); }
-fn rperm_actions(p)    { return _lazy_vec(p + 8); }
-fn rperm_conditions(p) { return _lazy_vec(p + 16); }
+fn rperm_actions(p)    { return _stik_lazy_vec(p + 8); }
+fn rperm_conditions(p) { return _stik_lazy_vec(p + 16); }
 fn token_payload_new(sub: Str, role) {
     var t = alloc(64);
     store64(t, sub);

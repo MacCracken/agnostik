@@ -4,9 +4,9 @@
 # (filed in docs/audit/2026-04-26-audit.md, surfaced by the mid-pass
 # toolchain bump 5.7.6 → 5.7.12).
 #
-# F-008: _json_int silent i64 overflow on 19-digit values past i64::MAX
-# F-009: _json_str OOB read in `null` literal probe at end of input
-# F-010: _json_find_value / _json_int only skipped ASCII space (32);
+# F-008: _stik_json_int silent i64 overflow on 19-digit values past i64::MAX
+# F-009: _stik_json_str OOB read in `null` literal probe at end of input
+# F-010: _stik_json_find_value / _stik_json_int only skipped ASCII space (32);
 #        RFC 7159 whitespace also includes \t \n \r
 
 include "lib/syscalls.cyr"
@@ -22,7 +22,7 @@ include "lib/trait.cyr"
 include "lib/test.cyr"
 include "src/lib.cyr"
 
-# ─── F-008: _json_int detects i64 overflow on 19-digit values ──────
+# ─── F-008: _stik_json_int detects i64 overflow on 19-digit values ──────
 # Pre-fix: the 19-digit cap let inputs like 9999999999999999999 (19
 # nines, > i64::MAX = 9223372036854775807) silently wrap to a negative
 # i64. A downstream guard like `if (total_tokens > LIMIT)` would see
@@ -34,7 +34,7 @@ fn test_f008_overflow_19_nines() {
     # 19 nines exceeds i64::MAX. Pre-fix wrapped to -8446744073709551617 etc.
     # Post-fix stops at digit 18 (since digit 19 would overflow).
     var src = str_from("{\"x\": 9999999999999999999}");
-    var v = _json_int(src, str_from("x"));
+    var v = _stik_json_int(src, str_from("x"));
     # 18 nines = 999999999999999999, which is < 2^63 (9223372036854775807).
     assert_eq(v, 999999999999999999, "F-008: stop on overflow at 19th nine");
     return 0;
@@ -43,7 +43,7 @@ fn test_f008_overflow_19_nines() {
 fn test_f008_max_safe_19_digit_still_works() {
     # 1234567890123456789 (19 digits) is < i64::MAX, must still parse.
     var src = str_from("{\"x\": 1234567890123456789}");
-    var v = _json_int(src, str_from("x"));
+    var v = _stik_json_int(src, str_from("x"));
     assert_eq(v, 1234567890123456789, "F-008: 19-digit safe value still parses");
     return 0;
 }
@@ -52,13 +52,13 @@ fn test_f008_attacker_cannot_negative_via_wrap() {
     # If wrap occurred, an attacker could submit a huge unsigned value
     # that ends up < a downstream non-negative limit check.
     var src = str_from("{\"max_memory\": 99999999999999999999}");
-    var v = _json_int(src, str_from("max_memory"));
+    var v = _stik_json_int(src, str_from("max_memory"));
     # Whatever the parser returns, it must NOT be negative.
     assert_eq(v >= 0, 1, "F-008: parsed value must not be negative");
     return 0;
 }
 
-# ─── F-009: _json_str bounds-checks the `null` probe ────────────────
+# ─── F-009: _stik_json_str bounds-checks the `null` probe ────────────────
 # Pre-fix: `memeq(data + vi, "null", 4)` ran without checking that 4
 # bytes were actually available, reading up to 3 bytes past slen on
 # truncated input. With heap-bump allocators the read would land in
@@ -71,7 +71,7 @@ fn test_f008_attacker_cannot_negative_via_wrap() {
 # value is irrelevant — what matters is the parser doesn't OOB-read.
 fn test_f009_truncated_value_2_bytes() {
     var src = str_from("{\"a\":nu}");
-    _json_str(src, str_from("a"));
+    _stik_json_str(src, str_from("a"));
     assert_eq(1, 1, "F-009: truncated null probe survives (no crash)");
     return 0;
 }
@@ -79,7 +79,7 @@ fn test_f009_truncated_value_2_bytes() {
 fn test_f009_real_null_still_returns_zero() {
     # The legitimate `null` shape must still be recognized and return 0.
     var src = str_from("{\"a\": null, \"b\": 5}");
-    var s = _json_str(src, str_from("a"));
+    var s = _stik_json_str(src, str_from("a"));
     assert_eq(s, 0, "F-009: legitimate null still recognized");
     return 0;
 }
@@ -101,7 +101,7 @@ fn _check_f010(c) {
     var key      = load64(c + 8);
     var expected = load64(c + 16);
     var label    = load64(c + 24);
-    assert_eq(_json_int(src, key), expected, label);
+    assert_eq(_stik_json_int(src, key), expected, label);
     return 0;
 }
 

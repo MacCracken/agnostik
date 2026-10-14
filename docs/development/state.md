@@ -765,8 +765,10 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 ## Consumers
 
 Repos that declare `[deps.agnostik]` in their `cyrius.cyml`, from a census of
-every local AGNOS checkout at 1.6.5. These are the repos a release can break,
-and the ones the v1.7.0 cross-consumer sweep will build:
+every local AGNOS checkout at 1.6.5. These are the repos a release can break.
+`scripts/consumer-sweep.sh` (`--list` for the live census) builds and tests
+each one against the working tree on its own pin; in-flight v1.7.0 work sweeps
+5 / 5 green with no agnostik-involved duplicate definitions:
 
 | Consumer | agnostik tag | Vendors | Cyrius pin |
 |---|---|---|---|

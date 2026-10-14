@@ -1,7 +1,7 @@
 # CSPRNG — fills `n` bytes at `buf` with kernel-supplied randomness.
 # Audit 2026-04-26 F-001: removed xorshift state and the deterministic
 # fallback constant. UUIDs now draw fresh entropy per call.
-fn _fill_random(buf, n) {
+fn _stik_fill_random(buf, n) {
     # getrandom(2), the only source. Preferred over opening /dev/urandom
     # because it works in sandboxed envs that block file IO and never
     # returns short reads for buffers <= 256 B.
@@ -38,7 +38,7 @@ fn _fill_random(buf, n) {
 }
 fn agent_id_new() {
     var id = alloc(16);
-    _fill_random(id, 16);
+    _stik_fill_random(id, 16);
     # RFC 4122 v4 markers: high nibble of byte 6 = 0100, top two bits
     # of byte 8 = 10.
     var b6 = load8(id + 6);
@@ -57,15 +57,15 @@ fn agent_id_eq(a, b) {
     return 1;
 }
 var _hex_lut = "0123456789abcdef";
-fn _hex_byte(buf, offset, byte) {
+fn _stik_hex_byte(buf, offset, byte) {
     store8(buf + offset, load8(_hex_lut + (byte >> 4)));
     store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
     return 0;
 }
 # Returns 0-15 on valid hex char, -1 on invalid. The single hex-char
 # decoder for the whole library — UUID/trace-id/span-id parsing, the
-# _json_str's \u escape decoder, and version_from_str all route through it.
-fn _hex_nibble(ch) {
+# _stik_json_str's \u escape decoder, and version_from_str all route through it.
+fn _stik_hex_nibble(ch) {
     if (ch >= 48 && ch <= 57)  { return ch - 48; }   # '0'-'9'
     if (ch >= 97 && ch <= 102) { return ch - 87; }   # 'a'-'f'
     if (ch >= 65 && ch <= 70)  { return ch - 55; }   # 'A'-'F'
@@ -73,11 +73,11 @@ fn _hex_nibble(ch) {
 }
 # Parse 4 hex digits at data+offset; return codepoint (0..65535) or -1.
 # Caller is responsible for bounds-checking offset+4 <= slen.
-fn _json_parse_u4(data, offset) {
-    var h0 = _hex_nibble(load8(data + offset));
-    var h1 = _hex_nibble(load8(data + offset + 1));
-    var h2 = _hex_nibble(load8(data + offset + 2));
-    var h3 = _hex_nibble(load8(data + offset + 3));
+fn _stik_json_parse_u4(data, offset) {
+    var h0 = _stik_hex_nibble(load8(data + offset));
+    var h1 = _stik_hex_nibble(load8(data + offset + 1));
+    var h2 = _stik_hex_nibble(load8(data + offset + 2));
+    var h3 = _stik_hex_nibble(load8(data + offset + 3));
     if (h0 < 0) { return 0 - 1; }
     if (h1 < 0) { return 0 - 1; }
     if (h2 < 0) { return 0 - 1; }
@@ -88,8 +88,8 @@ fn _json_parse_u4(data, offset) {
 # Caller guarantees enough output buffer space (max 4 bytes per cp).
 # RFC 3629; surrogate range U+D800..U+DFFF is invalid as a standalone
 # codepoint but this fn does not validate — surrogate handling lives
-# in _json_str so the caller can implement pair-merging.
-fn _utf8_encode(out, op, cp) {
+# in _stik_json_str so the caller can implement pair-merging.
+fn _stik_utf8_encode(out, op, cp) {
     if (cp < 128) {
         store8(out + op, cp);
         return op + 1;
@@ -122,7 +122,7 @@ fn agent_id_to_str(id): Str {
         if (i == 6) { store8(buf + pos, 45); pos = pos + 1; }
         if (i == 8) { store8(buf + pos, 45); pos = pos + 1; }
         if (i == 10) { store8(buf + pos, 45); pos = pos + 1; }
-        _hex_byte(buf, pos, load8(id + i));
+        _stik_hex_byte(buf, pos, load8(id + i));
         pos = pos + 2;
         i = i + 1;
     }
@@ -142,8 +142,8 @@ fn agent_id_from_str(s: Str) {
         if (si == 13) { si = si + 1; }
         if (si == 18) { si = si + 1; }
         if (si == 23) { si = si + 1; }
-        var hi = _hex_nibble(load8(data + si));
-        var lo = _hex_nibble(load8(data + si + 1));
+        var hi = _stik_hex_nibble(load8(data + si));
+        var lo = _stik_hex_nibble(load8(data + si + 1));
         if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in agent id")); }
         if (lo < 0) { return stik_err_invalid_argument(str_from("invalid hex in agent id")); }
         store8(id + bi, hi << 4 | lo);
@@ -159,8 +159,8 @@ fn agent_id_from_str(s: Str) {
 # `max_memory`. The walker now tracks string boundaries and only
 # matches when the cursor is outside `"..."`. Backslash escapes inside
 # strings respected so `"\""` doesn't end the string early (parallels
-# the F-002 fix in `_json_str`).
-fn _json_find_value(src: Str, key: Str) {
+# the F-002 fix in `_stik_json_str`).
+fn _stik_json_find_value(src: Str, key: Str) {
     var sb = str_builder_new();
     str_builder_putc(sb, '"');
     str_builder_add(sb, key);
@@ -208,8 +208,8 @@ fn _json_find_value(src: Str, key: Str) {
 # [9223372036854775808, 9999999999999999999] still overflowed and
 # wrapped silently. Both findings together close
 # GHSA-72HV-8253-57QQ-shape risk.
-fn _json_int(src: Str, key: Str) {
-    var vi = _json_find_value(src, key);
+fn _stik_json_int(src: Str, key: Str) {
+    var vi = _stik_json_find_value(src, key);
     if (vi < 0) { return 0; }
     var data = src.data;
     var slen = src.len;
@@ -248,8 +248,8 @@ fn _json_int(src: Str, key: Str) {
 # U+FFFD REPLACEMENT CHARACTER (3 UTF-8 bytes) per common JSON
 # implementations.
 var _UTF8_REPLACEMENT_CP = 0xFFFD;
-fn _json_str(src: Str, key: Str) {
-    var vi = _json_find_value(src, key);
+fn _stik_json_str(src: Str, key: Str) {
+    var vi = _stik_json_find_value(src, key);
     if (vi < 0) { return 0; }
     var data = src.data;
     var slen = src.len;
@@ -278,54 +278,54 @@ fn _json_str(src: Str, key: Str) {
             elif (esc == 117) {
                 # \u escape — needs 6 source bytes (\, u, then 4 hex).
                 if (vi + 6 > slen) {
-                    op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                    op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                     vi = slen;
                 } else {
-                    var cp = _json_parse_u4(data, vi + 2);
+                    var cp = _stik_json_parse_u4(data, vi + 2);
                     if (cp < 0) {
-                        op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                         vi = vi + 6;
                     }
                     elif (cp >= 0xD800 && cp <= 0xDBFF) {
                         # High surrogate — expect \uYYYY low surrogate next.
                         if (vi + 12 > slen) {
-                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                             vi = vi + 6;
                         }
                         elif (load8(data + vi + 6) != 92) {
-                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                             vi = vi + 6;
                         }
                         elif (load8(data + vi + 7) != 117) {
-                            op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                             vi = vi + 6;
                         }
                         else {
-                            var lo = _json_parse_u4(data, vi + 8);
+                            var lo = _stik_json_parse_u4(data, vi + 8);
                             if (lo < 0xDC00) {
-                                op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                                 vi = vi + 6;
                             }
                             elif (lo > 0xDFFF) {
-                                op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                                 vi = vi + 6;
                             }
                             else {
                                 # Combine surrogate pair → full codepoint.
                                 var combined = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
-                                op = _utf8_encode(out, op, combined);
+                                op = _stik_utf8_encode(out, op, combined);
                                 vi = vi + 12;
                             }
                         }
                     }
                     elif (cp >= 0xDC00 && cp <= 0xDFFF) {
                         # Orphan low surrogate — invalid alone.
-                        op = _utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
                         vi = vi + 6;
                     }
                     else {
                         # Plain BMP codepoint.
-                        op = _utf8_encode(out, op, cp);
+                        op = _stik_utf8_encode(out, op, cp);
                         vi = vi + 6;
                     }
                 }

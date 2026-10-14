@@ -397,7 +397,7 @@ fn logprob_entry_new(token: Str, logprob) {
 }
 fn lpe_token(e)       { return load64(e); }
 fn lpe_logprob(e)     { return load64(e + 8); }
-fn lpe_top_logprobs(e){ return _lazy_vec(e + 16); }
+fn lpe_top_logprobs(e){ return _stik_lazy_vec(e + 16); }
 fn token_logprob_new(token: Str, logprob) {
     var t = alloc(16);
     store64(t, token);
@@ -424,7 +424,7 @@ fn embedding_request_new(model: Str) {
     return r;
 }
 fn embreq_model(r)      { return load64(r); }
-fn embreq_inputs(r)     { return _lazy_vec(r + 8); }
+fn embreq_inputs(r)     { return _stik_lazy_vec(r + 8); }
 fn embreq_dimensions(r) { return load64(r + 16); }
 fn embreq_set_dimensions(r, v) { store64(r + 16, v); return 0; }
 fn embedding_response_new(model: Str) {
@@ -435,7 +435,7 @@ fn embedding_response_new(model: Str) {
     return r;
 }
 fn embresp_model(r)      { return load64(r); }
-fn embresp_embeddings(r) { return _lazy_vec(r + 8); }
+fn embresp_embeddings(r) { return _stik_lazy_vec(r + 8); }
 fn embresp_usage(r)      { return load64(r + 16); }
 fn batch_request_new(custom_id: Str, request) {
     var b = alloc(16);

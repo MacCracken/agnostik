@@ -5,7 +5,7 @@ fn trace_id_to_str(id): Str {
     var buf = alloc(33);
     var i = 0;
     while (i < 16) {
-        _hex_byte(buf, i * 2, load8(id + i));
+        _stik_hex_byte(buf, i * 2, load8(id + i));
         i = i + 1;
     }
     store8(buf + 32, 0);
@@ -18,8 +18,8 @@ fn trace_id_from_str(s: Str) {
     var id = alloc(16);
     var i = 0;
     while (i < 16) {
-        var hi = _hex_nibble(load8(data + i * 2));
-        var lo = _hex_nibble(load8(data + i * 2 + 1));
+        var hi = _stik_hex_nibble(load8(data + i * 2));
+        var lo = _stik_hex_nibble(load8(data + i * 2 + 1));
         if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in trace id")); }
         if (lo < 0) { return stik_err_invalid_argument(str_from("invalid hex in trace id")); }
         store8(id + i, hi << 4 | lo);
@@ -30,7 +30,7 @@ fn trace_id_from_str(s: Str) {
 fn trace_id_eq(a, b) { return agent_id_eq(a, b); }
 fn span_id_new() {
     var id = alloc(8);
-    _fill_random(id, 8);
+    _stik_fill_random(id, 8);
     return id;
 }
 fn span_id_to_str(id): Str {
@@ -40,7 +40,7 @@ fn span_id_to_str(id): Str {
     var i = 0;
     while (i < 8) {
         var byte = (val >> ((7 - i) * 8)) & 0xFF;
-        _hex_byte(buf, i * 2, byte);
+        _stik_hex_byte(buf, i * 2, byte);
         i = i + 1;
     }
     store8(buf + 16, 0);
@@ -54,7 +54,7 @@ fn span_id_from_str(s: Str) {
     var val = 0;
     var i = 0;
     while (i < 16) {
-        var nibble = _hex_nibble(load8(data + i));
+        var nibble = _stik_hex_nibble(load8(data + i));
         if (nibble < 0) { return stik_err_invalid_argument(str_from("invalid hex in span id")); }
         val = (val << 4) | nibble;
         i = i + 1;
@@ -216,14 +216,14 @@ fn tctx_to_traceparent(c): Str {
     str_builder_putc(sb, '-');
     var flags = tctx_trace_flags(c);
     var fbuf = alloc(3);
-    _hex_byte(fbuf, 0, flags & 0xFF);
+    _stik_hex_byte(fbuf, 0, flags & 0xFF);
     store8(fbuf + 2, 0);
     str_builder_add(sb, str_new(fbuf, 2));
     return str_builder_build(sb);
 }
 # True when all `len` bytes at `p` are zero. Used to reject the all-zero
 # trace-id / parent-id that W3C Trace Context declares invalid (F-015).
-fn _all_zero_bytes(p, len) {
+fn _stik_all_zero_bytes(p, len) {
     var i = 0;
     var nz = 0;
     while (i < len) {
@@ -244,7 +244,7 @@ fn tctx_from_traceparent(s: Str) {
     if (load8(data + 52) != 45) { return stik_err_invalid_argument(str_from("invalid traceparent format")); }
     # F-017 (audit 2026-08-24): W3C Trace Context requires the whole
     # header to be LOWERCASE hex; uppercase makes the traceparent
-    # invalid and it must be ignored. The shared `_hex_nibble` also
+    # invalid and it must be ignored. The shared `_stik_hex_nibble` also
     # serves JSON's four-hex-digit `\u` escapes, where RFC 8259 permits
     # either case, so the case rule is enforced here on the W3C-governed
     # path instead of tightening the shared helper. Covers version, trace-id, parent-id
@@ -265,8 +265,8 @@ fn tctx_from_traceparent(s: Str) {
     # spec forbids) was accepted. Reject both. A version above 00 that is
     # still valid hex is accepted: the spec requires forward
     # compatibility for the fields this implementation understands.
-    var vhi = _hex_nibble(load8(data));
-    var vlo = _hex_nibble(load8(data + 1));
+    var vhi = _stik_hex_nibble(load8(data));
+    var vlo = _stik_hex_nibble(load8(data + 1));
     if (vhi < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent version")); }
     if (vlo < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent version")); }
     if (vhi == 15 && vlo == 15) {
@@ -279,15 +279,15 @@ fn tctx_from_traceparent(s: Str) {
     # F-015 (audit 2026-08-24): an all-zero trace-id and an all-zero
     # parent-id are both invalid per spec and must be rejected. These
     # parsed cleanly before, so an invalid context propagated downstream.
-    if (_all_zero_bytes(tid, 16) == 1) {
+    if (_stik_all_zero_bytes(tid, 16) == 1) {
         return stik_err_invalid_argument(str_from("traceparent trace-id must not be all zero"));
     }
-    if (_all_zero_bytes(sid, 8) == 1) {
+    if (_stik_all_zero_bytes(sid, 8) == 1) {
         return stik_err_invalid_argument(str_from("traceparent parent-id must not be all zero"));
     }
     # Parse flags (2 hex chars at offset 53)
-    var fhi = _hex_nibble(load8(data + 53));
-    var flo = _hex_nibble(load8(data + 54));
+    var fhi = _stik_hex_nibble(load8(data + 53));
+    var flo = _stik_hex_nibble(load8(data + 54));
     if (fhi < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent flags")); }
     if (flo < 0) { return stik_err_invalid_argument(str_from("invalid hex in traceparent flags")); }
     var flags = fhi << 4 | flo;
@@ -367,7 +367,7 @@ fn span_dropped_links(s)  { return load64(s + 104); }
 #   SPAN_CLIENT=2   → SPAN_KIND_CLIENT=3
 #   SPAN_PRODUCER=3 → SPAN_KIND_PRODUCER=4
 #   SPAN_CONSUMER=4 → SPAN_KIND_CONSUMER=5
-fn _span_kind_to_otlp(k) {
+fn _stik_span_kind_to_otlp(k) {
     if (k == SPAN_INTERNAL) { return 1; }
     if (k == SPAN_SERVER)   { return 2; }
     if (k == SPAN_CLIENT)   { return 3; }
@@ -386,35 +386,35 @@ fn Span_to_otlp_proto(ptr, sb) {
     var start_ns = load64(ptr + 48);
     var dur_ms   = load64(ptr + 56);
     # field 1: trace_id (16 raw bytes — agent_id_new returns alloc(16))
-    _proto_bytes(sb, 1, trace_id, 16);
+    _stik_proto_bytes(sb, 1, trace_id, 16);
     # field 2: span_id (8 raw bytes — span_id_new returns alloc(8))
-    _proto_bytes(sb, 2, span_id, 8);
+    _stik_proto_bytes(sb, 2, span_id, 8);
     # field 4: parent_span_id (only if set)
-    if (parent != 0) { _proto_bytes(sb, 4, parent, 8); }
+    if (parent != 0) { _stik_proto_bytes(sb, 4, parent, 8); }
     # field 5: name
-    _proto_string(sb, 5, name);
+    _stik_proto_string(sb, 5, name);
     # field 6: kind (default SPAN_INTERNAL → 1; emit only if non-default
     # to match canonical OTLP encoders that elide default-value scalars).
-    if (kind != SPAN_INTERNAL) { _proto_int64(sb, 6, _span_kind_to_otlp(kind)); }
+    if (kind != SPAN_INTERNAL) { _stik_proto_int64(sb, 6, _stik_span_kind_to_otlp(kind)); }
     # field 7: start_time_unix_nano
-    _proto_fixed64(sb, 7, start_ns);
+    _stik_proto_fixed64(sb, 7, start_ns);
     # field 8: end_time_unix_nano = start + duration_ms × 1_000_000
-    _proto_fixed64(sb, 8, start_ns + dur_ms * 1000000);
+    _stik_proto_fixed64(sb, 8, start_ns + dur_ms * 1000000);
     # field 10: dropped_attributes_count (only if non-zero)
     var da = load64(ptr + 88);
-    if (da != 0) { _proto_int64(sb, 10, da); }
+    if (da != 0) { _stik_proto_int64(sb, 10, da); }
     # field 12: dropped_events_count
     var de = load64(ptr + 96);
-    if (de != 0) { _proto_int64(sb, 12, de); }
+    if (de != 0) { _stik_proto_int64(sb, 12, de); }
     # field 14: dropped_links_count
     var dl = load64(ptr + 104);
-    if (dl != 0) { _proto_int64(sb, 14, dl); }
+    if (dl != 0) { _stik_proto_int64(sb, 14, dl); }
     # field 15: status — only emit if status code is set (non-UNSET)
     var status = load64(ptr + 32);
     if (status != SPAN_UNSET) {
         var status_sb = str_builder_new();
-        _proto_int64(status_sb, 1, status);   # Status.code
-        _proto_message(sb, 15, str_builder_build(status_sb));
+        _stik_proto_int64(status_sb, 1, status);   # Status.code
+        _stik_proto_message(sb, 15, str_builder_build(status_sb));
     }
     return 0;
 }
@@ -442,9 +442,9 @@ fn TelemetryConfig_to_json(ptr, sb) {
 }
 fn TelemetryConfig_from_json(src: Str) {
     var c = alloc(24);
-    store64(c, _json_int(src, str_from("enabled")));
-    store64(c + 8, _json_int(src, str_from("sample_rate")));
-    store64(c + 16, _json_str(src, str_from("export_endpoint")));
+    store64(c, _stik_json_int(src, str_from("enabled")));
+    store64(c + 8, _stik_json_int(src, str_from("sample_rate")));
+    store64(c + 16, _stik_json_str(src, str_from("export_endpoint")));
     return c;
 }
 fn telemetry_config_new() {
@@ -502,7 +502,7 @@ fn instrumentation_scope_new(scope_name: Str, scope_version: Str) {
 fn iscope_name(s)       { return load64(s); }
 fn iscope_version(s)    { return load64(s + 8); }
 fn iscope_schema_url(s) { return load64(s + 16); }
-fn iscope_attributes(s) { return _lazy_map(s + 24); }
+fn iscope_attributes(s) { return _stik_lazy_map(s + 24); }
 fn span_event_new(evt_name: Str) {
     var e = alloc(24);
     store64(e, evt_name);
@@ -512,7 +512,7 @@ fn span_event_new(evt_name: Str) {
 }
 fn sevt_name(e)       { return load64(e); }
 fn sevt_timestamp(e)  { return load64(e + 8); }
-fn sevt_attributes(e) { return _lazy_map(e + 16); }
+fn sevt_attributes(e) { return _stik_lazy_map(e + 16); }
 fn span_link_new(link_trace_id, link_span_id) {
     var l = alloc(24);
     store64(l, link_trace_id);
@@ -522,7 +522,7 @@ fn span_link_new(link_trace_id, link_span_id) {
 }
 fn slink_trace_id(l)   { return load64(l); }
 fn slink_span_id(l)    { return load64(l + 8); }
-fn slink_attributes(l) { return _lazy_map(l + 16); }
+fn slink_attributes(l) { return _stik_lazy_map(l + 16); }
 fn exemplar_new(ex_trace_id, ex_span_id, value) {
     var e = alloc(40);
     store64(e, ex_trace_id);
@@ -536,13 +536,13 @@ fn exem_trace_id(e)   { return load64(e); }
 fn exem_span_id(e)    { return load64(e + 8); }
 fn exem_value(e)      { return load64(e + 16); }
 fn exem_timestamp(e)  { return load64(e + 24); }
-fn exem_attributes(e) { return _lazy_map(e + 32); }
+fn exem_attributes(e) { return _stik_lazy_map(e + 32); }
 fn baggage_new() {
     var b = alloc(8);
     store64(b, 0);
     return b;
 }
-fn baggage_entries(b) { return _lazy_map(b); }
+fn baggage_entries(b) { return _stik_lazy_map(b); }
 fn baggage_set(b, key, value) {
     map_set(baggage_entries(b), key, value);
     return 0;
@@ -579,7 +579,7 @@ fn metric_data_point_new(inst_name: Str, mv) {
 }
 fn mdp_instrument(dp)   { return load64(dp); }
 fn mdp_value(dp)         { return load64(dp + 8); }
-fn mdp_attributes(dp)   { return _lazy_map(dp + 16); }
+fn mdp_attributes(dp)   { return _stik_lazy_map(dp + 16); }
 fn mdp_timestamp(dp)    { return load64(dp + 24); }
 fn mdp_temporality(dp)  { return load64(dp + 32); }
 fn mdp_is_monotonic(dp) { return load64(dp + 40); }

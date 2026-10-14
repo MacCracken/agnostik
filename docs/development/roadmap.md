@@ -21,11 +21,11 @@ longer here.
 | [v1.7.0](#v170--consumer-safety-net-minor) | minor | Cross-consumer sweep, private-helper namespacing, `ClassificationResult` setters |
 | [v1.7.1](#v171--ci-and-release-hardening-patch) | patch | Raw-syscall gate, aarch64 tests in CI, toolchain checksum, orphan `keccak.cyr` |
 | [v1.7.2 – v1.7.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, small modules |
-| [v1.8.0](#v180--enum-nameparse-completion-minor) | minor | `*_name` / `*_parse` for the 26 enums without them |
+| [v1.8.0](#v180--cyrius-679-pin-and-enum-nameparse-completion-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them |
 | [v1.8.1 – v1.8.2](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, mid-size modules |
 | [v1.9.0](#v190--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
 | [v1.9.1 – v1.9.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, large modules, ending at 0 |
-| [v2.0.0](#v200--breaking-changes-next-major) | major | `_json_int` Result, accessor rename, dead-helper removal |
+| [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
 
 ---
 
@@ -33,48 +33,25 @@ longer here.
 
 ### v1.7.0 — Consumer safety net (minor)
 
-**1. Cross-consumer build sweep.** ✨ Add a script, `scripts/consumer-sweep.sh`,
-and wire it into the release checklist. For each repo that declares
-`[deps.agnostik]`, it copies the repo to a scratch directory, swaps in the
-in-flight bundle (`dist/agnostik.cyr`, or the `src/` modules aegis vendors), and
-runs that repo's own `cyrius build` and tests under its **own** pin. It reports
-green or red per consumer, plus every `duplicate fn` warning that names
-agnostik. The sweep catches accessor-ABI breaks, struct-layout drift,
-serde-shape changes, and symbol collisions before they ship. It also turns
-CLAUDE.md's closeout step 8 ("every consumer still builds") into one command.
+All three items are done under `[Unreleased]` (see the CHANGELOG). The slot
+leaves this file at the 1.7.0 cut.
 
-This item has been carried since v1.2.4. The cost that kept deferring it was
-orchestrating eleven repos. A manifest census at 1.6.5 finds five:
-
-| Consumer | agnostik tag | Vendors | Pin |
-|---|---|---|---|
-| aegis | 1.4.0 | `src/types.cyr`, `src/error.cyr` | 6.6.2 |
-| anuenue | 1.6.0 | `dist/agnostik.cyr` | 6.7.9 |
-| ark | 1.6.0 | `dist/agnostik.cyr` | 6.6.2 |
-| kybernet | 1.6.3 | `dist/agnostik.cyr` | 6.6.6 |
-| mela | 1.6.0 | `dist/agnostik.cyr` | 6.6.2 |
-
-The script runs locally first. A CI job can follow if the consumer repos are
-cloneable from the runner.
-
-**2. Private-helper namespacing.** 🔧 kybernet vendors both agnostik and sigil,
-and its build warns `duplicate fn '_hex_nibble' (last definition wins)`.
-agnostik's `_hex_nibble` (`src/types.cyr`) and sigil's have the same arity and
-mapping today, so nothing misbehaves yet. It is the class of collision that
-broke `health_check_new` in v1.6.1. Rename agnostik's `_`-prefixed helpers that
-lack an agnostik prefix (starting with `_hex_nibble`), using the sweep's
-duplicate-fn report as the list. These are not in `docs/api-surface.snapshot`,
-so the rename is not an API change.
-
-**3. `ClassificationResult` setters.** ✨ `level`, `auto_level` and `confidence`
-have getters and no setters, the F-021 class, found while documenting
-`classification.cyr` at v1.6.3. The Rust original let policy override `level`
-separately from the detected `auto_level`, which here needs raw
-`store64(r + 0, …)`. `confidence` has no defined unit and nothing sets it. Add
-`cresult_set_level` / `_set_auto_level` / `_set_confidence`, and define
-confidence as parts-per-thousand (0..1000, out-of-range rejected), the
-fixed-point form of the Rust optional 0.0–1.0 float. This is additive API,
-which is why it rides a minor.
+1. ✅ **Cross-consumer build sweep**: `scripts/consumer-sweep.sh`, wired into
+   CLAUDE.md's closeout step 8. It discovers every sibling repo that declares
+   `[deps.agnostik]` (five today: aegis, anuenue, ark, kybernet, mela). It
+   builds and tests each one twice on its own pin, once at the agnostik tag it
+   pins and once resolving this working tree through a `path` dep, and it
+   verifies that the second run really vendored the in-flight code. A CI job
+   can follow if the consumer repos become cloneable from the runner.
+2. ✅ **Private-helper namespacing**: all 21 `_`-prefixed helpers in shipped
+   modules are now `_stik_*`, and a CI step rejects an unprefixed one. The
+   sweep found `_hex_nibble` colliding with sigil in four of five consumers. A
+   wider scan found `_json_int` / `_json_str` colliding, at a different arity,
+   with ai-hwaccel and itihas, and `_hex_byte` with bote.
+3. ✅ **`ClassificationResult` setters**: `cresult_set_level`,
+   `cresult_set_auto_level` and `cresult_set_confidence` validate and return
+   a `Result`. Confidence is parts per thousand (0..1000), and
+   `cresult_has_confidence` tells a set 0 from an unset score.
 
 ### v1.7.1 — CI and release hardening (patch)
 
@@ -123,7 +100,27 @@ helpers or narrow the audit's scope is decided at v1.9.3.
 
 ---
 
-## v1.8.0 — Enum name/parse completion (minor)
+## v1.8.0 — Cyrius 6.7.9 pin and enum name/parse completion (minor)
+
+### Cyrius pin 6.6.20 → 6.7.9
+
+🔧 The toolchain refresh rides this minor rather than a patch of its own. It is
+the first move onto the 6.7.x line. Same checklist as the 1.6.5 refresh:
+
+- Read the cyrius 6.7.0 – 6.7.9 CHANGELOG entries for anything that names
+  agnostik or changes `lib sync`, `deps`, `distlib`, `api-surface`, `fmt`,
+  `lint` or `#derive`.
+- Re-vendor with `cyrius lib sync` + `cyrius deps`, commit the rewritten
+  `cyrius.lock`, and regenerate the api-surface snapshot and the dist bundle
+  if the toolchain changed their shape.
+- Review the security advisories in range against what agnostik reaches, and
+  record the pass in `docs/audit/`.
+- Replay every `ci.yml` step from the published 6.7.9 tarball, run the suite
+  on aarch64 and build agnos and Windows, and run the v1.7.0 consumer sweep
+  against the new bundle.
+- Bench gate plus an interleaved 6.6.20 / 6.7.9 A/B on identical source.
+
+### Enum name/parse completion
 
 ✨ CLAUDE.md requires every public enum to have `*_name()` and `*_parse(s)`.
 v1.4.0 (F-018) covered the 31 enums that had a `_name`, and v1.5.0 added
@@ -170,12 +167,18 @@ No consumer has asked yet.
 
 Breaking changes are batched here so every consumer absorbs migration once.
 
-### `_json_int` Result return
+### `_stik_json_int` Result return
 
-🔧 `_json_int(src: Str, key: Str)` returns `i64` and conflates "missing key"
-with a literal `0`. F-003 hardened the overflow path but left that ambiguity.
-Return a value-form `Result` instead, so callers can tell missing from zero.
-Every caller moves to `var n_t, n = _json_int(s, k);` or `_json_int(s, k)?`.
+🔧 `_stik_json_int(src: Str, key: Str)` (`_json_int` before v1.7.0) returns
+`i64` and conflates "missing key" with a literal `0`. F-003 hardened the
+overflow path but left that ambiguity. Return a value-form `Result` instead, so
+callers can tell missing from zero. Every caller moves to
+`var n_t, n = _stik_json_int(s, k);` or `_stik_json_int(s, k)?`.
+
+Note from v1.7.0: the helper is private. It is not in
+`docs/api-surface.snapshot`, and no consumer calls it (checked across all five
+`[deps.agnostik]` repos for the v1.7.0 rename). Its callers are all inside
+agnostik, so this change no longer needs a major and could move to any minor.
 
 ### `#derive(accessors)` migration with prefix rename
 

@@ -237,10 +237,14 @@ classification::classification_level_parse/1
 classification::classification_result_new/1
 classification::cresult_auto_level/1
 classification::cresult_confidence/1
+classification::cresult_has_confidence/1
 classification::cresult_keywords/1
 classification::cresult_level/1
 classification::cresult_pii/1
 classification::cresult_rules/1
+classification::cresult_set_auto_level/2
+classification::cresult_set_confidence/2
+classification::cresult_set_level/2
 classification::pii_kind_name/1
 classification::pii_kind_parse/1
 config::EdgeResourceOverrides_from_json/1

@@ -25,9 +25,9 @@ include "src/lib.cyr"
 fn test_proto_varint_small() {
     # 0 → 0x00; 1 → 0x01; 127 → 0x7F (single byte, MSB clear).
     var sb = str_builder_new();
-    _proto_varint(sb, 0);
-    _proto_varint(sb, 1);
-    _proto_varint(sb, 127);
+    _stik_proto_varint(sb, 0);
+    _stik_proto_varint(sb, 1);
+    _stik_proto_varint(sb, 127);
     var s = str_builder_build(sb);
     var d = str_data(s);
     assert_eq(str_len(s), 3, "varint small length");
@@ -40,9 +40,9 @@ fn test_proto_varint_small() {
 fn test_proto_varint_two_bytes() {
     # 128 → 0x80 0x01; 300 → 0xAC 0x02; 16383 → 0xFF 0x7F.
     var sb = str_builder_new();
-    _proto_varint(sb, 128);
-    _proto_varint(sb, 300);
-    _proto_varint(sb, 16383);
+    _stik_proto_varint(sb, 128);
+    _stik_proto_varint(sb, 300);
+    _stik_proto_varint(sb, 16383);
     var s = str_builder_build(sb);
     var d = str_data(s);
     assert_eq(str_len(s), 6, "varint 2-byte length");
@@ -59,9 +59,9 @@ fn test_proto_tag() {
     # Tag = (field_no << 3) | wire_type. field 1 + varint(0) = 0x08.
     # field 5 + length(2) = 0x2A. field 16 + fixed64(1) = 0x81 0x01.
     var sb = str_builder_new();
-    _proto_tag(sb, 1, 0);
-    _proto_tag(sb, 5, 2);
-    _proto_tag(sb, 16, 1);
+    _stik_proto_tag(sb, 1, 0);
+    _stik_proto_tag(sb, 5, 2);
+    _stik_proto_tag(sb, 16, 1);
     var s = str_builder_build(sb);
     var d = str_data(s);
     assert_eq(str_len(s), 4, "tag bytes total");
@@ -75,8 +75,8 @@ fn test_proto_tag() {
 fn test_proto_fixed64_le() {
     # 1 → 01 00 00 00 00 00 00 00; 0xFF → FF 00 00 00 00 00 00 00.
     var sb = str_builder_new();
-    _proto_fixed64_raw(sb, 1);
-    _proto_fixed64_raw(sb, 0xFF);
+    _stik_proto_fixed64_raw(sb, 1);
+    _stik_proto_fixed64_raw(sb, 0xFF);
     var s = str_builder_build(sb);
     var d = str_data(s);
     assert_eq(str_len(s), 16, "fixed64 raw 2x8 bytes");
@@ -90,7 +90,7 @@ fn test_proto_fixed64_le() {
 fn test_proto_string() {
     # field 1 + length-delim "ab" → 0x0A 0x02 'a' 'b'.
     var sb = str_builder_new();
-    _proto_string(sb, 1, str_from("ab"));
+    _stik_proto_string(sb, 1, str_from("ab"));
     var s = str_builder_build(sb);
     var d = str_data(s);
     assert_eq(str_len(s), 4, "string total");

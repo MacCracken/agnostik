@@ -49,23 +49,23 @@ fn test_f001_span_id_unique() {
     return 0;
 }
 
-# ─── F-002: _json_str respects escape sequences ────────────────────
+# ─── F-002: _stik_json_str respects escape sequences ────────────────────
 # Pre-fix: scanning stopped at the first 0x22 byte regardless of a
 # preceding backslash. Now escaped quotes pass through and we decode
 # the standard set.
 
 fn test_f002_escaped_quote() {
     var src = str_from("{\"name\": \"abc\\\"xyz\", \"id\": 42}");
-    var s = _json_str(src, str_from("name"));
+    var s = _stik_json_str(src, str_from("name"));
     assert_eq(str_eq(s, str_from("abc\"xyz")), 1, "F-002: \\\" decoded");
-    var n = _json_int(src, str_from("id"));
+    var n = _stik_json_int(src, str_from("id"));
     assert_eq(n, 42, "F-002: subsequent int field unaffected by escape");
     return 0;
 }
 
 fn test_f002_escape_set() {
     var src = str_from("{\"v\": \"a\\\\b\\nc\\td\\re\"}");
-    var s = _json_str(src, str_from("v"));
+    var s = _stik_json_str(src, str_from("v"));
     var d = str_data(s);
     assert_eq(str_len(s), 9, "F-002: decoded length");
     assert_eq(load8(d + 0), 97, "F-002: 'a'");
@@ -80,12 +80,12 @@ fn test_f002_escape_set() {
     return 0;
 }
 
-# ─── F-003: _json_int handles sign + overflow ──────────────────────
+# ─── F-003: _stik_json_int handles sign + overflow ──────────────────────
 
 fn test_f003_negative() {
     var src = str_from("{\"x\": -42, \"y\": 7}");
-    assert_eq(_json_int(src, str_from("x")), 0 - 42, "F-003: negative");
-    assert_eq(_json_int(src, str_from("y")), 7, "F-003: positive sibling");
+    assert_eq(_stik_json_int(src, str_from("x")), 0 - 42, "F-003: negative");
+    assert_eq(_stik_json_int(src, str_from("y")), 7, "F-003: positive sibling");
     return 0;
 }
 
@@ -94,7 +94,7 @@ fn test_f003_overflow_capped() {
     # digits; the result is the value of the first 19 digits without
     # silently consuming the rest.
     var src = str_from("{\"x\": 1234567890123456789012}");
-    var v = _json_int(src, str_from("x"));
+    var v = _stik_json_int(src, str_from("x"));
     # 1234567890123456789 = first 19 digits, fits in i64 (< 2^63).
     assert_eq(v, 1234567890123456789, "F-003: capped at 19 digits");
     return 0;
@@ -143,7 +143,7 @@ fn test_f005_canonical_parse() {
     return 0;
 }
 
-# ─── F-004: _json_find_value respects string boundaries ─────────────
+# ─── F-004: _stik_json_find_value respects string boundaries ─────────────
 # Pre-fix the strstr probe could find `"max_memory":` inside an
 # adjacent string value. After the fix the walker stays out of strings
 # and only matches at the top level.
@@ -152,7 +152,7 @@ fn test_f004_key_inside_string_value() {
     # The "note" string value contains the literal text `"max_memory":99999`
     # which used to poison the lookup for the real max_memory field.
     var src = str_from("{\"note\": \"see \\\"max_memory\\\":99999 below\", \"max_memory\": 42}");
-    var v = _json_int(src, str_from("max_memory"));
+    var v = _stik_json_int(src, str_from("max_memory"));
     assert_eq(v, 42, "F-004: key inside string value not matched");
     return 0;
 }
@@ -161,7 +161,7 @@ fn test_f004_string_with_escaped_quotes() {
     # Confirm the in-string escape walker handles `\"` so the closing
     # quote isn't seen prematurely (which would re-expose F-004).
     var src = str_from("{\"a\": \"he said \\\"id\\\":1\", \"id\": 7}");
-    assert_eq(_json_int(src, str_from("id")), 7, "F-004: escaped quotes inside string");
+    assert_eq(_stik_json_int(src, str_from("id")), 7, "F-004: escaped quotes inside string");
     return 0;
 }
 

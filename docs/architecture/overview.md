@@ -7,8 +7,8 @@ agnostik (Cyrius)
 ├── src/error.cyr      — AgnostikError (11 kinds), error codes (1001–1010), Result helpers
 ├── src/types.cyr      — AgentId, UserId (UUID v4), Version (SemVer), Capabilities,
 │                        MessageType, SystemStatus, ComponentConfig.
-│                        Hosts JSON parser primitives (_json_int / _json_str /
-│                        _json_find_value) including \uXXXX Unicode + surrogate-pair
+│                        Hosts JSON parser primitives (_stik_json_int / _stik_json_str /
+│                        _stik_json_find_value) including \uXXXX Unicode + surrogate-pair
 │                        UTF-8 decoding (v1.0.7).
 ├── src/proto.cyr      — Protobuf wire-format helpers (varint, tag, length-delim,
 │                        fixed64, nested message). Foundation for OTLP encoders (v1.2.0).

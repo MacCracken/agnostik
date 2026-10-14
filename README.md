@@ -35,7 +35,7 @@ snapshot, [`CHANGELOG.md`](CHANGELOG.md) for release notes,
 | Module | Surface |
 |---|---|
 | `error.cyr` | `AgnostikError` (11 kinds) + numeric error codes (1001-1010) + `Result` helpers |
-| `types.cyr` | `AgentId` / `UserId` (UUID v4), `Version` (SemVer), `Capabilities`, `MessageType`, `SystemStatus`, `ComponentConfig`. Hosts the JSON parser primitives (`_json_int`/`_json_str`/`_json_find_value`) with `\uXXXX` Unicode + UTF-8 surrogate-pair decoding (v1.0.7). |
+| `types.cyr` | `AgentId` / `UserId` (UUID v4), `Version` (SemVer), `Capabilities`, `MessageType`, `SystemStatus`, `ComponentConfig`. Hosts the JSON parser primitives (`_stik_json_int`/`_stik_json_str`/`_stik_json_find_value`) with `\uXXXX` Unicode + UTF-8 surrogate-pair decoding (v1.0.7). |
 | `proto.cyr` | Protobuf wire-format helpers — varint, tag, length-delimited, fixed64, nested-message. Foundation for OTLP encoders (v1.2.0). |
 | `agent.cyr` | `AgentConfig`, `AgentManifest`, `AgentStatus`, `ResourceLimits`, `HealthCheck`, `LifecycleHooks`, `AgentPool`, `Topic`, `Subscription`, `AgentMessage`. |
 | `security.cyr` | `SandboxConfig`, RBAC (`Role`, `TokenPayload`, `AuthContext`), `CgroupLimits`, `NamespaceConfig`, `LandlockRuleset`, `LinuxCapability` (41), `CapabilitySet`, `SeccompProfile`. |
@@ -85,16 +85,17 @@ cyrius bench tests/bcyr/agnostik.bcyr                 # 25 benchmarks
 scripts/bench-regression.sh                           # vs baseline in history.csv
 scripts/api-surface.sh check                          # diff vs committed snapshot
 scripts/doc-debt.sh check                             # no new undocumented fns
+scripts/consumer-sweep.sh                             # build + test every consumer against this tree
 ```
 
 ## Consumers
 
-Every AGNOS component depends on agnostik for shared types: **daimon** (agent
-runtime), **hoosh** (LLM grounding), **agnoshi** (shell), **aegis** (security
-policy), **argonaut** (orchestrator), **sigil** (auth issuer), **ark**
-(packaging), **kavach** (sandbox), **stiva** (telemetry pipeline), **nein**
-(refusal/safety), **yukti** (device abstraction). Canonical list in
-[`docs/development/state.md`](docs/development/state.md).
+agnostik is the AGNOS type vocabulary. Five repos declare `[deps.agnostik]`
+today: **aegis** (security daemon), **anuenue**, **ark** (package manager),
+**kybernet** (PID 1 init) and **mela** (marketplace). Tags, pins and vendored
+modules are in [`docs/development/state.md`](docs/development/state.md).
+`scripts/consumer-sweep.sh` builds and tests each of them against the working
+tree, on its own cyrius pin, before a release.
 
 ## Decisions
 

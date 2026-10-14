@@ -2,7 +2,7 @@
 #
 # v1.3.7 P(-1) hardening findings. See docs/audit/2026-08-24-audit.md.
 #
-# F-014  _fill_random's /dev/urandom fallback used `off = 0 - 1` as a
+# F-014  _stik_fill_random's /dev/urandom fallback used `off = 0 - 1` as a
 #        give-up sentinel. Cyrius compares SIGNED, so `(0 - 1) < n` stays
 #        true: the loop retried with `buf + (0 - 1)` and length n + 1 — a
 #        one-byte heap underflow write — and never terminated if the reads
@@ -17,7 +17,7 @@
 # F-016  The 2-char version field was never validated: non-hex versions
 #        parsed, and version "ff" (forbidden by the spec) was accepted.
 # F-017  Uppercase hex was accepted throughout the traceparent. The spec
-#        mandates lowercase. _hex_nibble legitimately accepts uppercase
+#        mandates lowercase. _stik_hex_nibble legitimately accepts uppercase
 #        for JSON's four-hex-digit \u escapes (RFC 8259 permits either
 #        case), so the fix enforces lowercase only on the W3C-governed
 #        path rather than tightening the shared helper.
@@ -154,8 +154,8 @@ fn test_f017_uppercase_rejected() {
 # Guard against an over-broad fix: JSON's four-hex-digit \u escapes must
 # stay case-insensitive, because RFC 8259 permits either case.
 fn test_f017_json_unicode_escape_still_case_insensitive() {
-    var lo = _json_str(str_from("{\"k\":\"\\u00e9\"}"), str_from("k"));
-    var hi = _json_str(str_from("{\"k\":\"\\u00E9\"}"), str_from("k"));
+    var lo = _stik_json_str(str_from("{\"k\":\"\\u00e9\"}"), str_from("k"));
+    var hi = _stik_json_str(str_from("{\"k\":\"\\u00E9\"}"), str_from("k"));
     assert_eq(str_eq(lo, hi), 1, "F-017: JSON hex escape still case-insensitive");
     return 0;
 }

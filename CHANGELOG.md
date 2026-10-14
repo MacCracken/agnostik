@@ -2,6 +2,155 @@
 
 ## [Unreleased]
 
+v1.7.0 work, the consumer safety net. All three roadmap items are in. Public API
+923 → **927** fns (+4, no removals). 19 test files, **1,574 assertions, 0
+failures**, on x86_64-linux and on aarch64 (under `qemu-aarch64`).
+
+### Added — `scripts/consumer-sweep.sh`: every consumer, built and tested against the working tree
+
+The roadmap carried the cross-consumer sweep since v1.2.4. The script finds every sibling checkout
+whose `cyrius.cyml` declares `[deps.agnostik]`; that is five today: aegis, anuenue, ark, kybernet
+and mela. `--list` prints that census. It copies each one twice into a scratch directory and builds
+and tests both copies under the consumer's **own** cyrius pin:
+
+- **base** keeps the manifest untouched, so it resolves the agnostik tag the consumer pins.
+- **new** has its `[deps.agnostik]` rewritten to `path = "../agnostik"`, with a copy of this working
+  tree as that sibling. The consumer's own resolve then vendors the in-flight code, exactly as it
+  would vendor a release.
+
+Tests are the manifest's `[build] test` file plus every `tests/**/*.tcyr`, run one file at a time,
+which works on every CLI from 6.6.2 to 6.7.9. A consumer **regresses** if it was green at base and
+the new run fails to build, fails a test file, loses assertions, or gains a warning that involves
+agnostik. The report also lists every duplicate-definition warning that involves an agnostik file.
+The exit status is 0 or 1; the scratch directory is kept for inspection on failure. CLAUDE.md's
+Quick Start and closeout step 8 now call it. One run takes about a minute.
+
+**Swapping `lib/agnostik.cyr` by hand does not work.** `cyrius build` and `cyrius test` re-resolve
+deps first and put the pinned tag's copy back from `~/.cyrius/deps`. A marker appended to the
+vendored file was gone after one build in ark and aegis (6.6.2) and kybernet (6.6.6). So after the
+new build, the sweep compares every vendored agnostik module with the in-flight source byte for
+byte, and a mismatch marks the consumer **INVALID** rather than passing.
+
+Proven both ways in a scratch copy:
+- Renaming `capability_parse` and `stik_err_io` turned aegis and kybernet **REGRESSED** (builds
+  fail, 0 assertions), while anuenue, which calls neither, stayed ok. Exit 1.
+- A sweep with the manifest rewrite disabled reported kybernet **INVALID** instead of passing.
+  Exit 1.
+
+Result on this tree: **5 consumers, 0 regressed, 0 invalid**. Assertion counts are unchanged
+(aegis 428, anuenue 402, ark 392, kybernet 876, mela 492).
+
+### Added — `ClassificationResult` setters (closes the F-021-class gap found at v1.6.3)
+
+`level`, `auto_level` and `confidence` had getters and no setters. Overriding the final level
+apart from the detected one needed a raw `store64(r + 0, …)`, and `confidence` had no unit, so
+nothing ever set it. Four fns, each documented:
+
+- `cresult_set_level(r, level)` / `cresult_set_auto_level(r, level)` store a `ClassificationLevel`.
+  Each touches only its own field: a policy override leaves the detected `auto_level` alone.
+- `cresult_set_confidence(r, ppt)` stores a confidence in **parts per thousand**, 0 (none) to 1000
+  (certain), the fixed-point form of the Rust original's optional 0.0–1.0 float.
+- `cresult_has_confidence(r)` returns 1 once a confidence is set. 0 is a valid score, so this flag
+  is what tells "set to 0" from "never set". `cresult_confidence` still reads 0 when unset, so
+  nothing existing changes.
+
+**These setters validate, unlike the library's other 139.** Those store and return 0. These
+return `Ok(0)`, or an invalid-argument `Err` that leaves the result unchanged, for a level outside
+`ClassificationLevel` or a confidence outside 0..1000. A classification level decides how data is
+handled, so an unknown value is refused rather than stored. That follows the 1.5.0
+`capability_parse` decision: errors, not silent defaults, where the value drives a security
+decision.
+
+Layout: `classification_result_new` allocates **56 B (was 48)**. The new set flag is at +48, and
+every existing offset is unchanged, so accessor users and the defaults are unaffected. No local
+consumer references `cresult_*`.
+
+`tests/tcyr/test_v170_classification_setters.tcyr` (38 assertions): the defaults and the vec slots
+after the layout change, each setter touching only its field, all four levels accepted by both
+level setters, rejections (−1, one past the last level, `i64` max and min, 1001, 2000) with the
+error kind and the unchanged state checked, and an invariant sweep showing exactly 0..1000 is
+accepted over −50..1050. Mutation-checked: an off-by-one bound fails 4 assertions, and a
+`set_level` that writes the `auto_level` slot fails 4. The first mutant at first **crashed** the
+file instead of failing it, because the error-kind check dereferenced the payload of an
+unexpected `Ok`. The kind is now read only from an `Err`, so a wrongly accepting setter fails
+cleanly.
+
+### Changed — private helpers are `_stik_`-prefixed; CI enforces it
+
+Consumers compile agnostik into one unit together with the other libraries they vendor. A
+same-named fn there either replaces the other silently (last definition wins), or fails the build
+when the arities differ, a hard error since cyrius 6.6.2 and how 1.6.1's `health_check_new` broke
+kybernet. The sweep's first run showed **`_hex_nibble` colliding with sigil's in four of five
+consumers**:
+
+- In aegis, ark and mela, sigil's definition won.
+- In kybernet, agnostik's won.
+- The two are identical today, so nothing misbehaved yet.
+
+A scan of every local AGNOS checkout and the 6.6.20 / 6.7.9 stdlib snapshots found worse:
+
+| agnostik helper | also defined by | their arity vs agnostik's |
+|---|---|---|
+| `_hex_nibble` | sigil (stdlib snapshot; a copy in 60+ repos) | 1 vs 1, same mapping |
+| `_json_int`, `_json_str` | ai-hwaccel, itihas | 4 and 3 vs 2: writers vs agnostik's readers |
+| `_hex_byte` | bote | 2 vs 3 |
+
+daimon, hoosh, stiva, kavach and agnosai all vendor ai-hwaccel, so none of them could have
+vendored agnostik as it stood.
+
+All **21** `_`-prefixed fns in shipped modules are now `_stik_<name>`:
+- `types`: `_stik_fill_random`, `_stik_hex_byte`, `_stik_hex_nibble`, `_stik_json_find_value`,
+  `_stik_json_int`, `_stik_json_parse_u4`, `_stik_json_str`, `_stik_utf8_encode`
+- `proto`: the eight `_stik_proto_*`
+- `security`: `_stik_lazy_vec`, `_stik_lazy_map`
+- `telemetry`: `_stik_all_zero_bytes`, `_stik_span_kind_to_otlp`
+- `audit`: `_stik_genesis_hash_cached`
+
+The test-harness helpers `_to_json` and `_json_has` stay as they are, since `src/main.cyr` and
+`tests/` never ship. The rename is mechanical: word-boundary matched across `src/` and `tests/`,
+no old name left, binary size unchanged. **Not an API change**: no `_` fn is in
+`docs/api-surface.snapshot`, and none of the five consumers calls one.
+
+CI's Security Scan job gains **"Private helpers are namespaced"**. It fails on any `_`-prefixed fn
+in a shipped `src/` module that lacks `_stik_`. It passes on this tree, and a planted
+`fn _mutant_helper` fails it. After the rename, the sweep reports **0** agnostik-involved
+duplicate definitions in every consumer. CLAUDE.md's Cyrius conventions gain the rule, and its
+lazy-init line names `_stik_lazy_vec` / `_stik_lazy_map`. README and the architecture overview
+name the `_stik_json_*` primitives.
+
+### Fixed — 1.6.5's downstream claim was vacuous; the sweep shows its conclusion holds
+
+The 1.6.5 CHANGELOG Consumers note and `docs/audit/2026-10-14-audit.md` say a scratch copy of
+kybernet, rebuilt with the 1.6.5 bundle swapped into `lib/agnostik.cyr`, produced the same binary
+size. That build had already put kybernet's pinned 1.6.3 bundle back before compiling (see the
+sweep entry above), so it never tested the 1.6.5 bundle. The conclusion still holds, now with
+evidence. The sweep's first run, on the 1.6.5 tree, verified that each consumer really vendored
+the in-flight bundle (`cmp` against `dist/agnostik.cyr`):
+- kybernet: 1,616,776 B in both runs, 876 / 876 assertions.
+- The other four: all green, assertion counts unchanged.
+
+The audit's Verified-sound bullet carries a correction note. The released 1.6.5 entry is left as
+shipped.
+
+### Changed — docs
+
+- **Roadmap**: the cyrius 6.6.20 → 6.7.9 pin move now rides v1.8.0, with the 1.6.5 refresh
+  checklist plus the consumer sweep. The v1.7.0 items are marked done. The v2.0.0 `_json_int`
+  item becomes `_stik_json_int`, noting that the helper is private and uncalled by any consumer,
+  so its `Result` change no longer needs a major.
+- **README**: the Consumers section still listed the eleven-name vocabulary that `state.md`
+  dropped at 1.6.5. It now names the five `[deps.agnostik]` repos, and the gate-script list gains
+  the sweep.
+
+### Performance
+
+This is not a release. The full gate table and an interleaved A/B are recorded at the 1.7.0 cut.
+`scripts/bench-regression.sh` against the 1.6.5 baseline gives **25 checked, 0 regressions**.
+That run was taken while other sessions held the host at load 6.8, and every row read about +13%,
+uniformly, including code this change does not touch. The rename does not change the generated
+code, and no benchmark exercises the new setters or `classification_result_new`. DCE binary
+132,424 → 132,552 B (+128 B).
+
 ## [1.6.5] - 2026-10-14
 
 **Toolchain refresh to cyrius 6.6.20, with the repairs that pin move needed, the derive-comments
