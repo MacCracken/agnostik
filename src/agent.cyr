@@ -350,6 +350,82 @@ fn agent_type_parse(s: Str) {
     elif (str_eq_cstr(s, "Service") == 1) { return Ok(AGENT_TYPE_SERVICE); }
     return stik_err_invalid_argument(str_from("unknown AgentType name"));
 }
+# ProbeType display name: "LivenessReadiness", "Liveness", "Readiness" or
+# "Startup", and "Unknown" for a value outside the enum. probe_type_parse is
+# the inverse.
+fn probe_type_name(t) {
+    if (t == PROBE_LIVENESS_READINESS)   { return "LivenessReadiness"; }
+    elif (t == PROBE_LIVENESS)           { return "Liveness"; }
+    elif (t == PROBE_READINESS)          { return "Readiness"; }
+    elif (t == PROBE_STARTUP)            { return "Startup"; }
+    return "Unknown";
+}
+# Parse a ProbeType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn probe_type_parse(s: Str) {
+    if (str_eq_cstr(s, "LivenessReadiness") == 1) { return Ok(PROBE_LIVENESS_READINESS); }
+    elif (str_eq_cstr(s, "Liveness") == 1) { return Ok(PROBE_LIVENESS); }
+    elif (str_eq_cstr(s, "Readiness") == 1) { return Ok(PROBE_READINESS); }
+    elif (str_eq_cstr(s, "Startup") == 1) { return Ok(PROBE_STARTUP); }
+    return stik_err_invalid_argument(str_from("unknown ProbeType name"));
+}
+# StopReason display name: "UserRequested", "ResourceExhausted", "Error",
+# "Timeout" or "SystemShutdown", and "Unknown" for a value outside the enum.
+# stop_reason_parse is the inverse.
+fn stop_reason_name(r) {
+    if (r == STOP_USER_REQUESTED)       { return "UserRequested"; }
+    elif (r == STOP_RESOURCE_EXHAUSTED) { return "ResourceExhausted"; }
+    elif (r == STOP_ERROR)              { return "Error"; }
+    elif (r == STOP_TIMEOUT)            { return "Timeout"; }
+    elif (r == STOP_SYSTEM_SHUTDOWN)    { return "SystemShutdown"; }
+    return "Unknown";
+}
+# Parse a StopReason display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn stop_reason_parse(s: Str) {
+    if (str_eq_cstr(s, "UserRequested") == 1) { return Ok(STOP_USER_REQUESTED); }
+    elif (str_eq_cstr(s, "ResourceExhausted") == 1) { return Ok(STOP_RESOURCE_EXHAUSTED); }
+    elif (str_eq_cstr(s, "Error") == 1) { return Ok(STOP_ERROR); }
+    elif (str_eq_cstr(s, "Timeout") == 1) { return Ok(STOP_TIMEOUT); }
+    elif (str_eq_cstr(s, "SystemShutdown") == 1) { return Ok(STOP_SYSTEM_SHUTDOWN); }
+    return stik_err_invalid_argument(str_from("unknown StopReason name"));
+}
+# CircuitBreakerState display name: "Closed", "Open" or "HalfOpen", and
+# "Unknown" for a value outside the enum. circuit_breaker_state_parse is the
+# inverse.
+fn circuit_breaker_state_name(s) {
+    if (s == CB_CLOSED)      { return "Closed"; }
+    elif (s == CB_OPEN)      { return "Open"; }
+    elif (s == CB_HALF_OPEN) { return "HalfOpen"; }
+    return "Unknown";
+}
+# Parse a CircuitBreakerState display name: exact, case-sensitive match.
+# Returns Ok(member), or an invalid-argument Err for any other string.
+fn circuit_breaker_state_parse(s: Str) {
+    if (str_eq_cstr(s, "Closed") == 1) { return Ok(CB_CLOSED); }
+    elif (str_eq_cstr(s, "Open") == 1) { return Ok(CB_OPEN); }
+    elif (str_eq_cstr(s, "HalfOpen") == 1) { return Ok(CB_HALF_OPEN); }
+    return stik_err_invalid_argument(str_from("unknown CircuitBreakerState name"));
+}
+# LabelOperator display name: "In", "NotIn", "Exists" or "DoesNotExist", and
+# "Unknown" for a value outside the enum. label_operator_parse is the inverse.
+# Spelling: the Kubernetes label-selector operator spelling.
+fn label_operator_name(o) {
+    if (o == LABEL_IN)               { return "In"; }
+    elif (o == LABEL_NOT_IN)         { return "NotIn"; }
+    elif (o == LABEL_EXISTS)         { return "Exists"; }
+    elif (o == LABEL_DOES_NOT_EXIST) { return "DoesNotExist"; }
+    return "Unknown";
+}
+# Parse a LabelOperator display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn label_operator_parse(s: Str) {
+    if (str_eq_cstr(s, "In") == 1) { return Ok(LABEL_IN); }
+    elif (str_eq_cstr(s, "NotIn") == 1) { return Ok(LABEL_NOT_IN); }
+    elif (str_eq_cstr(s, "Exists") == 1) { return Ok(LABEL_EXISTS); }
+    elif (str_eq_cstr(s, "DoesNotExist") == 1) { return Ok(LABEL_DOES_NOT_EXIST); }
+    return stik_err_invalid_argument(str_from("unknown LabelOperator name"));
+}
 enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST; }
 fn agent_message_new(sender, receiver, payload_str: Str) {
     var m = alloc(56);

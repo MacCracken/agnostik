@@ -168,6 +168,178 @@ fn finish_reason_parse(s: Str) {
     elif (str_eq_cstr(s, "recitation") == 1) { return Ok(FINISH_RECITATION); }
     return stik_err_invalid_argument(str_from("unknown FinishReason name"));
 }
+# ContentBlockType display name: "text", "image", "document" … "citation", and
+# "Unknown" for a value outside the enum. content_block_type_parse is the
+# inverse. Spelling: the provider APIs' lowercase wire spelling (Anthropic's
+# block types where they exist).
+fn content_block_type_name(t) {
+    if (t == CB_TEXT)          { return "text"; }
+    elif (t == CB_IMAGE)       { return "image"; }
+    elif (t == CB_DOCUMENT)    { return "document"; }
+    elif (t == CB_TOOL_USE)    { return "tool_use"; }
+    elif (t == CB_TOOL_RESULT) { return "tool_result"; }
+    elif (t == CB_THINKING)    { return "thinking"; }
+    elif (t == CB_AUDIO)       { return "audio"; }
+    elif (t == CB_CITATION)    { return "citation"; }
+    return "Unknown";
+}
+# Parse a ContentBlockType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn content_block_type_parse(s: Str) {
+    if (str_eq_cstr(s, "text") == 1) { return Ok(CB_TEXT); }
+    elif (str_eq_cstr(s, "image") == 1) { return Ok(CB_IMAGE); }
+    elif (str_eq_cstr(s, "document") == 1) { return Ok(CB_DOCUMENT); }
+    elif (str_eq_cstr(s, "tool_use") == 1) { return Ok(CB_TOOL_USE); }
+    elif (str_eq_cstr(s, "tool_result") == 1) { return Ok(CB_TOOL_RESULT); }
+    elif (str_eq_cstr(s, "thinking") == 1) { return Ok(CB_THINKING); }
+    elif (str_eq_cstr(s, "audio") == 1) { return Ok(CB_AUDIO); }
+    elif (str_eq_cstr(s, "citation") == 1) { return Ok(CB_CITATION); }
+    return stik_err_invalid_argument(str_from("unknown ContentBlockType name"));
+}
+# CacheControl display name: "ephemeral", and "Unknown" for a value outside
+# the enum. cache_control_parse is the inverse. Spelling: Anthropic's
+# `cache_control` type spelling.
+fn cache_control_name(c) {
+    if (c == CACHE_EPHEMERAL)   { return "ephemeral"; }
+    return "Unknown";
+}
+# Parse a CacheControl display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn cache_control_parse(s: Str) {
+    if (str_eq_cstr(s, "ephemeral") == 1) { return Ok(CACHE_EPHEMERAL); }
+    return stik_err_invalid_argument(str_from("unknown CacheControl name"));
+}
+# ToolChoice display name: "auto", "none", "required" or "specific", and
+# "Unknown" for a value outside the enum. tool_choice_parse is the inverse.
+# Spelling: OpenAI's `tool_choice` strings, plus "specific" for a named tool.
+fn tool_choice_name(c) {
+    if (c == TOOL_AUTO)       { return "auto"; }
+    elif (c == TOOL_NONE)     { return "none"; }
+    elif (c == TOOL_REQUIRED) { return "required"; }
+    elif (c == TOOL_SPECIFIC) { return "specific"; }
+    return "Unknown";
+}
+# Parse a ToolChoice display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn tool_choice_parse(s: Str) {
+    if (str_eq_cstr(s, "auto") == 1) { return Ok(TOOL_AUTO); }
+    elif (str_eq_cstr(s, "none") == 1) { return Ok(TOOL_NONE); }
+    elif (str_eq_cstr(s, "required") == 1) { return Ok(TOOL_REQUIRED); }
+    elif (str_eq_cstr(s, "specific") == 1) { return Ok(TOOL_SPECIFIC); }
+    return stik_err_invalid_argument(str_from("unknown ToolChoice name"));
+}
+# ResponseFormat display name: "text", "json_object" or "json_schema", and
+# "Unknown" for a value outside the enum. response_format_parse is the
+# inverse. Spelling: OpenAI's `response_format` type spelling.
+fn response_format_name(f) {
+    if (f == RESP_TEXT)          { return "text"; }
+    elif (f == RESP_JSON_OBJECT) { return "json_object"; }
+    elif (f == RESP_JSON_SCHEMA) { return "json_schema"; }
+    return "Unknown";
+}
+# Parse a ResponseFormat display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn response_format_parse(s: Str) {
+    if (str_eq_cstr(s, "text") == 1) { return Ok(RESP_TEXT); }
+    elif (str_eq_cstr(s, "json_object") == 1) { return Ok(RESP_JSON_OBJECT); }
+    elif (str_eq_cstr(s, "json_schema") == 1) { return Ok(RESP_JSON_SCHEMA); }
+    return stik_err_invalid_argument(str_from("unknown ResponseFormat name"));
+}
+# SafetyCategory display name: "HARM_CATEGORY_HATE_SPEECH",
+# "HARM_CATEGORY_HARASSMENT", "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+# "HARM_CATEGORY_DANGEROUS_CONTENT" or "HARM_CATEGORY_CIVIC_INTEGRITY", and
+# "Unknown" for a value outside the enum. safety_category_parse is the
+# inverse. Spelling: Gemini's HarmCategory names, so a category from a Gemini
+# response parses as-is.
+fn safety_category_name(c) {
+    if (c == SAFETY_HATE)         { return "HARM_CATEGORY_HATE_SPEECH"; }
+    elif (c == SAFETY_HARASSMENT) { return "HARM_CATEGORY_HARASSMENT"; }
+    elif (c == SAFETY_SEXUAL)     { return "HARM_CATEGORY_SEXUALLY_EXPLICIT"; }
+    elif (c == SAFETY_DANGEROUS)  { return "HARM_CATEGORY_DANGEROUS_CONTENT"; }
+    elif (c == SAFETY_CIVIC)      { return "HARM_CATEGORY_CIVIC_INTEGRITY"; }
+    return "Unknown";
+}
+# Parse a SafetyCategory display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn safety_category_parse(s: Str) {
+    if (str_eq_cstr(s, "HARM_CATEGORY_HATE_SPEECH") == 1) { return Ok(SAFETY_HATE); }
+    elif (str_eq_cstr(s, "HARM_CATEGORY_HARASSMENT") == 1) { return Ok(SAFETY_HARASSMENT); }
+    elif (str_eq_cstr(s, "HARM_CATEGORY_SEXUALLY_EXPLICIT") == 1) { return Ok(SAFETY_SEXUAL); }
+    elif (str_eq_cstr(s, "HARM_CATEGORY_DANGEROUS_CONTENT") == 1) { return Ok(SAFETY_DANGEROUS); }
+    elif (str_eq_cstr(s, "HARM_CATEGORY_CIVIC_INTEGRITY") == 1) { return Ok(SAFETY_CIVIC); }
+    return stik_err_invalid_argument(str_from("unknown SafetyCategory name"));
+}
+# SafetyProbability display name: "NEGLIGIBLE", "LOW", "MEDIUM" or "HIGH", and
+# "Unknown" for a value outside the enum. safety_probability_parse is the
+# inverse. Spelling: Gemini's HarmProbability names.
+fn safety_probability_name(p) {
+    if (p == SAFETY_NEGLIGIBLE)   { return "NEGLIGIBLE"; }
+    elif (p == SAFETY_LOW)        { return "LOW"; }
+    elif (p == SAFETY_MEDIUM)     { return "MEDIUM"; }
+    elif (p == SAFETY_HIGH)       { return "HIGH"; }
+    return "Unknown";
+}
+# Parse a SafetyProbability display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn safety_probability_parse(s: Str) {
+    if (str_eq_cstr(s, "NEGLIGIBLE") == 1) { return Ok(SAFETY_NEGLIGIBLE); }
+    elif (str_eq_cstr(s, "LOW") == 1) { return Ok(SAFETY_LOW); }
+    elif (str_eq_cstr(s, "MEDIUM") == 1) { return Ok(SAFETY_MEDIUM); }
+    elif (str_eq_cstr(s, "HIGH") == 1) { return Ok(SAFETY_HIGH); }
+    return stik_err_invalid_argument(str_from("unknown SafetyProbability name"));
+}
+# StreamEventType display name: "content_block_start", "delta",
+# "tool_call_delta" … "ping", and "Unknown" for a value outside the enum.
+# stream_event_type_parse is the inverse. Spelling: the lowercase snake_case
+# wire style of this module's other names.
+fn stream_event_type_name(t) {
+    if (t == STREAM_CONTENT_BLOCK_START)   { return "content_block_start"; }
+    elif (t == STREAM_DELTA)               { return "delta"; }
+    elif (t == STREAM_TOOL_CALL_DELTA)     { return "tool_call_delta"; }
+    elif (t == STREAM_CONTENT_BLOCK_STOP)  { return "content_block_stop"; }
+    elif (t == STREAM_USAGE)               { return "usage"; }
+    elif (t == STREAM_DONE)                { return "done"; }
+    elif (t == STREAM_ERROR)               { return "error"; }
+    elif (t == STREAM_PING)                { return "ping"; }
+    return "Unknown";
+}
+# Parse a StreamEventType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn stream_event_type_parse(s: Str) {
+    if (str_eq_cstr(s, "content_block_start") == 1) { return Ok(STREAM_CONTENT_BLOCK_START); }
+    elif (str_eq_cstr(s, "delta") == 1) { return Ok(STREAM_DELTA); }
+    elif (str_eq_cstr(s, "tool_call_delta") == 1) { return Ok(STREAM_TOOL_CALL_DELTA); }
+    elif (str_eq_cstr(s, "content_block_stop") == 1) { return Ok(STREAM_CONTENT_BLOCK_STOP); }
+    elif (str_eq_cstr(s, "usage") == 1) { return Ok(STREAM_USAGE); }
+    elif (str_eq_cstr(s, "done") == 1) { return Ok(STREAM_DONE); }
+    elif (str_eq_cstr(s, "error") == 1) { return Ok(STREAM_ERROR); }
+    elif (str_eq_cstr(s, "ping") == 1) { return Ok(STREAM_PING); }
+    return stik_err_invalid_argument(str_from("unknown StreamEventType name"));
+}
+# BatchStatus display name: "pending", "in_progress", "completed", "failed",
+# "cancelled" or "expired", and "Unknown" for a value outside the enum.
+# batch_status_parse is the inverse. Spelling: OpenAI's Batch API status
+# spelling (it has no "pending").
+fn batch_status_name(s) {
+    if (s == BATCH_PENDING)       { return "pending"; }
+    elif (s == BATCH_IN_PROGRESS) { return "in_progress"; }
+    elif (s == BATCH_COMPLETED)   { return "completed"; }
+    elif (s == BATCH_FAILED)      { return "failed"; }
+    elif (s == BATCH_CANCELLED)   { return "cancelled"; }
+    elif (s == BATCH_EXPIRED)     { return "expired"; }
+    return "Unknown";
+}
+# Parse a BatchStatus display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn batch_status_parse(s: Str) {
+    if (str_eq_cstr(s, "pending") == 1) { return Ok(BATCH_PENDING); }
+    elif (str_eq_cstr(s, "in_progress") == 1) { return Ok(BATCH_IN_PROGRESS); }
+    elif (str_eq_cstr(s, "completed") == 1) { return Ok(BATCH_COMPLETED); }
+    elif (str_eq_cstr(s, "failed") == 1) { return Ok(BATCH_FAILED); }
+    elif (str_eq_cstr(s, "cancelled") == 1) { return Ok(BATCH_CANCELLED); }
+    elif (str_eq_cstr(s, "expired") == 1) { return Ok(BATCH_EXPIRED); }
+    return stik_err_invalid_argument(str_from("unknown BatchStatus name"));
+}
 enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
 enum ResponseFormat { RESP_TEXT; RESP_JSON_OBJECT; RESP_JSON_SCHEMA; }
 enum SafetyCategory { SAFETY_HATE; SAFETY_HARASSMENT; SAFETY_SEXUAL; SAFETY_DANGEROUS; SAFETY_CIVIC; }

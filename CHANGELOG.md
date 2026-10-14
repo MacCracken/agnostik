@@ -2,9 +2,103 @@
 
 ## [Unreleased]
 
-v1.8.0 work. Part 1 of 3 is in: the cyrius pin move. Enum name/parse completion and the
-documentation burn-down follow. The documentation work rides this minor rather than releases of
-its own.
+## [1.8.0] - 2026-10-14
+
+**Minor: cyrius 6.7.9, and `*_name` / `*_parse` for 25 more enums.** Public API 927 → **977**
+fns (+50, no removals, no signature, layout or wire-format change). 20 test files, **2,001
+assertions, 0 failures**, on x86_64-linux and on aarch64. All five `[deps.agnostik]` consumers
+build and pass their tests against it.
+
+Two items move to v1.9.0:
+- **The documentation burn-down.** It rides a minor, not a release of its own.
+- **The `RestartPolicy` pair.** It waits for kybernet to take argonaut 1.15.4, which is cut, so
+  that agnostik's pair does not collide with argonaut's inside kybernet.
+
+### Added — `*_name` / `*_parse` for 25 more enums (50 fns)
+
+CLAUDE.md requires every public enum to have both. v1.4.0 (F-018) covered the 31 enums that
+already had a `_name`, and v1.5.0 added `LinuxCapability`. This adds the pair to 25 of the last
+26:
+
+| Module | Enums |
+|---|---|
+| agent | `ProbeType`, `StopReason`, `CircuitBreakerState`, `LabelOperator` |
+| error | `AgnostikErrorCode` (`agnostik_err_code_name` / `_parse`) |
+| llm | `ContentBlockType`, `CacheControl`, `ToolChoice`, `ResponseFormat`, `SafetyCategory`, `SafetyProbability`, `StreamEventType`, `BatchStatus` |
+| security | `ConditionOperator`, `SeccompMode`, `SystemFeature`, `LandlockFsAccess`, `LandlockNetAccess`, `LandlockScope`, `DeviceType`, `RlimitType` |
+| telemetry | `EventType`, `MetricKind`, `AggregationTemporality`, `MetricValueType` |
+
+The rules are F-018's:
+- `_name` returns `"Unknown"` for a value outside the enum.
+- `_parse` is an exact, case-sensitive match returning `Ok(member)` or an invalid-argument `Err`.
+- No new enum has a member that owns `"Unknown"`, so `_parse("Unknown")` is an `Err`.
+
+Every fn has a doc comment, so the documentation-debt baseline stays at 849. Public API 927 →
+**977** (+50, no removals).
+
+**Spelling.** Each pair follows the library's rule: an external standard's spelling where one
+clearly exists, otherwise the Rust variant in PascalCase. The standards, each named in its doc
+comment, are:
+- **Kubernetes** label-selector operators: `In`, `NotIn`, `Exists`, `DoesNotExist`.
+- **LLM APIs:** the lowercase wire spellings already used by `finish_reason_name` (`tool_use`,
+  `json_object`, `in_progress`, `ephemeral`). Safety ratings use Gemini's names
+  (`HARM_CATEGORY_HATE_SPEECH` …, `NEGLIGIBLE` … `HIGH`); agnostik's five categories are exactly
+  Gemini's five, civic integrity included. A field read from a provider response therefore
+  parses as-is.
+- **Landlock:** the Rust `landlock` crate's names (`Execute` … `Truncate`, `BindTcp`,
+  `AbstractUnixSocket`).
+- **Devices:** the OCI runtime spec's `"c"` / `"b"` / `"a"`.
+- **Resource limits:** the `limits.conf(5)` item names (`nofile`, `as`, `fsize` …). As with
+  `capability_name`, a config written against Linux documentation parses without translation.
+- **OpenTelemetry:** the instrument and data-point names (`UpDownCounter`, `ExponentialHistogram`).
+
+**Kernel facts, checked against the kernel's uapi headers rather than memory:**
+- The `Landlock*` members are the kernel's bit indices (`LL_EXECUTE` = bit 0 … `LL_TRUNCATE` =
+  bit 14; `1 << v` is the flag). The roadmap's "bit sets" description was wrong: the values
+  are ordinals.
+- `SeccompMode`'s values are `SECCOMP_MODE_*` (0, 1, 2).
+- `RlimitType`'s values are **not** `RLIMIT_*`: `RLIM_NOFILE` is 0, which is `RLIMIT_CPU`.
+  `rlimit_type_name`'s doc comment says so. No repo passes these values to `setrlimit(2)` today.
+- `AggregationTemporality`'s values are not OTLP's either; the v1.9.0 roadmap item notes this.
+
+**`RestartPolicy` is held back.** argonaut defines its own `enum RestartPolicy`, with agnostik's
+constant names in a different order (ALWAYS = 0 vs agnostik's NEVER = 0), and a one-argument
+`restart_policy_parse` that reads systemd-style `"on-failure"`. kybernet compiles both into one
+unit, so agnostik's new `restart_policy_parse` would have been silently replaced by argonaut's
+("last definition wins"). That is F-025's class, and `scripts/consumer-sweep.sh` reported kybernet
+**REGRESSED** on it. The plan, in order:
+1. An argonaut patch, on its current pin, aligns `RestartPolicy` and `SeccompAction` with
+   agnostik's values and renames its config parser. Done: **argonaut 1.15.4**, cut the same day.
+2. kybernet picks up that argonaut release.
+3. agnostik then adds the `RestartPolicy` pair (roadmap v1.9.0).
+
+Step 1 is written and tested in argonaut's working tree (984 assertions, 0 failures) and awaits
+an argonaut release. A scratch build of kybernet resolved both in-flight trees, with agnostik's
+`RestartPolicy` pair added back:
+- With kybernet's one call renamed, it builds with no duplicate warning and passes 876 of 876.
+- With the call left unrenamed, it still compiles, but its config tests fail. So step 2 must
+  rename that call in the same change as the argonaut bump.
+- Against agnostik ≤ 1.8.x, without the pair, an unrenamed call fails the build loudly
+  (`undefined function`). The silent case appears only once the pair lands.
+
+A collision pre-check had reported none. It was vacuous: under zsh an unquoted `$names` did not
+word-split, so the loop built one pattern that matched nothing. The sweep caught the collision.
+A Python re-scan of every local checkout and the 6.7.9 stdlib found `restart_policy_parse`
+(argonaut, vendored in kybernet), `restart_policy_name` (stiva) and `event_type_name` (szal).
+stiva and szal do not depend on agnostik today.
+
+**Tests.** `tests/tcyr/test_v180_enum_parse.tcyr` has **427 assertions**:
+- **Generated half**, from the same table that generated the fns: `parse(name(v)) == v` for all
+  132 members, plus a rejection, the `"Unknown"` rejection, and `-1` / out-of-range naming
+  `"Unknown"` for each enum.
+- **Hand-written half**, because a table that drives both sides would let a misspelling
+  roundtrip: every external-standard spelling, the kernel numbers above, and exact-match
+  rejections (lowercase, uppercase, `RLIMIT_NOFILE`, a leading space, an empty string).
+
+Three mutations were each caught: `"as"` misspelled `"address_space"` (by the hand check), a
+`_parse` arm returning the wrong member (by the roundtrip), and a deleted `_name` arm (three
+assertions). With the pair held back, the sweep is **5 of 5 green**, with 0 agnostik-involved
+duplicates. 20 test files, **2,001 assertions, 0 failures**, on x86_64 and aarch64.
 
 ### Changed — cyrius pin 6.6.20 → **6.7.9**; stdlib re-vendored
 
@@ -63,15 +157,118 @@ the bundled `ci.sh` helper.
 - 19 test files, **1,574 assertions, 0 failures**, on x86_64 and under `qemu-aarch64`.
 - `scripts/consumer-sweep.sh`: 5 of 5 green.
 
-**Performance: preliminary; re-measured at the 1.8.0 cut.** The host was at load 14 throughout,
-from other sessions' compilers:
-- A single-shot `scripts/bench-regression.sh` reported 19 regressions.
-- 15 interleaved rounds of the 1.7.1 tree on 6.6.20 against this tree on 6.7.9 (identical
-  source) swing ±20% per row in both directions.
-- The aggregate is neutral: median row −2.4% on medians, −1.1% on per-round minimums.
+**Performance:** neutral; see the Performance section below. The first measurement, taken at
+load 14 while the pin moved, was too noisy to use.
 
-That is too noisy to call any single row, so the gate table and the A/B are taken again at the
-cut.
+### Security
+
+The minor-cut security pass is recorded in
+[`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) §"v1.8.0 minor-cut pass".
+**No findings.**
+- **Advisories in range.** cyrius 6.7.0–6.7.9 published two. Neither reaches agnostik: CI never
+  runs `cyriusly`, and `src/` has no lone `!`. The `fncall8` argument-order fix does not reach it
+  either, since agnostik uses only `fncall2`.
+- **New code.** The 50 new fns compare a string against fixed literals or an integer against
+  constants. They allocate only the error box on rejection, and read no input past `str_eq_cstr`.
+- **Re-scan.** The CI security scan is clean: no raw `syscall(`, no `sys_system`, no `/etc` /
+  `/bin` / `/sbin` literal, no stack buffer of 64 KB or more. The private-helper gate passes.
+- **Integrity.** The 6.7.9 toolchain verifies against the pinned release key.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 20 files, 2,001 assertions, 0 failures, on x86_64 and on aarch64.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor:** of 953 textual fn
+  definitions, 790 public fns are referenced by no library code (consumer entry points; 767 at
+  1.7.0). The count is textual, and each new `_name` doc comment names its `_parse`, so it rises
+  by less than 50. The untested count stays at **294**, because every new fn is tested.
+- **Refactor:** none. The 50 fns come from one table, the same one their test is generated
+  from, so there is no parallel code to consolidate.
+- **Code review:** the hold-back of `RestartPolicy`, the generator's comment wrapping, and a
+  vacuous collision pre-scan, which the sweep caught. All are described above.
+- **Cleanup:** README's toolchain line read 6.6.20.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 of 5 green, 0 regressed,
+  0 invalid, 0 agnostik-involved duplicate definitions.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read
+  1.8.0. The release workflow's version gate accepts tag `1.8.0`.
+- **Full build from clean:** see Verification.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.7.1 baseline: **25 checked, 0 new, 0 regressions**.
+It was taken at load 0.6. The A/B column comes from 15 interleaved rounds of the 1.7.1 tag tree
+on 6.6.20 against this tree on 6.7.9, with order alternating each round. Load climbed from 0.6 to
+5.4 during the A/B, so each row is the median of **per-round paired ratios**: the two trees ran
+back-to-back in each round, which cancels the load spikes that hit single rounds.
+
+| benchmark | 1.7.1 baseline | 1.8.0 gate | Δ gate | 1.7.1 (6.6.20) → 1.8.0 (6.7.9), paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| resource_limits_from_json | 488 | 414 | -15.2% | -8.8% | 4/15 |
+| injection_scores_from_json | 321 | 282 | -12.1% | -7.1% | 4/15 |
+| agent_stats_from_json | 294 | 262 | -10.9% | -5.8% | 6/15 |
+| message_build_3turn | 381 | 334 | -12.3% | -3.0% | 6/15 |
+| accel_flags_from_json | 727 | 666 | -8.4% | -2.9% | 3/15 |
+| version_roundtrip | 253 | 238 | -5.9% | -2.4% | 5/15 |
+| trace_context_child | 571 | 525 | -8.1% | -2.1% | 5/15 |
+| trace_context_new | 1132 | 1076 | -4.9% | -1.3% | 5/15 |
+| injection_scores_to_json | 771 | 720 | -6.6% | -1.2% | 5/15 |
+| inference_request_full | 359 | 341 | -5.0% | -1.1% | 6/15 |
+| agent_id_to_str | 726 | 682 | -6.1% | -1.1% | 5/15 |
+| security_context_full | 660 | 624 | -5.5% | -0.9% | 6/15 |
+| traceparent_format | 1768 | 1677 | -5.1% | -0.4% | 5/15 |
+| agent_id_new | 549 | 528 | -3.8% | -0.4% | 7/15 |
+| resource_limits_to_json | 973 | 904 | -7.1% | -0.2% | 5/15 |
+| audit_entry_full | 2214 | 2177 | -1.7% | -0.1% | 7/15 |
+| accel_flags_to_json | 1605 | 1512 | -5.8% | -0.1% | 6/15 |
+| sandbox_config_default | 23 | 21 | -8.7% | +0.0% | 5/15 |
+| token_usage_update | 33 | 31 | -6.1% | +0.0% | 5/15 |
+| version_to_str | 106 | 100 | -5.7% | +0.0% | 6/15 |
+| agent_id_roundtrip | 1000 | 950 | -5.0% | +0.7% | 9/15 |
+| token_usage_to_json | 851 | 814 | -4.3% | +1.0% | 11/15 |
+| agent_stats_to_json | 653 | 632 | -3.2% | +1.5% | 12/15 |
+| accelerator_device_full | 97 | 101 | +4.1% | +8.0% | 12/15 |
+| token_usage_from_json | 415 | 435 | +4.8% | +12.1% | 14/15 |
+
+**Net neutral.** The paired median row is **−0.4%**, and the gate's median row is −5.8%. Two rows
+are consistently slower: `token_usage_from_json` (+12.1%, slower in 14 of 15 rounds) and
+`accelerator_device_full` (+8.0%, 12 of 15). A second paired run on the same 6.7.9 toolchain,
+part 1 alone (commit `f251f1d`) against this tree, attributes them:
+- The toolchain is clean (median 0.0%).
+- **Part 2's added code** moves exactly those two rows, by +10.1% and +8.1% (11 of 11 rounds
+  each). No benchmark calls the new fns, so this is code placement in the non-DCE build
+  `cyrius bench` measures.
+- In `CYRIUS_DCE=1` builds of the bench, `token_usage_from_json` runs at 379 ns on both trees
+  (best of 7).
+
+All 25 rows resolve. The release run is appended to `docs/benchmarks/history.csv` (25 rows,
+commit column `f251f1d`, HEAD at the time), taken at load 1.65. Its median row is −6.5% against
+1.7.1's row, and the gate passes against it.
+
+Binaries (`CYRIUS_DCE=1`):
+
+| target | 1.7.1 | 1.8.0 | why |
+|---|---:|---:|---|
+| x86_64 | 132,552 B | **134,408 B** | the harness's reachable code grows with the new fns |
+| aarch64 | 828,776 B | **896,144 B** | aarch64 DCE still NOP-fills instead of compacting, so the 50 fns add their full size |
+| agnos | 132,896 B | 134,760 B | |
+| Windows | 848,896 B | 875,008 B | |
+
+`dist/agnostik.cyr` is 166,565 → 197,447 B.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was
+  committed into a throwaway repo. Every `ci.yml` step except the bench passed, 17 of 17, and so
+  did the aarch64 step's script (20 files, 2,001 assertions under `qemu-aarch64`).
+- **Gates:**
+  - api-surface 977 = snapshot;
+  - doc-debt 849 = baseline;
+  - `cyrius distlib --check` fresh, with the sidecar still 12 leaves;
+  - `deps --verify` 32 / 32;
+  - lint, fmt, vet and `CYRIUS_TYPE_CHECK=1` clean;
+  - security scan and private-helper gate clean.
+- **Downstream:** 5 of 5 green.
+- **argonaut 1.15.4**, the other half of the `RestartPolicy` plan, is cut and verified on its
+  own: 984 assertions on x86_64 and aarch64, a neutral bench gate, and kybernet downstream checks.
 
 ## [1.7.1] - 2026-10-14
 

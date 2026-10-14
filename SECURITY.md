@@ -67,6 +67,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.6.5 toolchain refresh (cyrius 6.6.6 → 6.6.20): advisories CYRIUS-2026-0009..0035 against agnostik's reach | No findings; CYRIUS-2026-0028 reaches `version_to_str` but was never exploitable there | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.7.0 minor-cut pass (same report, second section) | F-025 (LOW): unnamespaced private helpers could be replaced by another library's in a consumer's unit; fixed in 1.7.0 (`_stik_` prefix + CI gate) | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.7.1 release pass (same report, third section): raw-syscall gate, verified toolchain install, aarch64 CI | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
+| 2026-10-14 | v1.8.0 minor-cut pass (same report, fourth section): cyrius 6.6.20 → 6.7.9, 50 enum name/parse fns, cross-library symbol scan | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

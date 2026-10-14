@@ -163,6 +163,86 @@ fn log_severity_parse(s: Str) {
     elif (str_eq_cstr(s, "FATAL") == 1) { return Ok(LOG_FATAL); }
     return stik_err_invalid_argument(str_from("unknown LogSeverity name"));
 }
+# EventType display name: "AgentStarted", "AgentStopped", "AgentFailed" …
+# "Custom", and "Unknown" for a value outside the enum. event_type_parse is
+# the inverse.
+fn event_type_name(t) {
+    if (t == EVT_AGENT_STARTED)        { return "AgentStarted"; }
+    elif (t == EVT_AGENT_STOPPED)      { return "AgentStopped"; }
+    elif (t == EVT_AGENT_FAILED)       { return "AgentFailed"; }
+    elif (t == EVT_INFERENCE_COMPLETE) { return "InferenceComplete"; }
+    elif (t == EVT_AUDIT_EVENT)        { return "AuditEvent"; }
+    elif (t == EVT_SECURITY_ALERT)     { return "SecurityAlert"; }
+    elif (t == EVT_CUSTOM)             { return "Custom"; }
+    return "Unknown";
+}
+# Parse a EventType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn event_type_parse(s: Str) {
+    if (str_eq_cstr(s, "AgentStarted") == 1) { return Ok(EVT_AGENT_STARTED); }
+    elif (str_eq_cstr(s, "AgentStopped") == 1) { return Ok(EVT_AGENT_STOPPED); }
+    elif (str_eq_cstr(s, "AgentFailed") == 1) { return Ok(EVT_AGENT_FAILED); }
+    elif (str_eq_cstr(s, "InferenceComplete") == 1) { return Ok(EVT_INFERENCE_COMPLETE); }
+    elif (str_eq_cstr(s, "AuditEvent") == 1) { return Ok(EVT_AUDIT_EVENT); }
+    elif (str_eq_cstr(s, "SecurityAlert") == 1) { return Ok(EVT_SECURITY_ALERT); }
+    elif (str_eq_cstr(s, "Custom") == 1) { return Ok(EVT_CUSTOM); }
+    return stik_err_invalid_argument(str_from("unknown EventType name"));
+}
+# MetricKind display name: "Counter", "UpDownCounter", "Gauge" or "Histogram",
+# and "Unknown" for a value outside the enum. metric_kind_parse is the
+# inverse. Spelling: the OpenTelemetry instrument names.
+fn metric_kind_name(k) {
+    if (k == METRIC_COUNTER)           { return "Counter"; }
+    elif (k == METRIC_UP_DOWN_COUNTER) { return "UpDownCounter"; }
+    elif (k == METRIC_GAUGE)           { return "Gauge"; }
+    elif (k == METRIC_HISTOGRAM)       { return "Histogram"; }
+    return "Unknown";
+}
+# Parse a MetricKind display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn metric_kind_parse(s: Str) {
+    if (str_eq_cstr(s, "Counter") == 1) { return Ok(METRIC_COUNTER); }
+    elif (str_eq_cstr(s, "UpDownCounter") == 1) { return Ok(METRIC_UP_DOWN_COUNTER); }
+    elif (str_eq_cstr(s, "Gauge") == 1) { return Ok(METRIC_GAUGE); }
+    elif (str_eq_cstr(s, "Histogram") == 1) { return Ok(METRIC_HISTOGRAM); }
+    return stik_err_invalid_argument(str_from("unknown MetricKind name"));
+}
+# AggregationTemporality display name: "Cumulative" or "Delta", and "Unknown"
+# for a value outside the enum. aggregation_temporality_parse is the inverse.
+# Spelling: the OpenTelemetry names. The values are agnostik ordinals, not
+# OTLP's (OTLP has DELTA = 1, CUMULATIVE = 2): an encoder must map them.
+fn aggregation_temporality_name(t) {
+    if (t == TEMPORALITY_CUMULATIVE)   { return "Cumulative"; }
+    elif (t == TEMPORALITY_DELTA)      { return "Delta"; }
+    return "Unknown";
+}
+# Parse a AggregationTemporality display name: exact, case-sensitive match.
+# Returns Ok(member), or an invalid-argument Err for any other string.
+fn aggregation_temporality_parse(s: Str) {
+    if (str_eq_cstr(s, "Cumulative") == 1) { return Ok(TEMPORALITY_CUMULATIVE); }
+    elif (str_eq_cstr(s, "Delta") == 1) { return Ok(TEMPORALITY_DELTA); }
+    return stik_err_invalid_argument(str_from("unknown AggregationTemporality name"));
+}
+# MetricValueType display name: "Int", "Float", "Histogram" or
+# "ExponentialHistogram", and "Unknown" for a value outside the enum.
+# metric_value_type_parse is the inverse. Spelling: the OpenTelemetry data-
+# point names.
+fn metric_value_type_name(t) {
+    if (t == MV_INT)             { return "Int"; }
+    elif (t == MV_FLOAT)         { return "Float"; }
+    elif (t == MV_HISTOGRAM)     { return "Histogram"; }
+    elif (t == MV_EXP_HISTOGRAM) { return "ExponentialHistogram"; }
+    return "Unknown";
+}
+# Parse a MetricValueType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn metric_value_type_parse(s: Str) {
+    if (str_eq_cstr(s, "Int") == 1) { return Ok(MV_INT); }
+    elif (str_eq_cstr(s, "Float") == 1) { return Ok(MV_FLOAT); }
+    elif (str_eq_cstr(s, "Histogram") == 1) { return Ok(MV_HISTOGRAM); }
+    elif (str_eq_cstr(s, "ExponentialHistogram") == 1) { return Ok(MV_EXP_HISTOGRAM); }
+    return stik_err_invalid_argument(str_from("unknown MetricValueType name"));
+}
 fn resource_new(name: Str, version: Str, instance_id: Str) {
     var r = alloc(40);
     store64(r, name);

@@ -113,6 +113,37 @@ fn agnostik_err_kind_parse(s: Str) {
     elif (str_eq_cstr(s, "unknown error") == 1) { return Ok(STIK_ERR_UNKNOWN); }
     return stik_err_invalid_argument(str_from("unknown AgnostikErrorKind name"));
 }
+# AgnostikErrorCode display name: "AgentNotFound", "PermissionDenied",
+# "ConfigError" … "Io", and "Unknown" for a value outside the enum.
+# agnostik_err_code_parse is the inverse.
+fn agnostik_err_code_name(c) {
+    if (c == CODE_AGENT_NOT_FOUND)      { return "AgentNotFound"; }
+    elif (c == CODE_PERMISSION_DENIED)  { return "PermissionDenied"; }
+    elif (c == CODE_CONFIG_ERROR)       { return "ConfigError"; }
+    elif (c == CODE_TIMEOUT)            { return "Timeout"; }
+    elif (c == CODE_RESOURCE_EXHAUSTED) { return "ResourceExhausted"; }
+    elif (c == CODE_INVALID_ARGUMENT)   { return "InvalidArgument"; }
+    elif (c == CODE_NOT_SUPPORTED)      { return "NotSupported"; }
+    elif (c == CODE_INTERNAL)           { return "Internal"; }
+    elif (c == CODE_SERIALIZATION)      { return "Serialization"; }
+    elif (c == CODE_IO)                 { return "Io"; }
+    return "Unknown";
+}
+# Parse a AgnostikErrorCode display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn agnostik_err_code_parse(s: Str) {
+    if (str_eq_cstr(s, "AgentNotFound") == 1) { return Ok(CODE_AGENT_NOT_FOUND); }
+    elif (str_eq_cstr(s, "PermissionDenied") == 1) { return Ok(CODE_PERMISSION_DENIED); }
+    elif (str_eq_cstr(s, "ConfigError") == 1) { return Ok(CODE_CONFIG_ERROR); }
+    elif (str_eq_cstr(s, "Timeout") == 1) { return Ok(CODE_TIMEOUT); }
+    elif (str_eq_cstr(s, "ResourceExhausted") == 1) { return Ok(CODE_RESOURCE_EXHAUSTED); }
+    elif (str_eq_cstr(s, "InvalidArgument") == 1) { return Ok(CODE_INVALID_ARGUMENT); }
+    elif (str_eq_cstr(s, "NotSupported") == 1) { return Ok(CODE_NOT_SUPPORTED); }
+    elif (str_eq_cstr(s, "Internal") == 1) { return Ok(CODE_INTERNAL); }
+    elif (str_eq_cstr(s, "Serialization") == 1) { return Ok(CODE_SERIALIZATION); }
+    elif (str_eq_cstr(s, "Io") == 1) { return Ok(CODE_IO); }
+    return stik_err_invalid_argument(str_from("unknown AgnostikErrorCode name"));
+}
 fn agnostik_err_print(e) {
     var kind = agnostik_err_kind(e);
     var name = agnostik_err_kind_name(kind);

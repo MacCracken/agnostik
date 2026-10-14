@@ -756,3 +756,197 @@ fn policy_effect_parse(s: Str) {
     elif (str_eq_cstr(s, "Audit") == 1) { return Ok(POLICY_AUDIT); }
     return stik_err_invalid_argument(str_from("unknown PolicyEffect name"));
 }
+# ConditionOperator display name: "Eq", "Neq", "In" … "Lte", and "Unknown" for
+# a value outside the enum. condition_operator_parse is the inverse.
+fn condition_operator_name(o) {
+    if (o == COND_EQ)    { return "Eq"; }
+    elif (o == COND_NEQ) { return "Neq"; }
+    elif (o == COND_IN)  { return "In"; }
+    elif (o == COND_NIN) { return "Nin"; }
+    elif (o == COND_GT)  { return "Gt"; }
+    elif (o == COND_GTE) { return "Gte"; }
+    elif (o == COND_LT)  { return "Lt"; }
+    elif (o == COND_LTE) { return "Lte"; }
+    return "Unknown";
+}
+# Parse a ConditionOperator display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn condition_operator_parse(s: Str) {
+    if (str_eq_cstr(s, "Eq") == 1) { return Ok(COND_EQ); }
+    elif (str_eq_cstr(s, "Neq") == 1) { return Ok(COND_NEQ); }
+    elif (str_eq_cstr(s, "In") == 1) { return Ok(COND_IN); }
+    elif (str_eq_cstr(s, "Nin") == 1) { return Ok(COND_NIN); }
+    elif (str_eq_cstr(s, "Gt") == 1) { return Ok(COND_GT); }
+    elif (str_eq_cstr(s, "Gte") == 1) { return Ok(COND_GTE); }
+    elif (str_eq_cstr(s, "Lt") == 1) { return Ok(COND_LT); }
+    elif (str_eq_cstr(s, "Lte") == 1) { return Ok(COND_LTE); }
+    return stik_err_invalid_argument(str_from("unknown ConditionOperator name"));
+}
+# SeccompMode display name: "Disabled", "Strict", "Filter" or "Unsupported",
+# and "Unknown" for a value outside the enum. seccomp_mode_parse is the
+# inverse. Spelling: the values are the kernel's SECCOMP_MODE_* numbers (0
+# disabled, 1 strict, 2 filter).
+fn seccomp_mode_name(m) {
+    if (m == SECCOMP_DISABLED)      { return "Disabled"; }
+    elif (m == SECCOMP_STRICT)      { return "Strict"; }
+    elif (m == SECCOMP_FILTER)      { return "Filter"; }
+    elif (m == SECCOMP_UNSUPPORTED) { return "Unsupported"; }
+    return "Unknown";
+}
+# Parse a SeccompMode display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn seccomp_mode_parse(s: Str) {
+    if (str_eq_cstr(s, "Disabled") == 1) { return Ok(SECCOMP_DISABLED); }
+    elif (str_eq_cstr(s, "Strict") == 1) { return Ok(SECCOMP_STRICT); }
+    elif (str_eq_cstr(s, "Filter") == 1) { return Ok(SECCOMP_FILTER); }
+    elif (str_eq_cstr(s, "Unsupported") == 1) { return Ok(SECCOMP_UNSUPPORTED); }
+    return stik_err_invalid_argument(str_from("unknown SeccompMode name"));
+}
+# SystemFeature display name: "Landlock", "Seccomp", "Namespaces", "Cgroups",
+# "Tpm" or "SecureBoot", and "Unknown" for a value outside the enum.
+# system_feature_parse is the inverse.
+fn system_feature_name(f) {
+    if (f == FEAT_LANDLOCK)      { return "Landlock"; }
+    elif (f == FEAT_SECCOMP)     { return "Seccomp"; }
+    elif (f == FEAT_NAMESPACES)  { return "Namespaces"; }
+    elif (f == FEAT_CGROUPS)     { return "Cgroups"; }
+    elif (f == FEAT_TPM)         { return "Tpm"; }
+    elif (f == FEAT_SECURE_BOOT) { return "SecureBoot"; }
+    return "Unknown";
+}
+# Parse a SystemFeature display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn system_feature_parse(s: Str) {
+    if (str_eq_cstr(s, "Landlock") == 1) { return Ok(FEAT_LANDLOCK); }
+    elif (str_eq_cstr(s, "Seccomp") == 1) { return Ok(FEAT_SECCOMP); }
+    elif (str_eq_cstr(s, "Namespaces") == 1) { return Ok(FEAT_NAMESPACES); }
+    elif (str_eq_cstr(s, "Cgroups") == 1) { return Ok(FEAT_CGROUPS); }
+    elif (str_eq_cstr(s, "Tpm") == 1) { return Ok(FEAT_TPM); }
+    elif (str_eq_cstr(s, "SecureBoot") == 1) { return Ok(FEAT_SECURE_BOOT); }
+    return stik_err_invalid_argument(str_from("unknown SystemFeature name"));
+}
+# LandlockFsAccess display name: "Execute", "WriteFile", "ReadFile" …
+# "Truncate", and "Unknown" for a value outside the enum.
+# landlock_fs_access_parse is the inverse. Spelling: the Rust `landlock`
+# crate's AccessFs names; each value is the kernel's LANDLOCK_ACCESS_FS_* bit
+# index, so `1 << v` is the kernel flag.
+fn landlock_fs_access_name(a) {
+    if (a == LL_EXECUTE)       { return "Execute"; }
+    elif (a == LL_WRITE_FILE)  { return "WriteFile"; }
+    elif (a == LL_READ_FILE)   { return "ReadFile"; }
+    elif (a == LL_READ_DIR)    { return "ReadDir"; }
+    elif (a == LL_REMOVE_DIR)  { return "RemoveDir"; }
+    elif (a == LL_REMOVE_FILE) { return "RemoveFile"; }
+    elif (a == LL_MAKE_CHAR)   { return "MakeChar"; }
+    elif (a == LL_MAKE_DIR)    { return "MakeDir"; }
+    elif (a == LL_MAKE_REG)    { return "MakeReg"; }
+    elif (a == LL_MAKE_SOCK)   { return "MakeSock"; }
+    elif (a == LL_MAKE_FIFO)   { return "MakeFifo"; }
+    elif (a == LL_MAKE_BLOCK)  { return "MakeBlock"; }
+    elif (a == LL_MAKE_SYM)    { return "MakeSym"; }
+    elif (a == LL_REFER)       { return "Refer"; }
+    elif (a == LL_TRUNCATE)    { return "Truncate"; }
+    return "Unknown";
+}
+# Parse a LandlockFsAccess display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn landlock_fs_access_parse(s: Str) {
+    if (str_eq_cstr(s, "Execute") == 1) { return Ok(LL_EXECUTE); }
+    elif (str_eq_cstr(s, "WriteFile") == 1) { return Ok(LL_WRITE_FILE); }
+    elif (str_eq_cstr(s, "ReadFile") == 1) { return Ok(LL_READ_FILE); }
+    elif (str_eq_cstr(s, "ReadDir") == 1) { return Ok(LL_READ_DIR); }
+    elif (str_eq_cstr(s, "RemoveDir") == 1) { return Ok(LL_REMOVE_DIR); }
+    elif (str_eq_cstr(s, "RemoveFile") == 1) { return Ok(LL_REMOVE_FILE); }
+    elif (str_eq_cstr(s, "MakeChar") == 1) { return Ok(LL_MAKE_CHAR); }
+    elif (str_eq_cstr(s, "MakeDir") == 1) { return Ok(LL_MAKE_DIR); }
+    elif (str_eq_cstr(s, "MakeReg") == 1) { return Ok(LL_MAKE_REG); }
+    elif (str_eq_cstr(s, "MakeSock") == 1) { return Ok(LL_MAKE_SOCK); }
+    elif (str_eq_cstr(s, "MakeFifo") == 1) { return Ok(LL_MAKE_FIFO); }
+    elif (str_eq_cstr(s, "MakeBlock") == 1) { return Ok(LL_MAKE_BLOCK); }
+    elif (str_eq_cstr(s, "MakeSym") == 1) { return Ok(LL_MAKE_SYM); }
+    elif (str_eq_cstr(s, "Refer") == 1) { return Ok(LL_REFER); }
+    elif (str_eq_cstr(s, "Truncate") == 1) { return Ok(LL_TRUNCATE); }
+    return stik_err_invalid_argument(str_from("unknown LandlockFsAccess name"));
+}
+# LandlockNetAccess display name: "BindTcp" or "ConnectTcp", and "Unknown" for
+# a value outside the enum. landlock_net_access_parse is the inverse.
+# Spelling: the Rust `landlock` crate's AccessNet names; each value is the
+# kernel's LANDLOCK_ACCESS_NET_* bit index.
+fn landlock_net_access_name(a) {
+    if (a == LL_BIND_TCP)      { return "BindTcp"; }
+    elif (a == LL_CONNECT_TCP) { return "ConnectTcp"; }
+    return "Unknown";
+}
+# Parse a LandlockNetAccess display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn landlock_net_access_parse(s: Str) {
+    if (str_eq_cstr(s, "BindTcp") == 1) { return Ok(LL_BIND_TCP); }
+    elif (str_eq_cstr(s, "ConnectTcp") == 1) { return Ok(LL_CONNECT_TCP); }
+    return stik_err_invalid_argument(str_from("unknown LandlockNetAccess name"));
+}
+# LandlockScope display name: "AbstractUnixSocket" or "Signal", and "Unknown"
+# for a value outside the enum. landlock_scope_parse is the inverse. Spelling:
+# the Rust `landlock` crate's Scope names; each value is the kernel's
+# LANDLOCK_SCOPE_* bit index.
+fn landlock_scope_name(s) {
+    if (s == LL_SCOPE_ABSTRACT_UNIX)   { return "AbstractUnixSocket"; }
+    elif (s == LL_SCOPE_SIGNAL)        { return "Signal"; }
+    return "Unknown";
+}
+# Parse a LandlockScope display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn landlock_scope_parse(s: Str) {
+    if (str_eq_cstr(s, "AbstractUnixSocket") == 1) { return Ok(LL_SCOPE_ABSTRACT_UNIX); }
+    elif (str_eq_cstr(s, "Signal") == 1) { return Ok(LL_SCOPE_SIGNAL); }
+    return stik_err_invalid_argument(str_from("unknown LandlockScope name"));
+}
+# DeviceType display name: "c", "b" or "a", and "Unknown" for a value outside
+# the enum. device_type_parse is the inverse. Spelling: the OCI runtime spec's
+# device type letters (and cgroup v1 devices.allow).
+fn device_type_name(t) {
+    if (t == DEV_CHAR)    { return "c"; }
+    elif (t == DEV_BLOCK) { return "b"; }
+    elif (t == DEV_ALL)   { return "a"; }
+    return "Unknown";
+}
+# Parse a DeviceType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn device_type_parse(s: Str) {
+    if (str_eq_cstr(s, "c") == 1) { return Ok(DEV_CHAR); }
+    elif (str_eq_cstr(s, "b") == 1) { return Ok(DEV_BLOCK); }
+    elif (str_eq_cstr(s, "a") == 1) { return Ok(DEV_ALL); }
+    return stik_err_invalid_argument(str_from("unknown DeviceType name"));
+}
+# RlimitType display name: "nofile", "nproc", "as" … "msgqueue", and "Unknown"
+# for a value outside the enum. rlimit_type_parse is the inverse. Spelling:
+# the limits.conf(5) item names, so a limits config parses as-is. The values
+# are agnostik ordinals, NOT the kernel's RLIMIT_* numbers (RLIM_NOFILE is 0,
+# which is RLIMIT_CPU): do not pass one to setrlimit(2) unmapped.
+fn rlimit_type_name(t) {
+    if (t == RLIM_NOFILE)          { return "nofile"; }
+    elif (t == RLIM_NPROC)         { return "nproc"; }
+    elif (t == RLIM_ADDRESS_SPACE) { return "as"; }
+    elif (t == RLIM_FILE_SIZE)     { return "fsize"; }
+    elif (t == RLIM_CORE)          { return "core"; }
+    elif (t == RLIM_DATA)          { return "data"; }
+    elif (t == RLIM_STACK)         { return "stack"; }
+    elif (t == RLIM_MEMLOCK)       { return "memlock"; }
+    elif (t == RLIM_SIGPENDING)    { return "sigpending"; }
+    elif (t == RLIM_MSGQUEUE)      { return "msgqueue"; }
+    return "Unknown";
+}
+# Parse a RlimitType display name: exact, case-sensitive match. Returns
+# Ok(member), or an invalid-argument Err for any other string.
+fn rlimit_type_parse(s: Str) {
+    if (str_eq_cstr(s, "nofile") == 1) { return Ok(RLIM_NOFILE); }
+    elif (str_eq_cstr(s, "nproc") == 1) { return Ok(RLIM_NPROC); }
+    elif (str_eq_cstr(s, "as") == 1) { return Ok(RLIM_ADDRESS_SPACE); }
+    elif (str_eq_cstr(s, "fsize") == 1) { return Ok(RLIM_FILE_SIZE); }
+    elif (str_eq_cstr(s, "core") == 1) { return Ok(RLIM_CORE); }
+    elif (str_eq_cstr(s, "data") == 1) { return Ok(RLIM_DATA); }
+    elif (str_eq_cstr(s, "stack") == 1) { return Ok(RLIM_STACK); }
+    elif (str_eq_cstr(s, "memlock") == 1) { return Ok(RLIM_MEMLOCK); }
+    elif (str_eq_cstr(s, "sigpending") == 1) { return Ok(RLIM_SIGPENDING); }
+    elif (str_eq_cstr(s, "msgqueue") == 1) { return Ok(RLIM_MSGQUEUE); }
+    return stik_err_invalid_argument(str_from("unknown RlimitType name"));
+}

@@ -2,9 +2,9 @@
 
 ## Status
 
-**v1.7.1** is the most recent stable release, on Cyrius `6.6.20`. It has 12
-modules plus `src/proto.cyr` (OTLP wire helpers), 927 public fns, and 1,574
-test assertions across 19 `.tcyr` files, passing on x86_64-linux and on aarch64
+**v1.8.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+modules plus `src/proto.cyr` (OTLP wire helpers), 977 public fns, and 2,001
+test assertions across 20 `.tcyr` files, passing on x86_64-linux and on aarch64
 under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
@@ -13,7 +13,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0 and v1.7.1 passes).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1 and v1.8.0 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -21,66 +21,37 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.8.0](#v180--cyrius-679-pin-enum-nameparse-documentation-debt-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them; documentation debt 849 → 0 |
-| [v1.9.0](#v190--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
+| [v1.9.0](#v190--restartpolicy-nameparse-and-documentation-debt-minor) | minor | `RestartPolicy` name/parse (after kybernet takes argonaut 1.15.4); documentation debt 849 → 0 |
+| [v1.10.0](#v1100--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
 
 ---
 
-## v1.8.0 — Cyrius 6.7.9 pin, enum name/parse, documentation debt (minor)
+## v1.9.0 — RestartPolicy name/parse and documentation debt (minor)
 
-Three parts, in this order: the toolchain moves first, so the other two are built and
-measured on the new pin.
+### `RestartPolicy` name/parse
 
-### Cyrius pin 6.6.20 → 6.7.9
+v1.8.0 added `*_name` / `*_parse` to 25 of the last 26 enums. `RestartPolicy` was held back:
+argonaut ≤ 1.15.3 has its own `enum RestartPolicy`, with the same constant names but other values,
+and its own one-argument `restart_policy_parse`. kybernet compiles both libraries, so agnostik's
+pair would have been silently replaced there (F-025's class), and the consumer sweep flagged it.
+The order agreed on 2026-10-14:
+1. ✅ **argonaut 1.15.4** (cut 2026-10-14) makes `RestartPolicy` and `SeccompAction`
+   value-identical to agnostik's, and renames its parser `argonaut_restart_policy_parse`.
+2. ⏳ **kybernet** bumps `[deps.argonaut]` to 1.15.4 and renames its one call
+   (`src/lib/svc_config.cyr:530`) in the same change. Left unrenamed, the call fails the build
+   against agnostik ≤ 1.8.x, but once this pair lands it compiles and binds to agnostik's
+   PascalCase parser, so kybernet's config tests fail.
+3. **agnostik** adds `restart_policy_name` / `_parse` (`"Never"`, `"Always"`, `"OnFailure"`,
+   the Kubernetes spelling), and the sweep must show kybernet green with no duplicate.
 
-✅ **Done under `[Unreleased]`** (see the CHANGELOG). No source change was needed, and the
-bundle and API surface regenerate unchanged. The re-vendor needed `cyrius deps --relock`. The
-bench gate and A/B are re-taken at the cut, because the host was at load 14 when they ran.
-
-🔧 The toolchain refresh rides this minor rather than a patch of its own. It is
-the first move onto the 6.7.x line. Same checklist as the 1.6.5 refresh:
-
-- Read the cyrius 6.7.0 – 6.7.9 CHANGELOG entries for anything that names
-  agnostik or changes `lib sync`, `deps`, `distlib`, `api-surface`, `fmt`,
-  `lint` or `#derive`.
-- Re-vendor with `cyrius lib sync` + `cyrius deps`, commit the rewritten
-  `cyrius.lock`, and regenerate the api-surface snapshot and the dist bundle
-  if the toolchain changed their shape.
-- Review the security advisories in range against what agnostik reaches, and
-  record the pass in `docs/audit/`.
-- Replay every `ci.yml` step from the published 6.7.9 tarball, run the suite
-  on aarch64 and build agnos and Windows, and run the v1.7.0 consumer sweep
-  against the new bundle.
-- Bench gate plus an interleaved 6.6.20 / 6.7.9 A/B on identical source.
-
-### Enum name/parse completion
-
-✨ CLAUDE.md requires every public enum to have `*_name()` and `*_parse(s)`.
-v1.4.0 (F-018) covered the 31 enums that had a `_name`, and v1.5.0 added
-`LinuxCapability`. **26 enums still have neither**:
-
-- **agent**: `RestartPolicy`, `ProbeType`, `StopReason`, `CircuitBreakerState`,
-  `LabelOperator`
-- **error**: `AgnostikErrorCode`
-- **llm**: `ContentBlockType`, `CacheControl`, `ToolChoice`, `ResponseFormat`,
-  `SafetyCategory`, `SafetyProbability`, `StreamEventType`, `BatchStatus`
-- **security**: `ConditionOperator`, `SeccompMode`, `SystemFeature`,
-  `LandlockFsAccess`, `LandlockNetAccess`, `LandlockScope`, `DeviceType`,
-  `RlimitType`
-- **telemetry**: `EventType`, `MetricKind`, `AggregationTemporality`,
-  `MetricValueType`
-
-Most are ordinal state sets, where a name pair is plainly useful in config and
-logs. The three `Landlock*` enums are bit sets, so a name names one bit, not a
-value. They get per-bit names, or an ADR that records "no string form" and
-amends the CLAUDE.md rule. Same rules as F-018: exact match, no case-folding,
-an unknown string is `Err`. `tests/tcyr/test_v140_enum_parse.tcyr`'s
-exhaustive `parse(name(v)) == v` check extends to every new member.
+An end-to-end scratch build of kybernet against argonaut 1.15.4 and this pair passed 876 of 876
+with no duplicate warning.
 
 ### Documentation debt: 849 → 0
 
-Documentation does not get a release of its own; it rides this minor.
+Documentation does not get a release of its own; it rides this minor (it moved here from
+v1.8.0, which shipped the pin move and the enum work).
 `scripts/doc-debt.sh` has gated CI since v1.6.3. A new undocumented fn fails,
 and so does a grandfathered one that was documented without recording it. The
 849 fns in `docs/undocumented.baseline` are documented module by module,
@@ -101,7 +72,7 @@ At 0, the baseline file goes and the gate becomes "no undocumented fn in
 that phase counts the test and bench files too. Whether to document test
 helpers or narrow the audit's scope is decided at the end of this slot.
 
-## v1.9.0 — OTLP wire-format completion (minor)
+## v1.10.0 — OTLP wire-format completion (minor)
 
 ✨ This extends the v1.2.0 `Span_to_otlp_proto` foundation to the rest of the
 OpenTelemetry data plane, using the existing `src/proto.cyr` primitives:
@@ -115,7 +86,9 @@ OpenTelemetry data plane, using the existing `src/proto.cyr` primitives:
   `AnyValue` cluster is about half the slot.
 
 Golden-byte tests against reference protobuf encodings, plus a fuzz target per
-encoder. If a consumer needs this before v1.9.0, it can move ahead of v1.8.0.
+encoder. Map enum values at the encoder, as `_stik_span_kind_to_otlp` does for
+`SpanKind`: `AggregationTemporality`'s values are agnostik ordinals
+(CUMULATIVE = 0, DELTA = 1), while OTLP has DELTA = 1 and CUMULATIVE = 2. If a consumer needs this sooner, it can move ahead of v1.9.0.
 No consumer has asked yet.
 
 ---

@@ -1,0 +1,829 @@
+# tests/tcyr/test_v180_enum_parse.tcyr
+#
+# v1.8.0: 25 of the last 26 enums gain `*_name()` / `*_parse()`. The 26th,
+# RestartPolicy, waits on argonaut, whose same-named enum and
+# `restart_policy_parse` collide with agnostik's inside kybernet. v1.4.0
+# (F-018) covered the 31 enums that already had a `_name`, and v1.5.0 added
+# LinuxCapability.
+#
+# Like test_v140_enum_parse.tcyr, the roundtrip half is mechanically derived
+# from the same table that generated the functions: `parse(name(v)) == v` for
+# every member, a rejection case per enum, the "Unknown" fallback for an
+# out-of-range value, and "Unknown" rejected (no new enum has a member that
+# owns it). Because the table drives both sides, a misspelling would still
+# roundtrip, so the spellings taken from an external standard are pinned by
+# hand at the end, along with the kernel-number facts the doc comments state.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# --- ProbeType: 4 members ---
+fn test_probe_type_roundtrip() {
+    var r1_t, r1 = probe_type_parse(str_from(probe_type_name(PROBE_LIVENESS_READINESS)));
+    assert_eq(is_ok(r1_t), 1, "ProbeType/PROBE_LIVENESS_READINESS: parses");
+    assert_eq(r1, PROBE_LIVENESS_READINESS, "ProbeType/PROBE_LIVENESS_READINESS: roundtrips");
+    var r2_t, r2 = probe_type_parse(str_from(probe_type_name(PROBE_LIVENESS)));
+    assert_eq(is_ok(r2_t), 1, "ProbeType/PROBE_LIVENESS: parses");
+    assert_eq(r2, PROBE_LIVENESS, "ProbeType/PROBE_LIVENESS: roundtrips");
+    var r3_t, r3 = probe_type_parse(str_from(probe_type_name(PROBE_READINESS)));
+    assert_eq(is_ok(r3_t), 1, "ProbeType/PROBE_READINESS: parses");
+    assert_eq(r3, PROBE_READINESS, "ProbeType/PROBE_READINESS: roundtrips");
+    var r4_t, r4 = probe_type_parse(str_from(probe_type_name(PROBE_STARTUP)));
+    assert_eq(is_ok(r4_t), 1, "ProbeType/PROBE_STARTUP: parses");
+    assert_eq(r4, PROBE_STARTUP, "ProbeType/PROBE_STARTUP: roundtrips");
+    var r5_t, r5 = probe_type_parse(str_from("__not_a_probe_type__"));
+    assert_eq(is_ok(r5_t), 0, "ProbeType: unknown string rejected");
+    var r6_t, r6 = probe_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "ProbeType: fallback string owned by no member -> Err");
+    assert(streq(probe_type_name(0 - 1), "Unknown") == 1, "ProbeType: -1 names Unknown");
+    assert(streq(probe_type_name(99999), "Unknown") == 1, "ProbeType: 99999 names Unknown");
+    return 0;
+}
+
+# --- StopReason: 5 members ---
+fn test_stop_reason_roundtrip() {
+    var r1_t, r1 = stop_reason_parse(str_from(stop_reason_name(STOP_USER_REQUESTED)));
+    assert_eq(is_ok(r1_t), 1, "StopReason/STOP_USER_REQUESTED: parses");
+    assert_eq(r1, STOP_USER_REQUESTED, "StopReason/STOP_USER_REQUESTED: roundtrips");
+    var r2_t, r2 = stop_reason_parse(str_from(stop_reason_name(STOP_RESOURCE_EXHAUSTED)));
+    assert_eq(is_ok(r2_t), 1, "StopReason/STOP_RESOURCE_EXHAUSTED: parses");
+    assert_eq(r2, STOP_RESOURCE_EXHAUSTED, "StopReason/STOP_RESOURCE_EXHAUSTED: roundtrips");
+    var r3_t, r3 = stop_reason_parse(str_from(stop_reason_name(STOP_ERROR)));
+    assert_eq(is_ok(r3_t), 1, "StopReason/STOP_ERROR: parses");
+    assert_eq(r3, STOP_ERROR, "StopReason/STOP_ERROR: roundtrips");
+    var r4_t, r4 = stop_reason_parse(str_from(stop_reason_name(STOP_TIMEOUT)));
+    assert_eq(is_ok(r4_t), 1, "StopReason/STOP_TIMEOUT: parses");
+    assert_eq(r4, STOP_TIMEOUT, "StopReason/STOP_TIMEOUT: roundtrips");
+    var r5_t, r5 = stop_reason_parse(str_from(stop_reason_name(STOP_SYSTEM_SHUTDOWN)));
+    assert_eq(is_ok(r5_t), 1, "StopReason/STOP_SYSTEM_SHUTDOWN: parses");
+    assert_eq(r5, STOP_SYSTEM_SHUTDOWN, "StopReason/STOP_SYSTEM_SHUTDOWN: roundtrips");
+    var r6_t, r6 = stop_reason_parse(str_from("__not_a_stop_reason__"));
+    assert_eq(is_ok(r6_t), 0, "StopReason: unknown string rejected");
+    var r7_t, r7 = stop_reason_parse(str_from("Unknown"));
+    assert_eq(is_ok(r7_t), 0, "StopReason: fallback string owned by no member -> Err");
+    assert(streq(stop_reason_name(0 - 1), "Unknown") == 1, "StopReason: -1 names Unknown");
+    assert(streq(stop_reason_name(99999), "Unknown") == 1, "StopReason: 99999 names Unknown");
+    return 0;
+}
+
+# --- CircuitBreakerState: 3 members ---
+fn test_circuit_breaker_state_roundtrip() {
+    var r1_t, r1 = circuit_breaker_state_parse(str_from(circuit_breaker_state_name(CB_CLOSED)));
+    assert_eq(is_ok(r1_t), 1, "CircuitBreakerState/CB_CLOSED: parses");
+    assert_eq(r1, CB_CLOSED, "CircuitBreakerState/CB_CLOSED: roundtrips");
+    var r2_t, r2 = circuit_breaker_state_parse(str_from(circuit_breaker_state_name(CB_OPEN)));
+    assert_eq(is_ok(r2_t), 1, "CircuitBreakerState/CB_OPEN: parses");
+    assert_eq(r2, CB_OPEN, "CircuitBreakerState/CB_OPEN: roundtrips");
+    var r3_t, r3 = circuit_breaker_state_parse(str_from(circuit_breaker_state_name(CB_HALF_OPEN)));
+    assert_eq(is_ok(r3_t), 1, "CircuitBreakerState/CB_HALF_OPEN: parses");
+    assert_eq(r3, CB_HALF_OPEN, "CircuitBreakerState/CB_HALF_OPEN: roundtrips");
+    var r4_t, r4 = circuit_breaker_state_parse(str_from("__not_a_circuit_breaker_state__"));
+    assert_eq(is_ok(r4_t), 0, "CircuitBreakerState: unknown string rejected");
+    var r5_t, r5 = circuit_breaker_state_parse(str_from("Unknown"));
+    assert_eq(is_ok(r5_t), 0, "CircuitBreakerState: fallback string owned by no member -> Err");
+    assert(streq(circuit_breaker_state_name(0 - 1), "Unknown") == 1, "CircuitBreakerState: -1 names Unknown");
+    assert(streq(circuit_breaker_state_name(99999), "Unknown") == 1, "CircuitBreakerState: 99999 names Unknown");
+    return 0;
+}
+
+# --- LabelOperator: 4 members ---
+fn test_label_operator_roundtrip() {
+    var r1_t, r1 = label_operator_parse(str_from(label_operator_name(LABEL_IN)));
+    assert_eq(is_ok(r1_t), 1, "LabelOperator/LABEL_IN: parses");
+    assert_eq(r1, LABEL_IN, "LabelOperator/LABEL_IN: roundtrips");
+    var r2_t, r2 = label_operator_parse(str_from(label_operator_name(LABEL_NOT_IN)));
+    assert_eq(is_ok(r2_t), 1, "LabelOperator/LABEL_NOT_IN: parses");
+    assert_eq(r2, LABEL_NOT_IN, "LabelOperator/LABEL_NOT_IN: roundtrips");
+    var r3_t, r3 = label_operator_parse(str_from(label_operator_name(LABEL_EXISTS)));
+    assert_eq(is_ok(r3_t), 1, "LabelOperator/LABEL_EXISTS: parses");
+    assert_eq(r3, LABEL_EXISTS, "LabelOperator/LABEL_EXISTS: roundtrips");
+    var r4_t, r4 = label_operator_parse(str_from(label_operator_name(LABEL_DOES_NOT_EXIST)));
+    assert_eq(is_ok(r4_t), 1, "LabelOperator/LABEL_DOES_NOT_EXIST: parses");
+    assert_eq(r4, LABEL_DOES_NOT_EXIST, "LabelOperator/LABEL_DOES_NOT_EXIST: roundtrips");
+    var r5_t, r5 = label_operator_parse(str_from("__not_a_label_operator__"));
+    assert_eq(is_ok(r5_t), 0, "LabelOperator: unknown string rejected");
+    var r6_t, r6 = label_operator_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "LabelOperator: fallback string owned by no member -> Err");
+    assert(streq(label_operator_name(0 - 1), "Unknown") == 1, "LabelOperator: -1 names Unknown");
+    assert(streq(label_operator_name(99999), "Unknown") == 1, "LabelOperator: 99999 names Unknown");
+    return 0;
+}
+
+# --- AgnostikErrorCode: 10 members ---
+fn test_agnostik_err_code_roundtrip() {
+    var r1_t, r1 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_AGENT_NOT_FOUND)));
+    assert_eq(is_ok(r1_t), 1, "AgnostikErrorCode/CODE_AGENT_NOT_FOUND: parses");
+    assert_eq(r1, CODE_AGENT_NOT_FOUND, "AgnostikErrorCode/CODE_AGENT_NOT_FOUND: roundtrips");
+    var r2_t, r2 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_PERMISSION_DENIED)));
+    assert_eq(is_ok(r2_t), 1, "AgnostikErrorCode/CODE_PERMISSION_DENIED: parses");
+    assert_eq(r2, CODE_PERMISSION_DENIED, "AgnostikErrorCode/CODE_PERMISSION_DENIED: roundtrips");
+    var r3_t, r3 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_CONFIG_ERROR)));
+    assert_eq(is_ok(r3_t), 1, "AgnostikErrorCode/CODE_CONFIG_ERROR: parses");
+    assert_eq(r3, CODE_CONFIG_ERROR, "AgnostikErrorCode/CODE_CONFIG_ERROR: roundtrips");
+    var r4_t, r4 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_TIMEOUT)));
+    assert_eq(is_ok(r4_t), 1, "AgnostikErrorCode/CODE_TIMEOUT: parses");
+    assert_eq(r4, CODE_TIMEOUT, "AgnostikErrorCode/CODE_TIMEOUT: roundtrips");
+    var r5_t, r5 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_RESOURCE_EXHAUSTED)));
+    assert_eq(is_ok(r5_t), 1, "AgnostikErrorCode/CODE_RESOURCE_EXHAUSTED: parses");
+    assert_eq(r5, CODE_RESOURCE_EXHAUSTED, "AgnostikErrorCode/CODE_RESOURCE_EXHAUSTED: roundtrips");
+    var r6_t, r6 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_INVALID_ARGUMENT)));
+    assert_eq(is_ok(r6_t), 1, "AgnostikErrorCode/CODE_INVALID_ARGUMENT: parses");
+    assert_eq(r6, CODE_INVALID_ARGUMENT, "AgnostikErrorCode/CODE_INVALID_ARGUMENT: roundtrips");
+    var r7_t, r7 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_NOT_SUPPORTED)));
+    assert_eq(is_ok(r7_t), 1, "AgnostikErrorCode/CODE_NOT_SUPPORTED: parses");
+    assert_eq(r7, CODE_NOT_SUPPORTED, "AgnostikErrorCode/CODE_NOT_SUPPORTED: roundtrips");
+    var r8_t, r8 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_INTERNAL)));
+    assert_eq(is_ok(r8_t), 1, "AgnostikErrorCode/CODE_INTERNAL: parses");
+    assert_eq(r8, CODE_INTERNAL, "AgnostikErrorCode/CODE_INTERNAL: roundtrips");
+    var r9_t, r9 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_SERIALIZATION)));
+    assert_eq(is_ok(r9_t), 1, "AgnostikErrorCode/CODE_SERIALIZATION: parses");
+    assert_eq(r9, CODE_SERIALIZATION, "AgnostikErrorCode/CODE_SERIALIZATION: roundtrips");
+    var r10_t, r10 = agnostik_err_code_parse(str_from(agnostik_err_code_name(CODE_IO)));
+    assert_eq(is_ok(r10_t), 1, "AgnostikErrorCode/CODE_IO: parses");
+    assert_eq(r10, CODE_IO, "AgnostikErrorCode/CODE_IO: roundtrips");
+    var r11_t, r11 = agnostik_err_code_parse(str_from("__not_a_agnostik_err_code__"));
+    assert_eq(is_ok(r11_t), 0, "AgnostikErrorCode: unknown string rejected");
+    var r12_t, r12 = agnostik_err_code_parse(str_from("Unknown"));
+    assert_eq(is_ok(r12_t), 0, "AgnostikErrorCode: fallback string owned by no member -> Err");
+    assert(streq(agnostik_err_code_name(0 - 1), "Unknown") == 1, "AgnostikErrorCode: -1 names Unknown");
+    assert(streq(agnostik_err_code_name(99999), "Unknown") == 1, "AgnostikErrorCode: 99999 names Unknown");
+    return 0;
+}
+
+# --- ContentBlockType: 8 members ---
+fn test_content_block_type_roundtrip() {
+    var r1_t, r1 = content_block_type_parse(str_from(content_block_type_name(CB_TEXT)));
+    assert_eq(is_ok(r1_t), 1, "ContentBlockType/CB_TEXT: parses");
+    assert_eq(r1, CB_TEXT, "ContentBlockType/CB_TEXT: roundtrips");
+    var r2_t, r2 = content_block_type_parse(str_from(content_block_type_name(CB_IMAGE)));
+    assert_eq(is_ok(r2_t), 1, "ContentBlockType/CB_IMAGE: parses");
+    assert_eq(r2, CB_IMAGE, "ContentBlockType/CB_IMAGE: roundtrips");
+    var r3_t, r3 = content_block_type_parse(str_from(content_block_type_name(CB_DOCUMENT)));
+    assert_eq(is_ok(r3_t), 1, "ContentBlockType/CB_DOCUMENT: parses");
+    assert_eq(r3, CB_DOCUMENT, "ContentBlockType/CB_DOCUMENT: roundtrips");
+    var r4_t, r4 = content_block_type_parse(str_from(content_block_type_name(CB_TOOL_USE)));
+    assert_eq(is_ok(r4_t), 1, "ContentBlockType/CB_TOOL_USE: parses");
+    assert_eq(r4, CB_TOOL_USE, "ContentBlockType/CB_TOOL_USE: roundtrips");
+    var r5_t, r5 = content_block_type_parse(str_from(content_block_type_name(CB_TOOL_RESULT)));
+    assert_eq(is_ok(r5_t), 1, "ContentBlockType/CB_TOOL_RESULT: parses");
+    assert_eq(r5, CB_TOOL_RESULT, "ContentBlockType/CB_TOOL_RESULT: roundtrips");
+    var r6_t, r6 = content_block_type_parse(str_from(content_block_type_name(CB_THINKING)));
+    assert_eq(is_ok(r6_t), 1, "ContentBlockType/CB_THINKING: parses");
+    assert_eq(r6, CB_THINKING, "ContentBlockType/CB_THINKING: roundtrips");
+    var r7_t, r7 = content_block_type_parse(str_from(content_block_type_name(CB_AUDIO)));
+    assert_eq(is_ok(r7_t), 1, "ContentBlockType/CB_AUDIO: parses");
+    assert_eq(r7, CB_AUDIO, "ContentBlockType/CB_AUDIO: roundtrips");
+    var r8_t, r8 = content_block_type_parse(str_from(content_block_type_name(CB_CITATION)));
+    assert_eq(is_ok(r8_t), 1, "ContentBlockType/CB_CITATION: parses");
+    assert_eq(r8, CB_CITATION, "ContentBlockType/CB_CITATION: roundtrips");
+    var r9_t, r9 = content_block_type_parse(str_from("__not_a_content_block_type__"));
+    assert_eq(is_ok(r9_t), 0, "ContentBlockType: unknown string rejected");
+    var r10_t, r10 = content_block_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r10_t), 0, "ContentBlockType: fallback string owned by no member -> Err");
+    assert(streq(content_block_type_name(0 - 1), "Unknown") == 1, "ContentBlockType: -1 names Unknown");
+    assert(streq(content_block_type_name(99999), "Unknown") == 1, "ContentBlockType: 99999 names Unknown");
+    return 0;
+}
+
+# --- CacheControl: 1 member ---
+fn test_cache_control_roundtrip() {
+    var r1_t, r1 = cache_control_parse(str_from(cache_control_name(CACHE_EPHEMERAL)));
+    assert_eq(is_ok(r1_t), 1, "CacheControl/CACHE_EPHEMERAL: parses");
+    assert_eq(r1, CACHE_EPHEMERAL, "CacheControl/CACHE_EPHEMERAL: roundtrips");
+    var r2_t, r2 = cache_control_parse(str_from("__not_a_cache_control__"));
+    assert_eq(is_ok(r2_t), 0, "CacheControl: unknown string rejected");
+    var r3_t, r3 = cache_control_parse(str_from("Unknown"));
+    assert_eq(is_ok(r3_t), 0, "CacheControl: fallback string owned by no member -> Err");
+    assert(streq(cache_control_name(0 - 1), "Unknown") == 1, "CacheControl: -1 names Unknown");
+    assert(streq(cache_control_name(99999), "Unknown") == 1, "CacheControl: 99999 names Unknown");
+    return 0;
+}
+
+# --- ToolChoice: 4 members ---
+fn test_tool_choice_roundtrip() {
+    var r1_t, r1 = tool_choice_parse(str_from(tool_choice_name(TOOL_AUTO)));
+    assert_eq(is_ok(r1_t), 1, "ToolChoice/TOOL_AUTO: parses");
+    assert_eq(r1, TOOL_AUTO, "ToolChoice/TOOL_AUTO: roundtrips");
+    var r2_t, r2 = tool_choice_parse(str_from(tool_choice_name(TOOL_NONE)));
+    assert_eq(is_ok(r2_t), 1, "ToolChoice/TOOL_NONE: parses");
+    assert_eq(r2, TOOL_NONE, "ToolChoice/TOOL_NONE: roundtrips");
+    var r3_t, r3 = tool_choice_parse(str_from(tool_choice_name(TOOL_REQUIRED)));
+    assert_eq(is_ok(r3_t), 1, "ToolChoice/TOOL_REQUIRED: parses");
+    assert_eq(r3, TOOL_REQUIRED, "ToolChoice/TOOL_REQUIRED: roundtrips");
+    var r4_t, r4 = tool_choice_parse(str_from(tool_choice_name(TOOL_SPECIFIC)));
+    assert_eq(is_ok(r4_t), 1, "ToolChoice/TOOL_SPECIFIC: parses");
+    assert_eq(r4, TOOL_SPECIFIC, "ToolChoice/TOOL_SPECIFIC: roundtrips");
+    var r5_t, r5 = tool_choice_parse(str_from("__not_a_tool_choice__"));
+    assert_eq(is_ok(r5_t), 0, "ToolChoice: unknown string rejected");
+    var r6_t, r6 = tool_choice_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "ToolChoice: fallback string owned by no member -> Err");
+    assert(streq(tool_choice_name(0 - 1), "Unknown") == 1, "ToolChoice: -1 names Unknown");
+    assert(streq(tool_choice_name(99999), "Unknown") == 1, "ToolChoice: 99999 names Unknown");
+    return 0;
+}
+
+# --- ResponseFormat: 3 members ---
+fn test_response_format_roundtrip() {
+    var r1_t, r1 = response_format_parse(str_from(response_format_name(RESP_TEXT)));
+    assert_eq(is_ok(r1_t), 1, "ResponseFormat/RESP_TEXT: parses");
+    assert_eq(r1, RESP_TEXT, "ResponseFormat/RESP_TEXT: roundtrips");
+    var r2_t, r2 = response_format_parse(str_from(response_format_name(RESP_JSON_OBJECT)));
+    assert_eq(is_ok(r2_t), 1, "ResponseFormat/RESP_JSON_OBJECT: parses");
+    assert_eq(r2, RESP_JSON_OBJECT, "ResponseFormat/RESP_JSON_OBJECT: roundtrips");
+    var r3_t, r3 = response_format_parse(str_from(response_format_name(RESP_JSON_SCHEMA)));
+    assert_eq(is_ok(r3_t), 1, "ResponseFormat/RESP_JSON_SCHEMA: parses");
+    assert_eq(r3, RESP_JSON_SCHEMA, "ResponseFormat/RESP_JSON_SCHEMA: roundtrips");
+    var r4_t, r4 = response_format_parse(str_from("__not_a_response_format__"));
+    assert_eq(is_ok(r4_t), 0, "ResponseFormat: unknown string rejected");
+    var r5_t, r5 = response_format_parse(str_from("Unknown"));
+    assert_eq(is_ok(r5_t), 0, "ResponseFormat: fallback string owned by no member -> Err");
+    assert(streq(response_format_name(0 - 1), "Unknown") == 1, "ResponseFormat: -1 names Unknown");
+    assert(streq(response_format_name(99999), "Unknown") == 1, "ResponseFormat: 99999 names Unknown");
+    return 0;
+}
+
+# --- SafetyCategory: 5 members ---
+fn test_safety_category_roundtrip() {
+    var r1_t, r1 = safety_category_parse(str_from(safety_category_name(SAFETY_HATE)));
+    assert_eq(is_ok(r1_t), 1, "SafetyCategory/SAFETY_HATE: parses");
+    assert_eq(r1, SAFETY_HATE, "SafetyCategory/SAFETY_HATE: roundtrips");
+    var r2_t, r2 = safety_category_parse(str_from(safety_category_name(SAFETY_HARASSMENT)));
+    assert_eq(is_ok(r2_t), 1, "SafetyCategory/SAFETY_HARASSMENT: parses");
+    assert_eq(r2, SAFETY_HARASSMENT, "SafetyCategory/SAFETY_HARASSMENT: roundtrips");
+    var r3_t, r3 = safety_category_parse(str_from(safety_category_name(SAFETY_SEXUAL)));
+    assert_eq(is_ok(r3_t), 1, "SafetyCategory/SAFETY_SEXUAL: parses");
+    assert_eq(r3, SAFETY_SEXUAL, "SafetyCategory/SAFETY_SEXUAL: roundtrips");
+    var r4_t, r4 = safety_category_parse(str_from(safety_category_name(SAFETY_DANGEROUS)));
+    assert_eq(is_ok(r4_t), 1, "SafetyCategory/SAFETY_DANGEROUS: parses");
+    assert_eq(r4, SAFETY_DANGEROUS, "SafetyCategory/SAFETY_DANGEROUS: roundtrips");
+    var r5_t, r5 = safety_category_parse(str_from(safety_category_name(SAFETY_CIVIC)));
+    assert_eq(is_ok(r5_t), 1, "SafetyCategory/SAFETY_CIVIC: parses");
+    assert_eq(r5, SAFETY_CIVIC, "SafetyCategory/SAFETY_CIVIC: roundtrips");
+    var r6_t, r6 = safety_category_parse(str_from("__not_a_safety_category__"));
+    assert_eq(is_ok(r6_t), 0, "SafetyCategory: unknown string rejected");
+    var r7_t, r7 = safety_category_parse(str_from("Unknown"));
+    assert_eq(is_ok(r7_t), 0, "SafetyCategory: fallback string owned by no member -> Err");
+    assert(streq(safety_category_name(0 - 1), "Unknown") == 1, "SafetyCategory: -1 names Unknown");
+    assert(streq(safety_category_name(99999), "Unknown") == 1, "SafetyCategory: 99999 names Unknown");
+    return 0;
+}
+
+# --- SafetyProbability: 4 members ---
+fn test_safety_probability_roundtrip() {
+    var r1_t, r1 = safety_probability_parse(str_from(safety_probability_name(SAFETY_NEGLIGIBLE)));
+    assert_eq(is_ok(r1_t), 1, "SafetyProbability/SAFETY_NEGLIGIBLE: parses");
+    assert_eq(r1, SAFETY_NEGLIGIBLE, "SafetyProbability/SAFETY_NEGLIGIBLE: roundtrips");
+    var r2_t, r2 = safety_probability_parse(str_from(safety_probability_name(SAFETY_LOW)));
+    assert_eq(is_ok(r2_t), 1, "SafetyProbability/SAFETY_LOW: parses");
+    assert_eq(r2, SAFETY_LOW, "SafetyProbability/SAFETY_LOW: roundtrips");
+    var r3_t, r3 = safety_probability_parse(str_from(safety_probability_name(SAFETY_MEDIUM)));
+    assert_eq(is_ok(r3_t), 1, "SafetyProbability/SAFETY_MEDIUM: parses");
+    assert_eq(r3, SAFETY_MEDIUM, "SafetyProbability/SAFETY_MEDIUM: roundtrips");
+    var r4_t, r4 = safety_probability_parse(str_from(safety_probability_name(SAFETY_HIGH)));
+    assert_eq(is_ok(r4_t), 1, "SafetyProbability/SAFETY_HIGH: parses");
+    assert_eq(r4, SAFETY_HIGH, "SafetyProbability/SAFETY_HIGH: roundtrips");
+    var r5_t, r5 = safety_probability_parse(str_from("__not_a_safety_probability__"));
+    assert_eq(is_ok(r5_t), 0, "SafetyProbability: unknown string rejected");
+    var r6_t, r6 = safety_probability_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "SafetyProbability: fallback string owned by no member -> Err");
+    assert(streq(safety_probability_name(0 - 1), "Unknown") == 1, "SafetyProbability: -1 names Unknown");
+    assert(streq(safety_probability_name(99999), "Unknown") == 1, "SafetyProbability: 99999 names Unknown");
+    return 0;
+}
+
+# --- StreamEventType: 8 members ---
+fn test_stream_event_type_roundtrip() {
+    var r1_t, r1 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_CONTENT_BLOCK_START)));
+    assert_eq(is_ok(r1_t), 1, "StreamEventType/STREAM_CONTENT_BLOCK_START: parses");
+    assert_eq(r1, STREAM_CONTENT_BLOCK_START, "StreamEventType/STREAM_CONTENT_BLOCK_START: roundtrips");
+    var r2_t, r2 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_DELTA)));
+    assert_eq(is_ok(r2_t), 1, "StreamEventType/STREAM_DELTA: parses");
+    assert_eq(r2, STREAM_DELTA, "StreamEventType/STREAM_DELTA: roundtrips");
+    var r3_t, r3 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_TOOL_CALL_DELTA)));
+    assert_eq(is_ok(r3_t), 1, "StreamEventType/STREAM_TOOL_CALL_DELTA: parses");
+    assert_eq(r3, STREAM_TOOL_CALL_DELTA, "StreamEventType/STREAM_TOOL_CALL_DELTA: roundtrips");
+    var r4_t, r4 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_CONTENT_BLOCK_STOP)));
+    assert_eq(is_ok(r4_t), 1, "StreamEventType/STREAM_CONTENT_BLOCK_STOP: parses");
+    assert_eq(r4, STREAM_CONTENT_BLOCK_STOP, "StreamEventType/STREAM_CONTENT_BLOCK_STOP: roundtrips");
+    var r5_t, r5 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_USAGE)));
+    assert_eq(is_ok(r5_t), 1, "StreamEventType/STREAM_USAGE: parses");
+    assert_eq(r5, STREAM_USAGE, "StreamEventType/STREAM_USAGE: roundtrips");
+    var r6_t, r6 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_DONE)));
+    assert_eq(is_ok(r6_t), 1, "StreamEventType/STREAM_DONE: parses");
+    assert_eq(r6, STREAM_DONE, "StreamEventType/STREAM_DONE: roundtrips");
+    var r7_t, r7 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_ERROR)));
+    assert_eq(is_ok(r7_t), 1, "StreamEventType/STREAM_ERROR: parses");
+    assert_eq(r7, STREAM_ERROR, "StreamEventType/STREAM_ERROR: roundtrips");
+    var r8_t, r8 = stream_event_type_parse(str_from(stream_event_type_name(STREAM_PING)));
+    assert_eq(is_ok(r8_t), 1, "StreamEventType/STREAM_PING: parses");
+    assert_eq(r8, STREAM_PING, "StreamEventType/STREAM_PING: roundtrips");
+    var r9_t, r9 = stream_event_type_parse(str_from("__not_a_stream_event_type__"));
+    assert_eq(is_ok(r9_t), 0, "StreamEventType: unknown string rejected");
+    var r10_t, r10 = stream_event_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r10_t), 0, "StreamEventType: fallback string owned by no member -> Err");
+    assert(streq(stream_event_type_name(0 - 1), "Unknown") == 1, "StreamEventType: -1 names Unknown");
+    assert(streq(stream_event_type_name(99999), "Unknown") == 1, "StreamEventType: 99999 names Unknown");
+    return 0;
+}
+
+# --- BatchStatus: 6 members ---
+fn test_batch_status_roundtrip() {
+    var r1_t, r1 = batch_status_parse(str_from(batch_status_name(BATCH_PENDING)));
+    assert_eq(is_ok(r1_t), 1, "BatchStatus/BATCH_PENDING: parses");
+    assert_eq(r1, BATCH_PENDING, "BatchStatus/BATCH_PENDING: roundtrips");
+    var r2_t, r2 = batch_status_parse(str_from(batch_status_name(BATCH_IN_PROGRESS)));
+    assert_eq(is_ok(r2_t), 1, "BatchStatus/BATCH_IN_PROGRESS: parses");
+    assert_eq(r2, BATCH_IN_PROGRESS, "BatchStatus/BATCH_IN_PROGRESS: roundtrips");
+    var r3_t, r3 = batch_status_parse(str_from(batch_status_name(BATCH_COMPLETED)));
+    assert_eq(is_ok(r3_t), 1, "BatchStatus/BATCH_COMPLETED: parses");
+    assert_eq(r3, BATCH_COMPLETED, "BatchStatus/BATCH_COMPLETED: roundtrips");
+    var r4_t, r4 = batch_status_parse(str_from(batch_status_name(BATCH_FAILED)));
+    assert_eq(is_ok(r4_t), 1, "BatchStatus/BATCH_FAILED: parses");
+    assert_eq(r4, BATCH_FAILED, "BatchStatus/BATCH_FAILED: roundtrips");
+    var r5_t, r5 = batch_status_parse(str_from(batch_status_name(BATCH_CANCELLED)));
+    assert_eq(is_ok(r5_t), 1, "BatchStatus/BATCH_CANCELLED: parses");
+    assert_eq(r5, BATCH_CANCELLED, "BatchStatus/BATCH_CANCELLED: roundtrips");
+    var r6_t, r6 = batch_status_parse(str_from(batch_status_name(BATCH_EXPIRED)));
+    assert_eq(is_ok(r6_t), 1, "BatchStatus/BATCH_EXPIRED: parses");
+    assert_eq(r6, BATCH_EXPIRED, "BatchStatus/BATCH_EXPIRED: roundtrips");
+    var r7_t, r7 = batch_status_parse(str_from("__not_a_batch_status__"));
+    assert_eq(is_ok(r7_t), 0, "BatchStatus: unknown string rejected");
+    var r8_t, r8 = batch_status_parse(str_from("Unknown"));
+    assert_eq(is_ok(r8_t), 0, "BatchStatus: fallback string owned by no member -> Err");
+    assert(streq(batch_status_name(0 - 1), "Unknown") == 1, "BatchStatus: -1 names Unknown");
+    assert(streq(batch_status_name(99999), "Unknown") == 1, "BatchStatus: 99999 names Unknown");
+    return 0;
+}
+
+# --- ConditionOperator: 8 members ---
+fn test_condition_operator_roundtrip() {
+    var r1_t, r1 = condition_operator_parse(str_from(condition_operator_name(COND_EQ)));
+    assert_eq(is_ok(r1_t), 1, "ConditionOperator/COND_EQ: parses");
+    assert_eq(r1, COND_EQ, "ConditionOperator/COND_EQ: roundtrips");
+    var r2_t, r2 = condition_operator_parse(str_from(condition_operator_name(COND_NEQ)));
+    assert_eq(is_ok(r2_t), 1, "ConditionOperator/COND_NEQ: parses");
+    assert_eq(r2, COND_NEQ, "ConditionOperator/COND_NEQ: roundtrips");
+    var r3_t, r3 = condition_operator_parse(str_from(condition_operator_name(COND_IN)));
+    assert_eq(is_ok(r3_t), 1, "ConditionOperator/COND_IN: parses");
+    assert_eq(r3, COND_IN, "ConditionOperator/COND_IN: roundtrips");
+    var r4_t, r4 = condition_operator_parse(str_from(condition_operator_name(COND_NIN)));
+    assert_eq(is_ok(r4_t), 1, "ConditionOperator/COND_NIN: parses");
+    assert_eq(r4, COND_NIN, "ConditionOperator/COND_NIN: roundtrips");
+    var r5_t, r5 = condition_operator_parse(str_from(condition_operator_name(COND_GT)));
+    assert_eq(is_ok(r5_t), 1, "ConditionOperator/COND_GT: parses");
+    assert_eq(r5, COND_GT, "ConditionOperator/COND_GT: roundtrips");
+    var r6_t, r6 = condition_operator_parse(str_from(condition_operator_name(COND_GTE)));
+    assert_eq(is_ok(r6_t), 1, "ConditionOperator/COND_GTE: parses");
+    assert_eq(r6, COND_GTE, "ConditionOperator/COND_GTE: roundtrips");
+    var r7_t, r7 = condition_operator_parse(str_from(condition_operator_name(COND_LT)));
+    assert_eq(is_ok(r7_t), 1, "ConditionOperator/COND_LT: parses");
+    assert_eq(r7, COND_LT, "ConditionOperator/COND_LT: roundtrips");
+    var r8_t, r8 = condition_operator_parse(str_from(condition_operator_name(COND_LTE)));
+    assert_eq(is_ok(r8_t), 1, "ConditionOperator/COND_LTE: parses");
+    assert_eq(r8, COND_LTE, "ConditionOperator/COND_LTE: roundtrips");
+    var r9_t, r9 = condition_operator_parse(str_from("__not_a_condition_operator__"));
+    assert_eq(is_ok(r9_t), 0, "ConditionOperator: unknown string rejected");
+    var r10_t, r10 = condition_operator_parse(str_from("Unknown"));
+    assert_eq(is_ok(r10_t), 0, "ConditionOperator: fallback string owned by no member -> Err");
+    assert(streq(condition_operator_name(0 - 1), "Unknown") == 1, "ConditionOperator: -1 names Unknown");
+    assert(streq(condition_operator_name(99999), "Unknown") == 1, "ConditionOperator: 99999 names Unknown");
+    return 0;
+}
+
+# --- SeccompMode: 4 members ---
+fn test_seccomp_mode_roundtrip() {
+    var r1_t, r1 = seccomp_mode_parse(str_from(seccomp_mode_name(SECCOMP_DISABLED)));
+    assert_eq(is_ok(r1_t), 1, "SeccompMode/SECCOMP_DISABLED: parses");
+    assert_eq(r1, SECCOMP_DISABLED, "SeccompMode/SECCOMP_DISABLED: roundtrips");
+    var r2_t, r2 = seccomp_mode_parse(str_from(seccomp_mode_name(SECCOMP_STRICT)));
+    assert_eq(is_ok(r2_t), 1, "SeccompMode/SECCOMP_STRICT: parses");
+    assert_eq(r2, SECCOMP_STRICT, "SeccompMode/SECCOMP_STRICT: roundtrips");
+    var r3_t, r3 = seccomp_mode_parse(str_from(seccomp_mode_name(SECCOMP_FILTER)));
+    assert_eq(is_ok(r3_t), 1, "SeccompMode/SECCOMP_FILTER: parses");
+    assert_eq(r3, SECCOMP_FILTER, "SeccompMode/SECCOMP_FILTER: roundtrips");
+    var r4_t, r4 = seccomp_mode_parse(str_from(seccomp_mode_name(SECCOMP_UNSUPPORTED)));
+    assert_eq(is_ok(r4_t), 1, "SeccompMode/SECCOMP_UNSUPPORTED: parses");
+    assert_eq(r4, SECCOMP_UNSUPPORTED, "SeccompMode/SECCOMP_UNSUPPORTED: roundtrips");
+    var r5_t, r5 = seccomp_mode_parse(str_from("__not_a_seccomp_mode__"));
+    assert_eq(is_ok(r5_t), 0, "SeccompMode: unknown string rejected");
+    var r6_t, r6 = seccomp_mode_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "SeccompMode: fallback string owned by no member -> Err");
+    assert(streq(seccomp_mode_name(0 - 1), "Unknown") == 1, "SeccompMode: -1 names Unknown");
+    assert(streq(seccomp_mode_name(99999), "Unknown") == 1, "SeccompMode: 99999 names Unknown");
+    return 0;
+}
+
+# --- SystemFeature: 6 members ---
+fn test_system_feature_roundtrip() {
+    var r1_t, r1 = system_feature_parse(str_from(system_feature_name(FEAT_LANDLOCK)));
+    assert_eq(is_ok(r1_t), 1, "SystemFeature/FEAT_LANDLOCK: parses");
+    assert_eq(r1, FEAT_LANDLOCK, "SystemFeature/FEAT_LANDLOCK: roundtrips");
+    var r2_t, r2 = system_feature_parse(str_from(system_feature_name(FEAT_SECCOMP)));
+    assert_eq(is_ok(r2_t), 1, "SystemFeature/FEAT_SECCOMP: parses");
+    assert_eq(r2, FEAT_SECCOMP, "SystemFeature/FEAT_SECCOMP: roundtrips");
+    var r3_t, r3 = system_feature_parse(str_from(system_feature_name(FEAT_NAMESPACES)));
+    assert_eq(is_ok(r3_t), 1, "SystemFeature/FEAT_NAMESPACES: parses");
+    assert_eq(r3, FEAT_NAMESPACES, "SystemFeature/FEAT_NAMESPACES: roundtrips");
+    var r4_t, r4 = system_feature_parse(str_from(system_feature_name(FEAT_CGROUPS)));
+    assert_eq(is_ok(r4_t), 1, "SystemFeature/FEAT_CGROUPS: parses");
+    assert_eq(r4, FEAT_CGROUPS, "SystemFeature/FEAT_CGROUPS: roundtrips");
+    var r5_t, r5 = system_feature_parse(str_from(system_feature_name(FEAT_TPM)));
+    assert_eq(is_ok(r5_t), 1, "SystemFeature/FEAT_TPM: parses");
+    assert_eq(r5, FEAT_TPM, "SystemFeature/FEAT_TPM: roundtrips");
+    var r6_t, r6 = system_feature_parse(str_from(system_feature_name(FEAT_SECURE_BOOT)));
+    assert_eq(is_ok(r6_t), 1, "SystemFeature/FEAT_SECURE_BOOT: parses");
+    assert_eq(r6, FEAT_SECURE_BOOT, "SystemFeature/FEAT_SECURE_BOOT: roundtrips");
+    var r7_t, r7 = system_feature_parse(str_from("__not_a_system_feature__"));
+    assert_eq(is_ok(r7_t), 0, "SystemFeature: unknown string rejected");
+    var r8_t, r8 = system_feature_parse(str_from("Unknown"));
+    assert_eq(is_ok(r8_t), 0, "SystemFeature: fallback string owned by no member -> Err");
+    assert(streq(system_feature_name(0 - 1), "Unknown") == 1, "SystemFeature: -1 names Unknown");
+    assert(streq(system_feature_name(99999), "Unknown") == 1, "SystemFeature: 99999 names Unknown");
+    return 0;
+}
+
+# --- LandlockFsAccess: 15 members ---
+fn test_landlock_fs_access_roundtrip() {
+    var r1_t, r1 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_EXECUTE)));
+    assert_eq(is_ok(r1_t), 1, "LandlockFsAccess/LL_EXECUTE: parses");
+    assert_eq(r1, LL_EXECUTE, "LandlockFsAccess/LL_EXECUTE: roundtrips");
+    var r2_t, r2 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_WRITE_FILE)));
+    assert_eq(is_ok(r2_t), 1, "LandlockFsAccess/LL_WRITE_FILE: parses");
+    assert_eq(r2, LL_WRITE_FILE, "LandlockFsAccess/LL_WRITE_FILE: roundtrips");
+    var r3_t, r3 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_READ_FILE)));
+    assert_eq(is_ok(r3_t), 1, "LandlockFsAccess/LL_READ_FILE: parses");
+    assert_eq(r3, LL_READ_FILE, "LandlockFsAccess/LL_READ_FILE: roundtrips");
+    var r4_t, r4 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_READ_DIR)));
+    assert_eq(is_ok(r4_t), 1, "LandlockFsAccess/LL_READ_DIR: parses");
+    assert_eq(r4, LL_READ_DIR, "LandlockFsAccess/LL_READ_DIR: roundtrips");
+    var r5_t, r5 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_REMOVE_DIR)));
+    assert_eq(is_ok(r5_t), 1, "LandlockFsAccess/LL_REMOVE_DIR: parses");
+    assert_eq(r5, LL_REMOVE_DIR, "LandlockFsAccess/LL_REMOVE_DIR: roundtrips");
+    var r6_t, r6 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_REMOVE_FILE)));
+    assert_eq(is_ok(r6_t), 1, "LandlockFsAccess/LL_REMOVE_FILE: parses");
+    assert_eq(r6, LL_REMOVE_FILE, "LandlockFsAccess/LL_REMOVE_FILE: roundtrips");
+    var r7_t, r7 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_CHAR)));
+    assert_eq(is_ok(r7_t), 1, "LandlockFsAccess/LL_MAKE_CHAR: parses");
+    assert_eq(r7, LL_MAKE_CHAR, "LandlockFsAccess/LL_MAKE_CHAR: roundtrips");
+    var r8_t, r8 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_DIR)));
+    assert_eq(is_ok(r8_t), 1, "LandlockFsAccess/LL_MAKE_DIR: parses");
+    assert_eq(r8, LL_MAKE_DIR, "LandlockFsAccess/LL_MAKE_DIR: roundtrips");
+    var r9_t, r9 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_REG)));
+    assert_eq(is_ok(r9_t), 1, "LandlockFsAccess/LL_MAKE_REG: parses");
+    assert_eq(r9, LL_MAKE_REG, "LandlockFsAccess/LL_MAKE_REG: roundtrips");
+    var r10_t, r10 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_SOCK)));
+    assert_eq(is_ok(r10_t), 1, "LandlockFsAccess/LL_MAKE_SOCK: parses");
+    assert_eq(r10, LL_MAKE_SOCK, "LandlockFsAccess/LL_MAKE_SOCK: roundtrips");
+    var r11_t, r11 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_FIFO)));
+    assert_eq(is_ok(r11_t), 1, "LandlockFsAccess/LL_MAKE_FIFO: parses");
+    assert_eq(r11, LL_MAKE_FIFO, "LandlockFsAccess/LL_MAKE_FIFO: roundtrips");
+    var r12_t, r12 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_BLOCK)));
+    assert_eq(is_ok(r12_t), 1, "LandlockFsAccess/LL_MAKE_BLOCK: parses");
+    assert_eq(r12, LL_MAKE_BLOCK, "LandlockFsAccess/LL_MAKE_BLOCK: roundtrips");
+    var r13_t, r13 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_MAKE_SYM)));
+    assert_eq(is_ok(r13_t), 1, "LandlockFsAccess/LL_MAKE_SYM: parses");
+    assert_eq(r13, LL_MAKE_SYM, "LandlockFsAccess/LL_MAKE_SYM: roundtrips");
+    var r14_t, r14 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_REFER)));
+    assert_eq(is_ok(r14_t), 1, "LandlockFsAccess/LL_REFER: parses");
+    assert_eq(r14, LL_REFER, "LandlockFsAccess/LL_REFER: roundtrips");
+    var r15_t, r15 = landlock_fs_access_parse(str_from(landlock_fs_access_name(LL_TRUNCATE)));
+    assert_eq(is_ok(r15_t), 1, "LandlockFsAccess/LL_TRUNCATE: parses");
+    assert_eq(r15, LL_TRUNCATE, "LandlockFsAccess/LL_TRUNCATE: roundtrips");
+    var r16_t, r16 = landlock_fs_access_parse(str_from("__not_a_landlock_fs_access__"));
+    assert_eq(is_ok(r16_t), 0, "LandlockFsAccess: unknown string rejected");
+    var r17_t, r17 = landlock_fs_access_parse(str_from("Unknown"));
+    assert_eq(is_ok(r17_t), 0, "LandlockFsAccess: fallback string owned by no member -> Err");
+    assert(streq(landlock_fs_access_name(0 - 1), "Unknown") == 1, "LandlockFsAccess: -1 names Unknown");
+    assert(streq(landlock_fs_access_name(99999), "Unknown") == 1, "LandlockFsAccess: 99999 names Unknown");
+    return 0;
+}
+
+# --- LandlockNetAccess: 2 members ---
+fn test_landlock_net_access_roundtrip() {
+    var r1_t, r1 = landlock_net_access_parse(str_from(landlock_net_access_name(LL_BIND_TCP)));
+    assert_eq(is_ok(r1_t), 1, "LandlockNetAccess/LL_BIND_TCP: parses");
+    assert_eq(r1, LL_BIND_TCP, "LandlockNetAccess/LL_BIND_TCP: roundtrips");
+    var r2_t, r2 = landlock_net_access_parse(str_from(landlock_net_access_name(LL_CONNECT_TCP)));
+    assert_eq(is_ok(r2_t), 1, "LandlockNetAccess/LL_CONNECT_TCP: parses");
+    assert_eq(r2, LL_CONNECT_TCP, "LandlockNetAccess/LL_CONNECT_TCP: roundtrips");
+    var r3_t, r3 = landlock_net_access_parse(str_from("__not_a_landlock_net_access__"));
+    assert_eq(is_ok(r3_t), 0, "LandlockNetAccess: unknown string rejected");
+    var r4_t, r4 = landlock_net_access_parse(str_from("Unknown"));
+    assert_eq(is_ok(r4_t), 0, "LandlockNetAccess: fallback string owned by no member -> Err");
+    assert(streq(landlock_net_access_name(0 - 1), "Unknown") == 1, "LandlockNetAccess: -1 names Unknown");
+    assert(streq(landlock_net_access_name(99999), "Unknown") == 1, "LandlockNetAccess: 99999 names Unknown");
+    return 0;
+}
+
+# --- LandlockScope: 2 members ---
+fn test_landlock_scope_roundtrip() {
+    var r1_t, r1 = landlock_scope_parse(str_from(landlock_scope_name(LL_SCOPE_ABSTRACT_UNIX)));
+    assert_eq(is_ok(r1_t), 1, "LandlockScope/LL_SCOPE_ABSTRACT_UNIX: parses");
+    assert_eq(r1, LL_SCOPE_ABSTRACT_UNIX, "LandlockScope/LL_SCOPE_ABSTRACT_UNIX: roundtrips");
+    var r2_t, r2 = landlock_scope_parse(str_from(landlock_scope_name(LL_SCOPE_SIGNAL)));
+    assert_eq(is_ok(r2_t), 1, "LandlockScope/LL_SCOPE_SIGNAL: parses");
+    assert_eq(r2, LL_SCOPE_SIGNAL, "LandlockScope/LL_SCOPE_SIGNAL: roundtrips");
+    var r3_t, r3 = landlock_scope_parse(str_from("__not_a_landlock_scope__"));
+    assert_eq(is_ok(r3_t), 0, "LandlockScope: unknown string rejected");
+    var r4_t, r4 = landlock_scope_parse(str_from("Unknown"));
+    assert_eq(is_ok(r4_t), 0, "LandlockScope: fallback string owned by no member -> Err");
+    assert(streq(landlock_scope_name(0 - 1), "Unknown") == 1, "LandlockScope: -1 names Unknown");
+    assert(streq(landlock_scope_name(99999), "Unknown") == 1, "LandlockScope: 99999 names Unknown");
+    return 0;
+}
+
+# --- DeviceType: 3 members ---
+fn test_device_type_roundtrip() {
+    var r1_t, r1 = device_type_parse(str_from(device_type_name(DEV_CHAR)));
+    assert_eq(is_ok(r1_t), 1, "DeviceType/DEV_CHAR: parses");
+    assert_eq(r1, DEV_CHAR, "DeviceType/DEV_CHAR: roundtrips");
+    var r2_t, r2 = device_type_parse(str_from(device_type_name(DEV_BLOCK)));
+    assert_eq(is_ok(r2_t), 1, "DeviceType/DEV_BLOCK: parses");
+    assert_eq(r2, DEV_BLOCK, "DeviceType/DEV_BLOCK: roundtrips");
+    var r3_t, r3 = device_type_parse(str_from(device_type_name(DEV_ALL)));
+    assert_eq(is_ok(r3_t), 1, "DeviceType/DEV_ALL: parses");
+    assert_eq(r3, DEV_ALL, "DeviceType/DEV_ALL: roundtrips");
+    var r4_t, r4 = device_type_parse(str_from("__not_a_device_type__"));
+    assert_eq(is_ok(r4_t), 0, "DeviceType: unknown string rejected");
+    var r5_t, r5 = device_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r5_t), 0, "DeviceType: fallback string owned by no member -> Err");
+    assert(streq(device_type_name(0 - 1), "Unknown") == 1, "DeviceType: -1 names Unknown");
+    assert(streq(device_type_name(99999), "Unknown") == 1, "DeviceType: 99999 names Unknown");
+    return 0;
+}
+
+# --- RlimitType: 10 members ---
+fn test_rlimit_type_roundtrip() {
+    var r1_t, r1 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_NOFILE)));
+    assert_eq(is_ok(r1_t), 1, "RlimitType/RLIM_NOFILE: parses");
+    assert_eq(r1, RLIM_NOFILE, "RlimitType/RLIM_NOFILE: roundtrips");
+    var r2_t, r2 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_NPROC)));
+    assert_eq(is_ok(r2_t), 1, "RlimitType/RLIM_NPROC: parses");
+    assert_eq(r2, RLIM_NPROC, "RlimitType/RLIM_NPROC: roundtrips");
+    var r3_t, r3 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_ADDRESS_SPACE)));
+    assert_eq(is_ok(r3_t), 1, "RlimitType/RLIM_ADDRESS_SPACE: parses");
+    assert_eq(r3, RLIM_ADDRESS_SPACE, "RlimitType/RLIM_ADDRESS_SPACE: roundtrips");
+    var r4_t, r4 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_FILE_SIZE)));
+    assert_eq(is_ok(r4_t), 1, "RlimitType/RLIM_FILE_SIZE: parses");
+    assert_eq(r4, RLIM_FILE_SIZE, "RlimitType/RLIM_FILE_SIZE: roundtrips");
+    var r5_t, r5 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_CORE)));
+    assert_eq(is_ok(r5_t), 1, "RlimitType/RLIM_CORE: parses");
+    assert_eq(r5, RLIM_CORE, "RlimitType/RLIM_CORE: roundtrips");
+    var r6_t, r6 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_DATA)));
+    assert_eq(is_ok(r6_t), 1, "RlimitType/RLIM_DATA: parses");
+    assert_eq(r6, RLIM_DATA, "RlimitType/RLIM_DATA: roundtrips");
+    var r7_t, r7 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_STACK)));
+    assert_eq(is_ok(r7_t), 1, "RlimitType/RLIM_STACK: parses");
+    assert_eq(r7, RLIM_STACK, "RlimitType/RLIM_STACK: roundtrips");
+    var r8_t, r8 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_MEMLOCK)));
+    assert_eq(is_ok(r8_t), 1, "RlimitType/RLIM_MEMLOCK: parses");
+    assert_eq(r8, RLIM_MEMLOCK, "RlimitType/RLIM_MEMLOCK: roundtrips");
+    var r9_t, r9 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_SIGPENDING)));
+    assert_eq(is_ok(r9_t), 1, "RlimitType/RLIM_SIGPENDING: parses");
+    assert_eq(r9, RLIM_SIGPENDING, "RlimitType/RLIM_SIGPENDING: roundtrips");
+    var r10_t, r10 = rlimit_type_parse(str_from(rlimit_type_name(RLIM_MSGQUEUE)));
+    assert_eq(is_ok(r10_t), 1, "RlimitType/RLIM_MSGQUEUE: parses");
+    assert_eq(r10, RLIM_MSGQUEUE, "RlimitType/RLIM_MSGQUEUE: roundtrips");
+    var r11_t, r11 = rlimit_type_parse(str_from("__not_a_rlimit_type__"));
+    assert_eq(is_ok(r11_t), 0, "RlimitType: unknown string rejected");
+    var r12_t, r12 = rlimit_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r12_t), 0, "RlimitType: fallback string owned by no member -> Err");
+    assert(streq(rlimit_type_name(0 - 1), "Unknown") == 1, "RlimitType: -1 names Unknown");
+    assert(streq(rlimit_type_name(99999), "Unknown") == 1, "RlimitType: 99999 names Unknown");
+    return 0;
+}
+
+# --- EventType: 7 members ---
+fn test_event_type_roundtrip() {
+    var r1_t, r1 = event_type_parse(str_from(event_type_name(EVT_AGENT_STARTED)));
+    assert_eq(is_ok(r1_t), 1, "EventType/EVT_AGENT_STARTED: parses");
+    assert_eq(r1, EVT_AGENT_STARTED, "EventType/EVT_AGENT_STARTED: roundtrips");
+    var r2_t, r2 = event_type_parse(str_from(event_type_name(EVT_AGENT_STOPPED)));
+    assert_eq(is_ok(r2_t), 1, "EventType/EVT_AGENT_STOPPED: parses");
+    assert_eq(r2, EVT_AGENT_STOPPED, "EventType/EVT_AGENT_STOPPED: roundtrips");
+    var r3_t, r3 = event_type_parse(str_from(event_type_name(EVT_AGENT_FAILED)));
+    assert_eq(is_ok(r3_t), 1, "EventType/EVT_AGENT_FAILED: parses");
+    assert_eq(r3, EVT_AGENT_FAILED, "EventType/EVT_AGENT_FAILED: roundtrips");
+    var r4_t, r4 = event_type_parse(str_from(event_type_name(EVT_INFERENCE_COMPLETE)));
+    assert_eq(is_ok(r4_t), 1, "EventType/EVT_INFERENCE_COMPLETE: parses");
+    assert_eq(r4, EVT_INFERENCE_COMPLETE, "EventType/EVT_INFERENCE_COMPLETE: roundtrips");
+    var r5_t, r5 = event_type_parse(str_from(event_type_name(EVT_AUDIT_EVENT)));
+    assert_eq(is_ok(r5_t), 1, "EventType/EVT_AUDIT_EVENT: parses");
+    assert_eq(r5, EVT_AUDIT_EVENT, "EventType/EVT_AUDIT_EVENT: roundtrips");
+    var r6_t, r6 = event_type_parse(str_from(event_type_name(EVT_SECURITY_ALERT)));
+    assert_eq(is_ok(r6_t), 1, "EventType/EVT_SECURITY_ALERT: parses");
+    assert_eq(r6, EVT_SECURITY_ALERT, "EventType/EVT_SECURITY_ALERT: roundtrips");
+    var r7_t, r7 = event_type_parse(str_from(event_type_name(EVT_CUSTOM)));
+    assert_eq(is_ok(r7_t), 1, "EventType/EVT_CUSTOM: parses");
+    assert_eq(r7, EVT_CUSTOM, "EventType/EVT_CUSTOM: roundtrips");
+    var r8_t, r8 = event_type_parse(str_from("__not_a_event_type__"));
+    assert_eq(is_ok(r8_t), 0, "EventType: unknown string rejected");
+    var r9_t, r9 = event_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r9_t), 0, "EventType: fallback string owned by no member -> Err");
+    assert(streq(event_type_name(0 - 1), "Unknown") == 1, "EventType: -1 names Unknown");
+    assert(streq(event_type_name(99999), "Unknown") == 1, "EventType: 99999 names Unknown");
+    return 0;
+}
+
+# --- MetricKind: 4 members ---
+fn test_metric_kind_roundtrip() {
+    var r1_t, r1 = metric_kind_parse(str_from(metric_kind_name(METRIC_COUNTER)));
+    assert_eq(is_ok(r1_t), 1, "MetricKind/METRIC_COUNTER: parses");
+    assert_eq(r1, METRIC_COUNTER, "MetricKind/METRIC_COUNTER: roundtrips");
+    var r2_t, r2 = metric_kind_parse(str_from(metric_kind_name(METRIC_UP_DOWN_COUNTER)));
+    assert_eq(is_ok(r2_t), 1, "MetricKind/METRIC_UP_DOWN_COUNTER: parses");
+    assert_eq(r2, METRIC_UP_DOWN_COUNTER, "MetricKind/METRIC_UP_DOWN_COUNTER: roundtrips");
+    var r3_t, r3 = metric_kind_parse(str_from(metric_kind_name(METRIC_GAUGE)));
+    assert_eq(is_ok(r3_t), 1, "MetricKind/METRIC_GAUGE: parses");
+    assert_eq(r3, METRIC_GAUGE, "MetricKind/METRIC_GAUGE: roundtrips");
+    var r4_t, r4 = metric_kind_parse(str_from(metric_kind_name(METRIC_HISTOGRAM)));
+    assert_eq(is_ok(r4_t), 1, "MetricKind/METRIC_HISTOGRAM: parses");
+    assert_eq(r4, METRIC_HISTOGRAM, "MetricKind/METRIC_HISTOGRAM: roundtrips");
+    var r5_t, r5 = metric_kind_parse(str_from("__not_a_metric_kind__"));
+    assert_eq(is_ok(r5_t), 0, "MetricKind: unknown string rejected");
+    var r6_t, r6 = metric_kind_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "MetricKind: fallback string owned by no member -> Err");
+    assert(streq(metric_kind_name(0 - 1), "Unknown") == 1, "MetricKind: -1 names Unknown");
+    assert(streq(metric_kind_name(99999), "Unknown") == 1, "MetricKind: 99999 names Unknown");
+    return 0;
+}
+
+# --- AggregationTemporality: 2 members ---
+fn test_aggregation_temporality_roundtrip() {
+    var r1_t, r1 = aggregation_temporality_parse(str_from(aggregation_temporality_name(TEMPORALITY_CUMULATIVE)));
+    assert_eq(is_ok(r1_t), 1, "AggregationTemporality/TEMPORALITY_CUMULATIVE: parses");
+    assert_eq(r1, TEMPORALITY_CUMULATIVE, "AggregationTemporality/TEMPORALITY_CUMULATIVE: roundtrips");
+    var r2_t, r2 = aggregation_temporality_parse(str_from(aggregation_temporality_name(TEMPORALITY_DELTA)));
+    assert_eq(is_ok(r2_t), 1, "AggregationTemporality/TEMPORALITY_DELTA: parses");
+    assert_eq(r2, TEMPORALITY_DELTA, "AggregationTemporality/TEMPORALITY_DELTA: roundtrips");
+    var r3_t, r3 = aggregation_temporality_parse(str_from("__not_a_aggregation_temporality__"));
+    assert_eq(is_ok(r3_t), 0, "AggregationTemporality: unknown string rejected");
+    var r4_t, r4 = aggregation_temporality_parse(str_from("Unknown"));
+    assert_eq(is_ok(r4_t), 0, "AggregationTemporality: fallback string owned by no member -> Err");
+    assert(streq(aggregation_temporality_name(0 - 1), "Unknown") == 1, "AggregationTemporality: -1 names Unknown");
+    assert(streq(aggregation_temporality_name(99999), "Unknown") == 1, "AggregationTemporality: 99999 names Unknown");
+    return 0;
+}
+
+# --- MetricValueType: 4 members ---
+fn test_metric_value_type_roundtrip() {
+    var r1_t, r1 = metric_value_type_parse(str_from(metric_value_type_name(MV_INT)));
+    assert_eq(is_ok(r1_t), 1, "MetricValueType/MV_INT: parses");
+    assert_eq(r1, MV_INT, "MetricValueType/MV_INT: roundtrips");
+    var r2_t, r2 = metric_value_type_parse(str_from(metric_value_type_name(MV_FLOAT)));
+    assert_eq(is_ok(r2_t), 1, "MetricValueType/MV_FLOAT: parses");
+    assert_eq(r2, MV_FLOAT, "MetricValueType/MV_FLOAT: roundtrips");
+    var r3_t, r3 = metric_value_type_parse(str_from(metric_value_type_name(MV_HISTOGRAM)));
+    assert_eq(is_ok(r3_t), 1, "MetricValueType/MV_HISTOGRAM: parses");
+    assert_eq(r3, MV_HISTOGRAM, "MetricValueType/MV_HISTOGRAM: roundtrips");
+    var r4_t, r4 = metric_value_type_parse(str_from(metric_value_type_name(MV_EXP_HISTOGRAM)));
+    assert_eq(is_ok(r4_t), 1, "MetricValueType/MV_EXP_HISTOGRAM: parses");
+    assert_eq(r4, MV_EXP_HISTOGRAM, "MetricValueType/MV_EXP_HISTOGRAM: roundtrips");
+    var r5_t, r5 = metric_value_type_parse(str_from("__not_a_metric_value_type__"));
+    assert_eq(is_ok(r5_t), 0, "MetricValueType: unknown string rejected");
+    var r6_t, r6 = metric_value_type_parse(str_from("Unknown"));
+    assert_eq(is_ok(r6_t), 0, "MetricValueType: fallback string owned by no member -> Err");
+    assert(streq(metric_value_type_name(0 - 1), "Unknown") == 1, "MetricValueType: -1 names Unknown");
+    assert(streq(metric_value_type_name(99999), "Unknown") == 1, "MetricValueType: 99999 names Unknown");
+    return 0;
+}
+
+# --- Spellings taken from an external standard, pinned by hand. The
+# roundtrip above cannot catch a misspelling, since one table generated
+# both the functions and those assertions. ---
+fn spell(got, want, label) {
+    assert(streq(got, want) == 1, label);
+    return 0;
+}
+fn test_external_spellings() {
+    spell(label_operator_name(LABEL_NOT_IN), "NotIn", "LabelOperator: Kubernetes NotIn");
+    spell(label_operator_name(LABEL_DOES_NOT_EXIST), "DoesNotExist", "LabelOperator: Kubernetes DoesNotExist");
+    spell(content_block_type_name(CB_TOOL_USE), "tool_use", "ContentBlockType: tool_use");
+    spell(content_block_type_name(CB_TOOL_RESULT), "tool_result", "ContentBlockType: tool_result");
+    spell(cache_control_name(CACHE_EPHEMERAL), "ephemeral", "CacheControl: ephemeral");
+    spell(tool_choice_name(TOOL_REQUIRED), "required", "ToolChoice: required");
+    spell(response_format_name(RESP_JSON_OBJECT), "json_object", "ResponseFormat: json_object");
+    spell(response_format_name(RESP_JSON_SCHEMA), "json_schema", "ResponseFormat: json_schema");
+    spell(safety_category_name(SAFETY_HATE), "HARM_CATEGORY_HATE_SPEECH", "SafetyCategory: Gemini hate speech");
+    spell(safety_category_name(SAFETY_HARASSMENT), "HARM_CATEGORY_HARASSMENT", "SafetyCategory: Gemini harassment");
+    spell(safety_category_name(SAFETY_SEXUAL), "HARM_CATEGORY_SEXUALLY_EXPLICIT", "SafetyCategory: sexually explicit");
+    spell(safety_category_name(SAFETY_DANGEROUS), "HARM_CATEGORY_DANGEROUS_CONTENT", "SafetyCategory: dangerous");
+    spell(safety_category_name(SAFETY_CIVIC), "HARM_CATEGORY_CIVIC_INTEGRITY", "SafetyCategory: civic integrity");
+    spell(safety_probability_name(SAFETY_NEGLIGIBLE), "NEGLIGIBLE", "SafetyProbability: Gemini NEGLIGIBLE");
+    spell(safety_probability_name(SAFETY_HIGH), "HIGH", "SafetyProbability: Gemini HIGH");
+    spell(batch_status_name(BATCH_IN_PROGRESS), "in_progress", "BatchStatus: in_progress");
+    spell(batch_status_name(BATCH_CANCELLED), "cancelled", "BatchStatus: cancelled");
+    spell(landlock_fs_access_name(LL_EXECUTE), "Execute", "LandlockFsAccess: Execute");
+    spell(landlock_fs_access_name(LL_MAKE_SYM), "MakeSym", "LandlockFsAccess: MakeSym");
+    spell(landlock_net_access_name(LL_CONNECT_TCP), "ConnectTcp", "LandlockNetAccess: ConnectTcp");
+    spell(landlock_scope_name(LL_SCOPE_ABSTRACT_UNIX), "AbstractUnixSocket", "LandlockScope: AbstractUnixSocket");
+    spell(device_type_name(DEV_CHAR), "c", "DeviceType: OCI c");
+    spell(device_type_name(DEV_BLOCK), "b", "DeviceType: OCI b");
+    spell(device_type_name(DEV_ALL), "a", "DeviceType: OCI a");
+    spell(rlimit_type_name(RLIM_NOFILE), "nofile", "RlimitType: limits.conf nofile");
+    spell(rlimit_type_name(RLIM_ADDRESS_SPACE), "as", "RlimitType: limits.conf as");
+    spell(rlimit_type_name(RLIM_FILE_SIZE), "fsize", "RlimitType: limits.conf fsize");
+    spell(rlimit_type_name(RLIM_MSGQUEUE), "msgqueue", "RlimitType: limits.conf msgqueue");
+    spell(metric_kind_name(METRIC_UP_DOWN_COUNTER), "UpDownCounter", "MetricKind: OTel UpDownCounter");
+    spell(metric_value_type_name(MV_EXP_HISTOGRAM), "ExponentialHistogram", "MetricValueType: OTel exp histogram");
+    spell(aggregation_temporality_name(TEMPORALITY_DELTA), "Delta", "AggregationTemporality: OTel Delta");
+    return 0;
+}
+
+# --- Kernel facts the doc comments state, checked against
+# include/uapi/linux/landlock.h and seccomp.h (verified against the kernel
+# headers when these were written). ---
+fn test_kernel_numbers() {
+    # LANDLOCK_ACCESS_FS_* bit indices: `1 << v` is the kernel flag.
+    assert_eq(LL_EXECUTE, 0, "LL_EXECUTE is bit 0");
+    assert_eq(LL_WRITE_FILE, 1, "LL_WRITE_FILE is bit 1");
+    assert_eq(LL_READ_FILE, 2, "LL_READ_FILE is bit 2");
+    assert_eq(LL_READ_DIR, 3, "LL_READ_DIR is bit 3");
+    assert_eq(LL_REMOVE_DIR, 4, "LL_REMOVE_DIR is bit 4");
+    assert_eq(LL_REMOVE_FILE, 5, "LL_REMOVE_FILE is bit 5");
+    assert_eq(LL_MAKE_CHAR, 6, "LL_MAKE_CHAR is bit 6");
+    assert_eq(LL_MAKE_DIR, 7, "LL_MAKE_DIR is bit 7");
+    assert_eq(LL_MAKE_REG, 8, "LL_MAKE_REG is bit 8");
+    assert_eq(LL_MAKE_SOCK, 9, "LL_MAKE_SOCK is bit 9");
+    assert_eq(LL_MAKE_FIFO, 10, "LL_MAKE_FIFO is bit 10");
+    assert_eq(LL_MAKE_BLOCK, 11, "LL_MAKE_BLOCK is bit 11");
+    assert_eq(LL_MAKE_SYM, 12, "LL_MAKE_SYM is bit 12");
+    assert_eq(LL_REFER, 13, "LL_REFER is bit 13");
+    assert_eq(LL_TRUNCATE, 14, "LL_TRUNCATE is bit 14");
+    assert_eq(LL_BIND_TCP, 0, "LL_BIND_TCP is bit 0");
+    assert_eq(LL_CONNECT_TCP, 1, "LL_CONNECT_TCP is bit 1");
+    assert_eq(LL_SCOPE_ABSTRACT_UNIX, 0, "LL_SCOPE_ABSTRACT_UNIX is bit 0");
+    assert_eq(LL_SCOPE_SIGNAL, 1, "LL_SCOPE_SIGNAL is bit 1");
+    # SECCOMP_MODE_*.
+    assert_eq(SECCOMP_DISABLED, 0, "SECCOMP_DISABLED is SECCOMP_MODE_DISABLED");
+    assert_eq(SECCOMP_STRICT, 1, "SECCOMP_STRICT is SECCOMP_MODE_STRICT");
+    assert_eq(SECCOMP_FILTER, 2, "SECCOMP_FILTER is SECCOMP_MODE_FILTER");
+    # AgnostikErrorCode names by value, 1001..1010.
+    spell(agnostik_err_code_name(1001), "AgentNotFound", "AgnostikErrorCode: 1001");
+    spell(agnostik_err_code_name(1010), "Io", "AgnostikErrorCode: 1010");
+    spell(agnostik_err_code_name(0), "Unknown", "AgnostikErrorCode: 0 is no code");
+    return 0;
+}
+
+# --- Exact match: no case-folding, trimming or aliases (the F-018 rule). ---
+fn test_exact_match() {
+    var a_t, a = circuit_breaker_state_parse(str_from("halfopen"));
+    assert_eq(is_ok(a_t), 0, "CircuitBreakerState: lowercase rejected");
+    var b_t, b = content_block_type_parse(str_from("TEXT"));
+    assert_eq(is_ok(b_t), 0, "ContentBlockType: uppercase rejected");
+    var c_t, c = rlimit_type_parse(str_from("NOFILE"));
+    assert_eq(is_ok(c_t), 0, "RlimitType: uppercase rejected");
+    var d_t, d = rlimit_type_parse(str_from("RLIMIT_NOFILE"));
+    assert_eq(is_ok(d_t), 0, "RlimitType: kernel macro spelling rejected");
+    var e_t, e = device_type_parse(str_from(" c"));
+    assert_eq(is_ok(e_t), 0, "DeviceType: leading space rejected");
+    var f_t, f = safety_probability_parse(str_from("HARM_PROBABILITY_UNSPECIFIED"));
+    assert_eq(is_ok(f_t), 0, "SafetyProbability: Gemini UNSPECIFIED has no member");
+    var g_t, g = landlock_scope_parse(str_from(""));
+    assert_eq(is_ok(g_t), 0, "LandlockScope: empty string rejected");
+    return 0;
+}
+
+fn main() {
+    println("--- v1.8.0 enum name/parse completion ---");
+    test_probe_type_roundtrip();
+    test_stop_reason_roundtrip();
+    test_circuit_breaker_state_roundtrip();
+    test_label_operator_roundtrip();
+    test_agnostik_err_code_roundtrip();
+    test_content_block_type_roundtrip();
+    test_cache_control_roundtrip();
+    test_tool_choice_roundtrip();
+    test_response_format_roundtrip();
+    test_safety_category_roundtrip();
+    test_safety_probability_roundtrip();
+    test_stream_event_type_roundtrip();
+    test_batch_status_roundtrip();
+    test_condition_operator_roundtrip();
+    test_seccomp_mode_roundtrip();
+    test_system_feature_roundtrip();
+    test_landlock_fs_access_roundtrip();
+    test_landlock_net_access_roundtrip();
+    test_landlock_scope_roundtrip();
+    test_device_type_roundtrip();
+    test_rlimit_type_roundtrip();
+    test_event_type_roundtrip();
+    test_metric_kind_roundtrip();
+    test_aggregation_temporality_roundtrip();
+    test_metric_value_type_roundtrip();
+    test_external_spellings();
+    test_kernel_numbers();
+    test_exact_match();
+    println("");
+    return assert_summary();
+}
