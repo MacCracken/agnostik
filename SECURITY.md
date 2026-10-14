@@ -55,6 +55,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-06-01 | v1.3.0 closeout pass | 1 LOW closed (F-013, bounded `version_from_str` scan) | [`docs/audit/2026-06-01-audit.md`](docs/audit/2026-06-01-audit.md) |
 | 2026-08-24 | v1.3.7 P(-1) full-source sweep | F-014..F-021: 6 closed in v1.3.7, 2 contract gaps closed in v1.4.0 | [`docs/audit/2026-08-24-audit.md`](docs/audit/2026-08-24-audit.md) |
 | 2026-09-23 | v1.6.2 cross-target syscall review (cyrius 6.6.2 → 6.6.6) | F-022 (MEDIUM) closed in 1.6.2; F-023 and F-024 (LOW) closed in 1.6.3 | [`docs/audit/2026-09-23-audit.md`](docs/audit/2026-09-23-audit.md) |
+| 2026-10-14 | v1.6.5 toolchain refresh (cyrius 6.6.6 → 6.6.20): advisories CYRIUS-2026-0009..0035 against agnostik's reach | No findings; CYRIUS-2026-0028 reaches `version_to_str` but was never exploitable there | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

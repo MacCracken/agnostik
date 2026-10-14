@@ -2,396 +2,218 @@
 
 ## Status
 
-**v1.6.4** — most recent stable. 12 modules + `src/proto.cyr` (OTLP wire
-helpers), **1,536 test assertions across 18 `.tcyr` files** (passing on
-x86_64-linux and on aarch64 under `qemu-aarch64`), 25 benchmarks, zero
-external dependencies, Cyrius `6.6.6`.
+**v1.6.5** is the most recent stable release, on Cyrius `6.6.20`. It has 12
+modules plus `src/proto.cyr` (OTLP wire helpers), 923 public fns, and 1,536
+test assertions across 18 `.tcyr` files, passing on x86_64-linux and on aarch64
+under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
+Five repos declare `[deps.agnostik]`: aegis, anuenue, ark, kybernet and mela.
 
-v1.6.4 is a documentation patch reviewing `docs/development/issues/`. The
-`cyrius self` residue is closed as not a defect, and its record archived. The
-`#derive` body-comment bug is re-verified open on 6.6.6 and now filed
-upstream. v1.6.3 was a patch that cleared four items from this roadmap. **F-023**: no
-`/dev/urandom` fallback, and the fail-loud path goes through `sys_write` /
-`sys_exit`. The `AgentInfo` JSON round-trip is fixed, with **F-024**, a
-null-id crash found in passing. Bench windows now clear the 6.6.5 resolution
-bar. And the documentation-debt gate is in CI, with `classification.cyr`
-documented. No public API change.
+Live numbers are in [`state.md`](state.md). Release history is in
+[`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md).
 
-v1.6.2 was a toolchain refresh (`6.6.2` → `6.6.6`, `lib/` re-vendored) plus
-**F-022**: `_fill_random` called `getrandom` by its raw x86_64 number, which
-is `-ENOSYS` on aarch64 and not a syscall on agnos. It now calls the stdlib's
-portable `sys_getrandom`. It also re-enables the aarch64 CI cross-build, which
-had probed a compiler name (`cc5_aarch64`) that no 6.x toolchain ships.
-v1.6.1 renamed `health_check_new` → `agnostik_health_check_new` (the argonaut
-collision in kybernet). v1.6.0 migrated to the cyrius 6.6.x value form (pin
-`6.5.35` → `6.6.2`; `result_print_agnostik_err` takes the tag); v1.5.1 added
-the three missing `cglim_set_*` setters. See
-[`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md) for the most
-recent audit.
+Every item below is pinned to a release. Shipped work leaves this file for the
+CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
+longer here.
 
-v1.5.0 was a security minor: `enum LinuxCapability`'s values are Linux
-capability numbers again. They are fed to `capset(2)` via `1 << cap`, and
-the enum omitted `CAP_MAC_OVERRIDE`/`CAP_MAC_ADMIN` (shifting its tail by
-two) and transposed `CAP_AUDIT_READ`/`CAP_AUDIT_CONTROL`. Adds
-`capability_name`/`capability_parse`, completing F-018 for that enum.
-Surfaced from kybernet 1.5.2; argonaut 1.11.0 corrects its same-named enum
-in lockstep.
-
-v1.4.0 closed the two contract gaps the 2026-08-24 P(-1) audit found:
-**F-018** (31 enums had `*_name()` and **zero** `*_parse()`, so the
-roundtrip contract held for no enum — now 31 `*_parse` covering 204
-members, with an exhaustive 481-assertion `parse(name(v)) == v` test) and
-**F-021** (9 fields had getters but no setters and read `0` forever —
-`SecretMetadata.expires_at`/`.owner` plus the seven `mcap_supports_*`
-flags). Additive only: surface 871 → **911** fns, zero removals, no wire
-or layout change.
-
-v1.3.7 was the P(-1) hardening sweep that found them — **F-014** (a
-signed-comparison sentinel in `_fill_random` that retried at `buf - 1`
-with `n + 1` bytes, or hung), **F-015/F-016/F-017** (W3C traceparent
-validation: all-zero ids, unvalidated version, uppercase hex),
-**F-019/F-020**. Prior: v1.3.6 (Cyrius `6.5.27` → `6.5.35` + the CI
-format-gate fix), v1.3.5 (`6.4.62` → `6.5.27`), v1.3.4 (`6.3.15` →
-`6.4.62`), v1.3.3 (error-family namespacing `ERR_* → STIK_ERR_*`,
-symbol-level breaking). See [`state.md`](state.md) for the live snapshot,
-[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md) for the
-last full-source audit, and [`../../CHANGELOG.md`](../../CHANGELOG.md) for
-full release history.
-
-Every item below is pinned to a specific release. Shipped work is recorded
-in `CHANGELOG.md` and not duplicated here — the principle: if work is worth
-doing, it has a slot; if it has shipped, it isn't on the roadmap any more.
+| Slot | Kind | Theme |
+|---|---|---|
+| [v1.7.0](#v170--consumer-safety-net-minor) | minor | Cross-consumer sweep, private-helper namespacing, `ClassificationResult` setters |
+| [v1.7.1](#v171--ci-and-release-hardening-patch) | patch | Raw-syscall gate, aarch64 tests in CI, toolchain checksum, orphan `keccak.cyr` |
+| [v1.7.2 – v1.7.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, small modules |
+| [v1.8.0](#v180--enum-nameparse-completion-minor) | minor | `*_name` / `*_parse` for the 26 enums without them |
+| [v1.8.1 – v1.8.2](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, mid-size modules |
+| [v1.9.0](#v190--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
+| [v1.9.1 – v1.9.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, large modules, ending at 0 |
+| [v2.0.0](#v200--breaking-changes-next-major) | major | `_json_int` Result, accessor rename, dead-helper removal |
 
 ---
 
-## v1.2.x — Ecosystem expansion
+## v1.7.x — Consumer safety net and hardening
 
-### v1.2.4 — Cross-consumer build sweep automation
+### v1.7.0 — Consumer safety net (minor)
 
-✨ **Feature** — A CI workflow (or downstream-triggered job) that, for each
-of the 11 consumers in `state.md`, clones the consumer repo at its main
-HEAD, swaps `cyrius.cyml`'s agnostik dep to the in-flight commit, and runs
-the consumer's `cyrius build` + `cyrius test`. Reports per-consumer
-green/red. Catches accessor-ABI breaks, struct-layout drift, and serde-
-shape changes before they propagate.
+**1. Cross-consumer build sweep.** ✨ Add a script, `scripts/consumer-sweep.sh`,
+and wire it into the release checklist. For each repo that declares
+`[deps.agnostik]`, it copies the repo to a scratch directory, swaps in the
+in-flight bundle (`dist/agnostik.cyr`, or the `src/` modules aegis vendors), and
+runs that repo's own `cyrius build` and tests under its **own** pin. It reports
+green or red per consumer, plus every `duplicate fn` warning that names
+agnostik. The sweep catches accessor-ABI breaks, struct-layout drift,
+serde-shape changes, and symbol collisions before they ship. It also turns
+CLAUDE.md's closeout step 8 ("every consumer still builds") into one command.
 
-Originally bundled with v1.2.0 OTLP work; pushed because OTLP took the
-slot. Re-pinned across v1.2.1 (toolchain refresh `5.10.20 → 5.10.34`),
-v1.2.2 (toolchain refresh `5.10.34 → 5.10.44`), and v1.2.3 (major
-toolchain refresh `5.10.44 → 6.0.14`). Infrastructure cost
-(orchestrating 11 repos, caching toolchain, surfacing per-consumer
-output) is high enough to be its own slot anyway.
+This item has been carried since v1.2.4. The cost that kept deferring it was
+orchestrating eleven repos. A manifest census at 1.6.5 finds five:
 
-### v1.2.5 — OTLP wire-format completion
+| Consumer | agnostik tag | Vendors | Pin |
+|---|---|---|---|
+| aegis | 1.4.0 | `src/types.cyr`, `src/error.cyr` | 6.6.2 |
+| anuenue | 1.6.0 | `dist/agnostik.cyr` | 6.7.9 |
+| ark | 1.6.0 | `dist/agnostik.cyr` | 6.6.2 |
+| kybernet | 1.6.3 | `dist/agnostik.cyr` | 6.6.6 |
+| mela | 1.6.0 | `dist/agnostik.cyr` | 6.6.2 |
 
-✨ **Feature** — extends the v1.2.0 `Span_to_otlp_proto` foundation to the
-remaining OpenTelemetry data-plane shapes:
+The script runs locally first. A CI job can follow if the consumer repos are
+cloneable from the runner.
 
-- **`LogRecord_to_otlp_proto`** + **`MetricDataPoint_to_otlp_proto`** — same
-  shape as the v1.2.0 Span encoder; uses the existing `src/proto.cyr`
-  primitives.
-- **Span repeated nested-message fields** (skipped in v1.2.0):
-  - field 9: `attributes` (repeated `KeyValue`)
-  - field 11: `events` (repeated `Event`)
-  - field 13: `links` (repeated `Link`)
+**2. Private-helper namespacing.** 🔧 kybernet vendors both agnostik and sigil,
+and its build warns `duplicate fn '_hex_nibble' (last definition wins)`.
+agnostik's `_hex_nibble` (`src/types.cyr`) and sigil's have the same arity and
+mapping today, so nothing misbehaves yet. It is the class of collision that
+broke `health_check_new` in v1.6.1. Rename agnostik's `_`-prefixed helpers that
+lack an agnostik prefix (starting with `_hex_nibble`), using the sweep's
+duplicate-fn report as the list. These are not in `docs/api-surface.snapshot`,
+so the rename is not an API change.
 
-  Requires nested encoders for `KeyValue` (string-typed key + `AnyValue`
-  union), `Event` (timestamp + name + attributes), and `Link` (trace_id +
-  span_id + attributes). The `KeyValue` / `AnyValue` cluster is the
-  largest sub-suite — about half the slot's effort.
+**3. `ClassificationResult` setters.** ✨ `level`, `auto_level` and `confidence`
+have getters and no setters, the F-021 class, found while documenting
+`classification.cyr` at v1.6.3. The Rust original let policy override `level`
+separately from the detected `auto_level`, which here needs raw
+`store64(r + 0, …)`. `confidence` has no defined unit and nothing sets it. Add
+`cresult_set_level` / `_set_auto_level` / `_set_confidence`, and define
+confidence as parts-per-thousand (0..1000, out-of-range rejected), the
+fixed-point form of the Rust optional 0.0–1.0 float. This is additive API,
+which is why it rides a minor.
 
-  Trigger: a consumer (likely `stiva`) surfaces the need, OR v1.2.4's
-  cross-consumer sweep flags consumers that already work around the gap.
+### v1.7.1 — CI and release hardening (patch)
 
----
+- **Raw-syscall gate** ([ADR-003](../adr/003-roadmap-tracks-agnostik-work-only.md)).
+  `src/error.cyr`'s four stderr writes are the last raw `syscall(1, 2, …)` sites
+  in `src/`. They are correct on every target today (1 is `write` on
+  x86_64-linux and agnos, and it is routed on aarch64 and Windows), but the
+  compiler diagnoses raw numbers for aarch64 and Windows, not agnos. Move them
+  to `sys_write(2, …)`,
+  then make the CI security scan fail on any `syscall(` in `src/`. F-022 and
+  F-023 were both raw numbers that meant something else on another target.
+- **Run the aarch64 suite in CI.** CI cross-builds aarch64 but does not run it.
+  The full suite passes locally under `qemu-aarch64`. Install `qemu-user` on
+  the runner and run `cyrius tests --aarch64`.
+- **Verify the toolchain download.** CI and release install Cyrius from the
+  release tarball without checking it. Check it against the published
+  `.sha256` sidecar before unpacking. cyrius 6.6.20's CYRIUS-2026-0035 hardened
+  its own installers against stripped signatures, and this job bypasses them.
+- **Remove the orphan `lib/keccak.cyr`.** It is git-tracked only because the
+  ecosystem template's `!lib/k*.cyr` ignore exception matched it. No module
+  includes it, `[deps] stdlib` does not declare it, and `cyrius deps --verify`
+  now has to vouch for it. Delete it and the exception, relock, and update
+  CLAUDE.md's `.gitignore` note.
 
-## Backlog — v1.3.0 review deferrals (unpinned)
+### Documentation-debt burn-down (v1.7.2 onward)
 
-The v1.3.0 refactoring/optimization review surfaced cleanups that were
-**not** applied because they touch public API surface (removal/rename is
-breaking → needs a major) or are low-value layout changes. Recorded so
-they aren't re-discovered each cycle. Full context in
-[`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md) §Deferred.
+`scripts/doc-debt.sh` has gated CI since v1.6.3. A new undocumented fn fails,
+and so does a grandfathered one that was documented without recording it. The
+849 fns in `docs/undocumented.baseline` are paid down one or more modules per
+patch, smallest first, so each release's review stays small:
 
-- **Dead/vestigial public helpers** — `seccomp_errno`/`seccomp_trace`,
-  the `SeccompArg` cluster, `id_mapping_*`, `network_policy_*`
-  (`security.cyr`); `stream_usage` (`llm.cyr`); `AgentInfo_from_json`
-  (`agent.cyr`). The last one also ~~**cannot round-trip its own
-  `_to_json`** (emits `agent_type`/`status` name strings, reads
-  `agent_type_id`/`status_id` ints) and has no test~~. **Round-trip FIXED
-  in v1.6.3.** It reads the name strings now,
-  with the integer keys as a fallback, backed by a 123-assertion round-trip
-  test and a fuzz target. `AgentInfo_to_json` no longer crashes on the id 0
-  that a bad parse leaves (F-024). Whether to *remove* it is unchanged: it
-  still has no consumer, and that call waits on the sweep. All are in
-  `docs/api-surface.snapshot`; gate any removal/rename on the v1.2.4
-  cross-consumer sweep confirming no external dependency.
-- ~~**Setter-less `mcap_supports_*` getters** (`llm.cyr`) — seven flag
-  getters with no matching setter (can only read 0).~~ **RESOLVED in
-  v1.4.0** (F-021): setters added, alongside `SecretMetadata`'s, so the
-  library gives one consistent answer on setter-less getters rather than
-  two.
-- ~~**`secret_metadata_new` over-alloc** (`secrets.cyr`) — 72 B / 9 slots,
-  3 unreachable (offsets 24/56/64).~~ **RESOLVED in v1.3.7** (F-020).
-  The gating question — whether an external consumer writes offsets
-  56/64 by raw pointer — was answered instead of waived: all eleven
-  consumer repos grep to **zero** references to `smeta_` /
-  `secret_metadata`, so the layout is private to the file. Shrunk to
-  56 B. See [`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md)
-  §F-020.
+| Slot | Modules (undocumented fns) | Running total |
+|---|---|---|
+| v1.7.2 | `error` (18), `secrets` (21), `config` (22) | 849 → 788 |
+| v1.7.3 | `main` (23), `validation` (26), `types` (40) | 788 → 699 |
+| v1.8.1 | `audit` (44), `hardware` (55) | 699 → 600 |
+| v1.8.2 | `telemetry` (126) | 600 → 474 |
+| v1.9.1 | `llm` (148) | 474 → 326 |
+| v1.9.2 | `security` (152) | 326 → 174 |
+| v1.9.3 | `agent` (174) | 174 → 0 |
 
-These are not security exposures — F-013 (the one real finding) shipped
-in v1.3.0. Trigger for action: the v1.2.4 cross-consumer sweep landing
-(gives the ABI-safety signal removal needs), or a consumer surfacing a
-concrete need.
-
----
-
-## Backlog — v1.3.1 toolchain review (unpinned, revisit later)
-
-Two items surfaced by the 6.2.11 pin that were **accepted as-is** at the
-v1.3.1 cut (toolchain trade-offs, no source-side fix) but warrant a later
-look. Full numbers in the CHANGELOG `[1.3.1]` Performance section.
-
-- ~~**Ack'd bench regressions** — 3 consistent on an unloaded runner
-  (`version_roundtrip` 371→~668ns, `accelerator_device_full` 177→~284ns,
-  `version_to_str` 191→~296ns), rising to 6 under CI load as sub-µs ops
-  (`traceparent_format`, `sandbox_config_default`, `token_usage_update`)
-  inflate past threshold — jitter, not drift.~~ **RESOLVED by later pins.**
-  The revisit condition was "a later cyrius pin recovers the three real
-  small-op paths", and all three now run below even their pre-6.2.11
-  figures. The v1.6.2 baseline in `docs/benchmarks/history.csv` (cyrius
-  6.6.6) has `version_roundtrip` **240 ns** (371 before 6.2.11),
-  `accelerator_device_full` **100 ns** (177) and `version_to_str` **100 ns**
-  (191).
-- ~~**DCE binary +81 KB** (`311,264 B` → `392,840 B`). Two causes: 6.2.11 DCE
-  *NOPs* unreachable fns in place instead of stripping, and the `bayan`
-  bundle (base64+json+csv+toml) adds ~119 KB of now-NOPed dead code the
-  former standalone `json.cyr` did not.~~ **RESOLVED upstream at cyrius
-  6.5.72**, which made `CYRIUS_DCE=1` strip rather than NOP-fill on x86_64.
-  agnostik first pinned past it at v1.6.0, and it was recorded at v1.6.2: the
-  DCE binary is **127,128 B** on 6.6.6. `bayan` stays declared for the
-  `bayan_json_get` preamble reference, but its dead code no longer reaches
-  the artifact.
+At 0, the baseline file goes and the gate becomes "no undocumented fn in
+`src/`". `cyrius audit` will still exit non-zero on its docs phase, because
+that phase counts the test and bench files too. Whether to document test
+helpers or narrow the audit's scope is decided at v1.9.3.
 
 ---
 
-## Backlog — v1.3.6 toolchain review (unpinned, revisit later)
+## v1.8.0 — Enum name/parse completion (minor)
 
-Three items surfaced by the 6.5.35 pin, all **accepted as-is** at the
-v1.3.6 cut. Full numbers in the CHANGELOG `[1.3.6]` sections.
+✨ CLAUDE.md requires every public enum to have `*_name()` and `*_parse(s)`.
+v1.4.0 (F-018) covered the 31 enums that had a `_name`, and v1.5.0 added
+`LinuxCapability`. **26 enums still have neither**:
 
-- **853 undocumented public fns** — the *sole* reason `cyrius audit` exits
-  non-zero (`cyrius doc --check` takes one file and exits with that file's
-  count: `src/main.cyr` → 23, `src/agent.cyr` → 177; 853 is the sum over
-  the 15 `src/*.cyr`) (its fmt / lint /
-  tests / bench phases all pass). Pre-existing and unchanged by the bump —
-  6.5.27 reports the identical count — but it is agnostik's own gap, not a
-  toolchain bug, and it is what stops `audit` from being usable as a
-  single-command CI gate. Sizing it honestly: 853 fns is a large sustained
-  effort, so the realistic shape is incremental (document a module per
-  cycle, gate new fns at the api-surface check) rather than one sweep.
-  Until then, read `audit`'s per-phase verdicts, not its exit code.
-  **At v1.6.2 / 6.6.6:** the `src/*.cyr` per-file sum is **860** (plus 187
-  over the test and bench files). `audit`'s docs phase reports **1,421** over
-  its `src tests` scope, which is not the sum of the per-file counts (1,047),
-  so track the per-file `src` figure release to release.
-  **In v1.6.3:** both halves of the plan have
-  started. The gate is `scripts/doc-debt.sh check` in CI. It fails on a new
-  undocumented fn, and on a fn in the grandfathered `docs/undocumented.baseline`
-  that has since been documented, so the committed count is the tracked figure.
-  The first module is `src/classification.cyr`, now 11 of 11 documented;
-  `AgentInfo_{to,from}_json` are documented too. Count **860 → 849**. Next
-  cycle: `error.cyr` (18) or `secrets.cyr` (21).
+- **agent**: `RestartPolicy`, `ProbeType`, `StopReason`, `CircuitBreakerState`,
+  `LabelOperator`
+- **error**: `AgnostikErrorCode`
+- **llm**: `ContentBlockType`, `CacheControl`, `ToolChoice`, `ResponseFormat`,
+  `SafetyCategory`, `SafetyProbability`, `StreamEventType`, `BatchStatus`
+- **security**: `ConditionOperator`, `SeccompMode`, `SystemFeature`,
+  `LandlockFsAccess`, `LandlockNetAccess`, `LandlockScope`, `DeviceType`,
+  `RlimitType`
+- **telemetry**: `EventType`, `MetricKind`, `AggregationTemporality`,
+  `MetricValueType`
 
-- **`ClassificationResult` has getters but no setters** for `level`,
-  `auto_level` and `confidence`. That is the F-021 class, found while
-  documenting the module at v1.6.3. The original Rust type let policy override
-  `level` separately from the detected `auto_level`, and here that needs raw
-  `store64(r + 0, …)`. `confidence` also has no defined unit (Rust: optional
-  0.0–1.0 float), and nothing ever sets it. The fix adds API (setters, plus a
-  fixed-point unit such as parts-per-thousand), so it belongs in a minor, not a
-  patch. Trigger: any consumer that needs policy overrides or scores. No local
-  consumer references `cresult_*` today.
+Most are ordinal state sets, where a name pair is plainly useful in config and
+logs. The three `Landlock*` enums are bit sets, so a name names one bit, not a
+value. They get per-bit names, or an ADR that records "no string form" and
+amends the CLAUDE.md rule. Same rules as F-018: exact match, no case-folding,
+an unknown string is `Err`. `tests/tcyr/test_v140_enum_parse.tcyr`'s
+exhaustive `parse(name(v)) == v` check extends to every new member.
 
-- ~~**Binary +215,520 B (+52.1%)** — `413,512` → `629,032` B, entirely the
-  361-fn PDF parse/encode subsystem (209 private `_pdf*` + 152 public
-  `bayan_pdf_*`) that 6.5.3x folds into the bundled `bayan`
-  module (`215,481` → `641,083` B of source). agnostik reaches none of it;
-  it lands NOPed.~~ **RESOLVED upstream at cyrius 6.5.72** (strip-not-NOP
-  DCE on x86_64). Crossed at v1.6.0 and recorded at v1.6.2: the DCE
-  artifact went 629,032 → 126,960 B (6.6.2) → **127,128 B** (6.6.6), with
-  553,555 B of unreachable code eliminated. On x86_64, binary size tracks
-  reachable surface again. aarch64 DCE still NOP-fills (1,024,048 B).
+## v1.9.0 — OTLP wire-format completion (minor)
 
-- ~~**`cyrius self` still false-fails** — same `clock_now_ns` /
-  `bayan_json_get` preamble-resolution defect, verified on 6.5.27, 6.5.30,
-  6.5.35 and **6.6.6** (v1.6.2).~~ **CLOSED at v1.6.4 — not a defect.**
-  `cyrius self` is the compiler's self-hosting fixpoint check. It pipes the
-  compiler source (`src/main.cyr` on x86-64 Linux) into `cycc` raw, with no
-  manifest and so no stdlib preamble. It then runs the output as a compiler on
-  the same source and byte-compares the two builds. In a library that can
-  never pass: the missing preamble is where the two undefined symbols come
-  from, and the harness is not a compiler. The gate agnostik actually needs,
-  `cyrius audit`, has worked since 6.4.73. The issue file is archived at
-  [`issues/archive/cyrius-audit-missing-check-script-2026-04-26.md`](issues/archive/cyrius-audit-missing-check-script-2026-04-26.md),
-  and its closing section suggests the optional upstream papercut: `self`
-  could refuse outside the cyrius repo.
+✨ This extends the v1.2.0 `Span_to_otlp_proto` foundation to the rest of the
+OpenTelemetry data plane, using the existing `src/proto.cyr` primitives:
 
----
+- **`LogRecord_to_otlp_proto`** and **`MetricDataPoint_to_otlp_proto`**, the
+  same shape as the Span encoder.
+- **Span's repeated nested fields**, skipped in v1.2.0: field 9 `attributes`
+  (repeated `KeyValue`), field 11 `events` (repeated `Event`) and field 13
+  `links` (repeated `Link`). These need nested encoders for `KeyValue` (a string
+  key plus the `AnyValue` union), `Event` and `Link`. The `KeyValue` /
+  `AnyValue` cluster is about half the slot.
 
-## Backlog — v1.6.2 toolchain review (unpinned, revisit later)
-
-Surfaced by the 6.6.6 pin and the cross-target syscall review. Full
-write-ups are in [`../audit/2026-09-23-audit.md`](../audit/2026-09-23-audit.md)
-and the CHANGELOG `[1.6.2]` sections.
-
-- ~~**F-023 (LOW) — `_fill_random`'s fallback still uses raw x86_64-linux
-  syscall numbers.**~~ **RESOLVED in v1.6.3 — option 2.** Its
-  `open` / `read` / `close` / `write` / `exit` were 2 / 0 / 3 / 1 / 60, which
-  on agnos are getpid / exit / spawn / write / winsize; disassembling the
-  1.6.2 `--agnos` binary confirms the raw numbers went through unrouted. The
-  `/dev/urandom` fallback is removed and the fail-loud path calls
-  `sys_write` / `sys_exit`. Option 1 (route the fallback through the
-  wrappers, plus an agnos arm for `sys_open(name, namelen, flags)`) was not
-  taken: agnos and Windows have no `/dev/urandom`, so that arm could only
-  fail. As this entry predicted, it is a behaviour change: Linux < 3.17, and
-  sandboxes that deny `getrandom` but allow the open, now exit 70 on the
-  first ID. See the CHANGELOG `[1.6.3]` entry and the audit's
-  Resolution note.
-- ~~**Bench windows vs the 6.6.5 resolution bar.** `message_build_3turn` and
-  `resource_limits_from_json` run 500-iteration windows that sit near the
-  ~222 µs bar (100 × (clock floor + tick) on this host). Only their slower
-  windows resolve, so `min` can exceed `avg`.~~ **RESOLVED in
-  v1.6.3.** Every row's window is sized to about
-  1 ms or more, which clears the documented CI hosts' bar too. Rounds drop
-  from 10 to 5 to hold peak RSS at 126 MB. All 25 rows now resolve. An
-  interleaved A/B of `avg`, the only field the gate reads, put 23 of 25 rows
-  within ±5%. As this entry asked, the change lands with a note, and the 1.6.3
-  cut's baseline row is the fresh one.
-- **Upstream (cyrius) papercuts to file.**
-  - `cyrius update` on a project with no `[deps.NAME]` entries copies the
-    whole stdlib snapshot into `./lib/`: 111 files, including an untracked
-    `lib/unicode/` that the `lib/*.cyr` ignore rule misses.
-  - No raw-syscall diagnostic fires for `--agnos` builds, although agnos
-    numbering diverges from x86_64-linux further than aarch64's does. The
-    aarch64 diagnostic is what caught F-022; nothing would have caught F-023.
-- **aarch64 is build-checked in CI, not run.** CI now cross-builds aarch64
-  again (the probe was `cc5_aarch64` through 1.6.1), and the full suite passes
-  locally under `qemu-aarch64`. Running `cyrius test --aarch64` in CI would
-  need `qemu-user` on the runner; it is a small step if aarch64 consumers
-  appear.
-
----
-
-## v1.4.0 — Contract completeness ✅ SHIPPED
-
-Both findings from the 2026-08-24 P(-1) audit, held out of the v1.3.7
-patch because they are additive public API. Full write-ups in
-[`../audit/2026-08-24-audit.md`](../audit/2026-08-24-audit.md).
-
-### F-018 — `*_parse()` for every enum with a `*_name()` ✅
-
-Shipped: **31 `*_parse` functions covering 204 enum members.** Before
-this, the library had 31 enum `_name` functions and **zero** enum
-`_parse`, so the CLAUDE.md roundtrip contract held for no enum and all
-eleven consumers hand-rolled their own string→enum mappings.
-
-What the implementation settled:
-- **Exact match, no coercion** — no case-folding, trimming or aliases.
-  An unrecognised string is `Err`, not a sentinel variant, so a config
-  typo surfaces instead of silently becoming `Unknown`.
-- **Seven members are named by their `_name` fallback**, not an explicit
-  arm (`STIK_ERR_UNKNOWN`, `HEALTH_UNKNOWN`, `VENDOR_CUSTOM`,
-  `LLM_CUSTOM`, `MEM_UNKNOWN`, `PII_CUSTOM`, `STATUS_UNKNOWN`). Their
-  `_parse` maps the fallback string back so the roundtrip is total; the
-  other 24 enums reject theirs, since no member owns it.
-- **The test is the deliverable as much as the functions.**
-  `tests/tcyr/test_v140_enum_parse.tcyr` asserts `parse(name(v)) == v`
-  for all 204 members plus per-enum rejection cases — 481 assertions,
-  mechanically derived. A 31-enum gap survived eight releases because
-  nothing checked it; now something does.
-
-Correction recorded during implementation: the audit's first draft said
-"54 `*_name()` functions". That grep conflated enum name functions with
-20 struct-field accessors also called `*_name` (`span_name`,
-`smeta_name`, …). The real figure is 31 enum name functions / 204
-members.
-
-**Still open (deliberately out of scope):** 26 declared enums have no
-`*_name()` *or* `*_parse()` — mostly bitflag/constant sets where a string
-name may not be meaningful. Whether they need one is a separate decision;
-pick it up when a consumer asks.
-
-`LinuxCapability` (41 values) came off that list at **v1.5.0**: a consumer
-did ask. kybernet needed per-service capability policy expressed as config
-data, which means parsing capability names, so it got `capability_name` /
-`capability_parse` — the lowercase `cap_` spelling `capsh(1)` and
-`capability(7)` use. That release also corrected the enum's values, which
-were not kernel capability numbers.
-
-### F-021 — setters for previously unsettable fields ✅
-
-Shipped: **9 setters.** `smeta_set_expires_at` / `smeta_set_owner` on
-`SecretMetadata`, and the seven original `mcap_set_supports_*` flags on
-`ModelCapabilities` — closing the v1.3.0 backlog item in the same change
-so the library has one consistent answer on setter-less getters.
-
-Chose setters (additive) over a wider constructor signature (breaking,
-would have needed v2.0.0). Consumers should note that any expiry handling
-built against `smeta_expires_at` before 1.4.0 was reading a permanent `0`
-and was a no-op.
-
-Surface 871 → **911** fns, zero removals; snapshot regenerated.
+Golden-byte tests against reference protobuf encodings, plus a fuzz target per
+encoder. If a consumer needs this before v1.9.0, it can move ahead of v1.8.0.
+No consumer has asked yet.
 
 ---
 
 ## v2.0.0 — Breaking changes (next major)
 
-The two items here are the only breaking changes on the horizon. Batching
-them at a major release lets every consumer absorb migration cost in one
-cycle rather than chasing point-version churn.
+Breaking changes are batched here so every consumer absorbs migration once.
 
-### `_json_int` Result return signature
+### `_json_int` Result return
 
-🔧 **Optimization (breaking)** — `_json_int(src: Str, key: Str)` currently
-returns `i64` and conflates "missing key" with "literal 0". F-003 hardened
-the overflow path but left the missing-key ambiguity. Switch the return to
-`Result<i64, Err>` so consumers can distinguish missing from zero. Every
-caller updates from `var n = _json_int(s, k);` to `var n = _json_int(s, k)?;`
-or pattern-match.
+🔧 `_json_int(src: Str, key: Str)` returns `i64` and conflates "missing key"
+with a literal `0`. F-003 hardened the overflow path but left that ambiguity.
+Return a value-form `Result` instead, so callers can tell missing from zero.
+Every caller moves to `var n_t, n = _json_int(s, k);` or `_json_int(s, k)?`.
 
 ### `#derive(accessors)` migration with prefix rename
 
-🔧 **Optimization (breaking)** — Cyrius's `#derive(accessors)` generates
-`<Struct>_<field>(s)` getters/setters; agnostik's convention is
-`<prefix>_<field>(s)` (e.g. `amsg_*`, `aentry_*`, `secctx_*`). Today's
-~470 hand-written single-line accessors collapse to derive markers if we
-either (a) rename to match derive's default shape (consumer-visible break)
-or (b) wait for upstream to ship derive-with-prefix support. v2.0.0
-absorbs the rename cost.
+🔧 Cyrius's `#derive(accessors)` generates `<Struct>_<field>` getters and
+setters. agnostik's convention is `<prefix>_<field>` (`amsg_*`, `aentry_*`,
+`secctx_*`). About 470 hand-written one-line accessors could become derive
+markers, either by renaming to the derive shape (a consumer-visible break) or
+by upstream derive-with-prefix support. v2.0.0 absorbs the rename.
+
+### Remove dead and vestigial public helpers
+
+🔧 The v1.3.0 review found public helpers with no consumer. Removing them is
+breaking, and was gated on the cross-consumer sweep proving that no consumer
+uses them. v1.7.0 delivers the sweep; this slot acts on its census:
+
+- `security.cyr`: `seccomp_errno` / `seccomp_trace`, the `SeccompArg`
+  cluster, `id_mapping_*`, `network_policy_*`
+- `llm.cyr`: `stream_usage`
+- `agent.cyr`: `AgentInfo_from_json`. Its round-trip was fixed in v1.6.3 and
+  it now has a test, so it is a keep-or-remove call rather than dead weight.
+
+Context: [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
+§Deferred.
 
 ---
 
 ## Working agreement
 
-- **Default shape**: small fast-follows in patch slots; bundled minors;
-  breaking changes batched at majors. Each minor cut runs the security
-  audit pass per CLAUDE.md (cadence established at v1.0.8 and re-verified
-  at every minor since).
-- **Adding new items**: draft a proposal under `docs/proposals/`, cite the
-  trigger and the slot pin. New items without a slot don't go on this
-  roadmap — they go in proposals until they earn a slot.
-- **Removing items**: when a slot's work ships, the roadmap entry is
-  deleted (CHANGELOG owns shipped-work history). When an item is
-  abandoned, the rationale is recorded in an ADR before deletion.
-
-## Recorded by cyrius 6.6.17 (2026-10-05) — for the next cyrius pin move
-
-⛔ **Nothing to do until cyrius 6.6.17 is tagged and out.** Docs-only note from the cyrius 6.6.17 lanes; each item
-is this repo's to adopt when it pins ≥ 6.6.17. Nothing here gates a cyrius release.
-
-- **`lib sync` now checks the lock** (cyrius 6.6.17 t1). This repo's CI runs `lib sync` → `deps` →
-  `deps --verify`: no change needed — with a correct committed lock `lib sync` leaves it byte-identical. If the
-  installed snapshot moves under the pin, CI now fails at `lib sync` with a named refusal instead of later at
-  `deps`.
+- **Default shape**: small fast-follows in patch slots, bundled minors, and
+  breaking changes batched at majors. Public API additions ride minors. Each
+  minor cut runs the security audit pass per CLAUDE.md.
+- **Adding items**: draft a proposal under `docs/proposals/`, citing the
+  trigger and the slot. An item without a slot stays a proposal until it earns
+  one.
+- **Removing items**: when a slot's work ships, its entry is deleted, because
+  the CHANGELOG owns shipped history. When an item is abandoned, an ADR records
+  why before the entry is deleted.
+- **Scope**: the roadmap carries work that changes this repository. Toolchain
+  defects get an agnostik-side mitigation here, and a record under
+  `docs/development/issues/` when one is needed, but not "to file upstream"
+  items ([ADR-003](../adr/003-roadmap-tracks-agnostik-work-only.md)).

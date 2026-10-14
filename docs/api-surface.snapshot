@@ -1,11 +1,14 @@
 agent::AgentInfo_from_json/1
 agent::AgentInfo_to_json/2
 agent::AgentStats_from_json/1
-agent::AgentStats_to_json/1
+agent::AgentStats_from_json_str/1
+agent::AgentStats_to_json/2
 agent::ResourceLimits_from_json/1
-agent::ResourceLimits_to_json/1
+agent::ResourceLimits_from_json_str/1
+agent::ResourceLimits_to_json/2
 agent::ResourceUsage_from_json/1
-agent::ResourceUsage_to_json/1
+agent::ResourceUsage_from_json_str/1
+agent::ResourceUsage_to_json/2
 agent::acap_input_types/1
 agent::acap_max_tasks/1
 agent::acap_output_types/1
@@ -241,7 +244,8 @@ classification::cresult_rules/1
 classification::pii_kind_name/1
 classification::pii_kind_parse/1
 config::EdgeResourceOverrides_from_json/1
-config::EdgeResourceOverrides_to_json/1
+config::EdgeResourceOverrides_from_json_str/1
+config::EdgeResourceOverrides_to_json/2
 config::acfg_components/1
 config::acfg_content_hash/1
 config::acfg_generation/1
@@ -285,7 +289,8 @@ error::stik_err_resource_exhausted/1
 error::stik_err_serialization/1
 error::stik_err_timeout/0
 hardware::AcceleratorFlags_from_json/1
-hardware::AcceleratorFlags_to_json/1
+hardware::AcceleratorFlags_from_json_str/1
+hardware::AcceleratorFlags_to_json/2
 hardware::accelerator_device_new/4
 hardware::accelerator_flags_new/0
 hardware::accelerator_summary_new/0
@@ -346,7 +351,8 @@ hardware::device_vendor_parse/1
 hardware::memory_type_name/1
 hardware::memory_type_parse/1
 llm::TokenUsage_from_json/1
-llm::TokenUsage_to_json/1
+llm::TokenUsage_from_json_str/1
+llm::TokenUsage_to_json/2
 llm::batch_request_new/2
 llm::batch_result_new/1
 llm::breq_custom_id/1
@@ -885,7 +891,8 @@ types::version_set_build/2
 types::version_set_prerelease/2
 types::version_to_str/1
 validation::InjectionScores_from_json/1
-validation::InjectionScores_to_json/1
+validation::InjectionScores_from_json_str/1
+validation::InjectionScores_to_json/2
 validation::injection_scores_new/0
 validation::iscore_command/1
 validation::iscore_path_traversal/1

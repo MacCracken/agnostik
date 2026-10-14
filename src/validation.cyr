@@ -34,8 +34,9 @@ fn vwarn_position(w) { return load64(w + 24); }
 fn vwarn_pattern(w)  { return load64(w + 32); }
 # v1.1.1: widened to i8 (range 0..100 fits comfortably in i7).
 # 40 B → 5 B per instance. Comments must live OUTSIDE the struct
-# body — cyrius 5.10.14 derive codegen parses `#` inside the body
-# as a field-name disruptor. Filed upstream; revisit when fixed.
+# body: cyrius < 6.6.7 derive codegen reads a `#` inside the body
+# as a field name, and consumers compile the dist bundle under their
+# own pins.
 #derive(Serialize)
 struct InjectionScores {
     sql: i8; xss: i8; command: i8;

@@ -39,6 +39,7 @@ Project was ported from a Rust crate. **Do not manually create project structure
 ```bash
 cyrius lib sync                                        # vendor the pinned stdlib's declared [deps].stdlib subset + platform peers into lib/
 cyrius deps                                            # add those modules' transitive stdlib includes; resolves [deps.NAME] git deps (agnostik has none)
+cyrius deps --verify                                   # check lib/ against the committed cyrius.lock (CI runs it)
 cyrius build src/main.cyr build/agnostik               # build the test harness binary
 cyrius tests                                           # run every .tcyr under tests/ (one file: cyrius test tests/tcyr/<name>.tcyr)
 cyrius bench tests/bcyr/agnostik.bcyr                  # benchmarks
@@ -52,7 +53,7 @@ bash scripts/doc-debt.sh check                         # doc gate: no new undocu
 cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — read per-phase verdicts, not the exit code
 ```
 
-Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
+Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. `deps` rewrites `cyrius.lock`; commit it with the pin move. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
 
 ## Key Principles
 

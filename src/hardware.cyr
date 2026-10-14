@@ -127,8 +127,9 @@ fn memory_type_parse(s: Str) {
 # v1.1.1: widened to i8 (each field is a 0/1 boolean). 72 B → 9 B per
 # instance. Existing accessor + setter signatures preserved; the
 # type-tag and storage width are the only differences. Comments must
-# live OUTSIDE the struct body — cyrius 5.10.14 derive codegen parses
-# `#` inside the body as a field-name disruptor.
+# live OUTSIDE the struct body: cyrius < 6.6.7 derive codegen reads a
+# `#` inside the body as a field name, and consumers compile the dist
+# bundle under their own pins.
 #derive(Serialize)
 struct AcceleratorFlags {
     cuda_available: i8;

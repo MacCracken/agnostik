@@ -2,6 +2,246 @@
 
 ## [Unreleased]
 
+## [1.6.5] - 2026-10-14
+
+**Toolchain refresh to cyrius 6.6.20, with the repairs that pin move needed, the derive-comments
+record archived, and the roadmap rebuilt into pinned v1.7.0 → v2.0.0 slots.** No code change: the
+only `src/` edits are two comments. No public API, struct-layout or wire-format change. The
+api-surface snapshot moves 916 → 923 because cyrius 6.6.8 fixed its scanner, not because the API
+changed (see below). 18 test files, **1,536 assertions, 0 failures**, on x86_64-linux and on
+aarch64 (under `qemu-aarch64`).
+
+### Changed — cyrius pin 6.6.6 → **6.6.20**; stdlib re-vendored
+
+`cyrius lib sync` + `cyrius deps` against the 6.6.20 snapshot. `lib/` holds **33** files, every one
+byte-identical to the snapshot:
+
+- **29 changed content**: every vendored module and platform peer except the three below,
+  including `fmt` (CYRIUS-2026-0028, see Security) and the git-tracked `keccak.cyr`. `lib sync`
+  does not touch `keccak.cyr`, because no module includes it, so it was copied from the snapshot by
+  hand. Its removal is pinned to v1.7.1.
+- **3 did not**: `alloc_agnos`, `args_macos`, `fnptr`.
+- **1 is new**: `poison.cyr` (6.6.18's allocator poison seam), which 6.6.20's `alloc.cyr` includes.
+
+A fresh checkout gets 26 files from `lib sync` plus the tracked `keccak.cyr`. `cyrius deps` adds
+the six transitive includes: `args_agnos`, `args_macos`, `atomic`, `boxed`, `hashseed` and
+`poison`. There are still no `[deps.NAME]` git dependencies to move.
+
+### Added — `cyrius.lock` is committed
+
+Since cyrius 6.6.9, `cyrius deps` writes a stdlib-only project's first lock, and `deps --verify`
+fails any `lib/*.cyr` the lock does not cover. The lock covers all 33 files. CI's
+"Verify dep hashes" step skipped with a warning while no lock existed. It now enforces the lock:
+`cyrius deps --verify` reports **33 verified, 0 failed**. On a fresh checkout, `lib sync` and
+`deps` reproduce the committed lock byte for byte, which also settles the 6.6.17 note the roadmap
+carried ("`lib sync` now checks the lock"). The release workflow already ships `cyrius.lock` when
+one exists. CLAUDE.md's Quick Start gains `cyrius deps --verify`, and its refresh note now says to
+commit the lock with a pin move.
+
+### Changed — api-surface snapshot 916 → 923; no API change
+
+cyrius 6.6.8 rebuilt `cyrius_api_surface`'s `#derive` scanner to mirror the compiler, and its
+release notes named agnostik as needing a one-time `--update`. The 6.6.6 scanner listed each
+derived `_to_json` at arity 1, although the compiler has emitted it as `(ptr, sb)` since 5.9.31.
+It also never listed the derived `_from_json_str`. For the seven `#derive(Serialize)` structs
+(`ResourceLimits`, `ResourceUsage`, `AgentStats`, `EdgeResourceOverrides`, `AcceleratorFlags`,
+`TokenUsage`, `InjectionScores`):
+
+- 7 entries move `_to_json/1` → `_to_json/2`;
+- 7 `_from_json_str/1` entries appear.
+
+None of these fns is new: `tests/tcyr/test_serde_roundtrip.tcyr` has called the `_from_json_str`
+fns all along, and a probe built on 6.6.6 calls `TokenUsage_from_json_str` cleanly. Regenerated
+with `scripts/api-surface.sh update`.
+
+### Changed — `dist/agnostik.deps` is compile-verified; the bundle carries a requires block
+
+cyrius 6.6.18 changed `cyrius distlib` (its "P4 option 2"). A bundle's `.deps` sidecar now lists
+only the stdlib leaves that a compile of the bundle proves it needs. It is no longer the package's
+`[deps] stdlib` union. Each bundle also opens with one `include "lib/<leaf>.cyr"` per sidecar leaf,
+so it compiles when included on its own.
+
+- `dist/agnostik.deps`: **15 → 12** leaves. It drops `tagged`, `fnptr`, `assert` and `io`, none
+  of which the bundle calls (they stay in `[deps] stdlib` for agnostik's own builds and tests). It
+  adds `boxed`, which defines the `tagged_new` / `boxed_tag` / `boxed_payload` the bundle's 19
+  tagged boxes use.
+- `dist/agnostik.cyr` gains the 12-line requires block (164,007 → 164,427 B).
+
+**Consumers:** a consumer that used one of the four dropped leaves only because agnostik's
+sidecar vendored it must declare that leaf in its own `[deps] stdlib`. None does today. Of the
+five repos that declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), only anuenue does
+not declare `tagged` and `fnptr` itself, and its source calls neither. A scratch copy of kybernet,
+rebuilt on its own 6.6.6 pin with the new bundle swapped in, produced the same 1,616,776 B binary
+as before. Include-once is keyed on the literal path, so the requires block duplicates nothing in
+a `cyrius deps` consumer.
+
+### Changed — `cyrius-derive-comments-in-struct-body` archived: fixed upstream at 6.6.7
+
+The `#derive(Serialize)` body-comment corruption, filed upstream at 1.6.4, was fixed at cyrius
+6.6.7. That release's "bite 5" credits agnostik. The body is now walked the way the parser reads
+it, with `#` comments as trivia. Re-verified here on the same probe built under both pins:
+
+| cyrius | the record's `Bad` repro | a struct with four kinds of body comment, then a round-trip |
+|---|---|---|
+| 6.6.6 | `{"#":330325,"xss":32,…}` | `{"#":1,"#":2,"#":3}` → `{"#":3,"#":0,"#":0}` |
+| 6.6.20 | `{"sql":85,"xss":10,"command":5,"path_traversal":0,"prompt_injection":0}` | `{"a":1,"b":2,"c":3}` → `{"a":1,"b":2,"c":3}` |
+
+The record gains a Resolution section and moves to `docs/development/issues/archive/`. Its index
+row, and the links in CONTRIBUTING.md, `state.md` and this file's 1.1.1 entry, now point there.
+`docs/development/issues/` has no open records.
+
+**The workaround stays.** Consumers compile `dist/agnostik.cyr` with their own compilers, and
+aegis, ark and mela pin 6.6.2 and kybernet pins 6.6.6. A comment moved back inside a derive body
+would reach those builds as the silent corruption above. The two comments in `src/validation.cyr`
+and `src/hardware.cyr` that said "revisit when fixed" now give this reason. CONTRIBUTING.md says
+the same. `tests/tcyr/test_v110_serde_golden.tcyr` still pins every derived `_to_json` byte for
+byte.
+
+### Changed — roadmap rebuilt into pinned v1.7.0 → v2.0.0 slots
+
+`docs/development/roadmap.md` held shipped and resolved items struck through in place, and a
+status block that retold releases since 1.3.x. Shipped work leaves it now, and every open item has
+a release:
+
+| Slot | Work |
+|---|---|
+| v1.7.0 (minor) | Cross-consumer build sweep (carried since v1.2.4, now five repos rather than eleven); private-helper namespacing, starting with `_hex_nibble`, which collides with sigil's in kybernet; `ClassificationResult` setters with a parts-per-thousand confidence |
+| v1.7.1 (patch) | Raw-syscall CI gate (`error.cyr`'s four `syscall(1, 2, …)` → `sys_write`); aarch64 tests in CI under qemu-user; toolchain tarball checked against its `.sha256`; orphan `lib/keccak.cyr` removed |
+| v1.7.2 – v1.9.3 (patches) | Documentation debt, module by module, smallest first: 849 → 0 |
+| v1.8.0 (minor) | `*_name` / `*_parse` for the 26 enums that still lack them |
+| v1.9.0 (minor) | OTLP `LogRecord`, `MetricDataPoint`, and `Span` attributes / events / links |
+| v2.0.0 (major) | `_json_int` Result return, `#derive(accessors)` prefix rename, dead-helper removal (gated on the v1.7.0 sweep) |
+
+One entry left without shipping: "Upstream (cyrius) papercuts to file". The roadmap's working
+agreement asks for an ADR in that case, so
+[ADR-003](docs/adr/003-roadmap-tracks-agnostik-work-only.md) records the rule: the roadmap carries
+work that changes this repository. Each papercut keeps an agnostik-side answer. `cyrius update`
+is already covered by CLAUDE.md, and the missing agnos raw-syscall diagnostic becomes the v1.7.1
+gate.
+
+### Fixed — `state.md`'s consumer list
+
+`state.md` listed eleven consumers (daimon, hoosh, agnoshi, aegis, argonaut, sigil, ark, kavach,
+stiva, nein, yukti). A census of every local AGNOS checkout finds five repos that declare
+`[deps.agnostik]`: **aegis** (1.4.0, `src/types.cyr` + `src/error.cyr`, pin 6.6.2), **anuenue**
+(1.6.0, pin 6.7.9), **ark** (1.6.0, pin 6.6.2), **kybernet** (1.6.3, pin 6.6.6) and **mela**
+(1.6.0, pin 6.6.2). The last four vendor `dist/agnostik.cyr`. The section is now that table, with
+a note on the old list.
+
+### Security
+
+The release security pass is recorded in
+[`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md). **No findings.** It checks
+the cyrius advisories CYRIUS-2026-0009 … 0035, published between 6.6.7 and 6.6.20, against what
+agnostik reaches:
+
+- **CYRIUS-2026-0028 (P1)** — `fmt_int_buf` (`lib/fmt.cyr`) wrote 24 bytes at `buf` whatever the
+  number's length, so a `buf + pos` caller with less room overran. agnostik's `version_to_str`
+  is such a caller, but it was never exposed. Its buffer is `alloc(128)`, and the third call
+  starts at most at offset 42, so the widest scratch write ends at byte 66. A probe of the widest
+  possible version (`i64` minimum and maximum, `-1`, a prerelease and a build) formats correctly,
+  69 bytes, on both pins. The re-vendored `fmt.cyr` writes exactly `len + 1` bytes.
+- **CYRIUS-2026-0034** (`file_write_atomic`): dead in agnostik's binary.
+  **CYRIUS-2026-0031** (Windows munmap): agnostik allocates with bump `alloc()` and vendors
+  neither affected fn. **CYRIUS-2026-0033** (aarch64 frames past 64 KiB): `src/` has no stack
+  arrays. **CYRIUS-2026-0030 / 0032** (lock pins for git deps, CRLF locks): agnostik has no git
+  deps and checks out LF. The rest are in modules agnostik does not vendor (TLS, HTTP, WebSocket,
+  net, log, pam).
+- **CYRIUS-2026-0035** (installers accepted a stripped signature): CI unpacks the release tarball
+  by hand and checks nothing, so it bypasses those installers. Checking the tarball against its
+  published `.sha256` is pinned to v1.7.1. For this release the tarball was checked by hand: it
+  matches its sidecar.
+
+Every target builds with `CYRIUS_DCE=1`: x86_64-linux, aarch64, agnos and Windows. No warning
+comes from agnostik source. The Windows build's one warning is in the stdlib's
+`lib/syscalls_windows.cyr`. The CI security scan, run verbatim, is clean.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.6.4 baseline in `history.csv` (commit `07720f0`):
+**25 checked, 0 new, 0 regressions.** The source is unchanged, so this table measures the toolchain
+and the host. Two measurements separate them:
+
+- **Median of 3** comes from three release-tree runs. They were interleaved with three runs of
+  the untouched 1.6.4 tree on its own 6.6.6 pin, as a same-moment host control. The control read
+  **−1.1%** (median row) against its own baseline, so the host matched the 1.6.4 capture.
+- **A/B** is 15 rounds interleaving the 1.6.4 tree on 6.6.6 with this tree on 6.6.20, run
+  earlier the same day. Order alternated each round. It isolates the toolchain from host drift.
+
+| benchmark | 1.6.4 baseline | 1.6.5 gate | Δ gate | 1.6.5 median of 3 | Δ median | A/B 6.6.6 → 6.6.20, median of 15 | Δ A/B |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| injection_scores_from_json | 331 | 294 | -11.2% | 306 | -7.6% | 339 → 316 | -6.8% |
+| accelerator_device_full | 101 | 91 | -9.9% | 97 | -4.0% | 103 → 100 | -2.9% |
+| token_usage_update | 34 | 31 | -8.8% | 33 | -2.9% | 34 → 34 | +0.0% |
+| traceparent_format | 1838 | 1775 | -3.4% | 1803 | -1.9% | 1860 → 1861 | +0.1% |
+| security_context_full | 686 | 632 | -7.9% | 673 | -1.9% | 696 → 695 | -0.1% |
+| accel_flags_from_json | 709 | 664 | -6.3% | 696 | -1.8% | 725 → 720 | -0.7% |
+| token_usage_to_json | 875 | 826 | -5.6% | 859 | -1.8% | 896 → 888 | -0.9% |
+| trace_context_new | 1159 | 1126 | -2.8% | 1141 | -1.6% | 1176 → 1179 | +0.3% |
+| agent_id_new | 576 | 561 | -2.6% | 568 | -1.4% | 583 → 584 | +0.2% |
+| agent_id_roundtrip | 1020 | 1000 | -2.0% | 1010 | -1.0% | 1036 → 1042 | +0.6% |
+| version_to_str | 108 | 105 | -2.8% | 107 | -0.9% | 111 → 111 | +0.0% |
+| resource_limits_from_json | 459 | 451 | -1.7% | 455 | -0.9% | 468 → 468 | +0.0% |
+| agent_stats_to_json | 669 | 632 | -5.5% | 664 | -0.7% | 686 → 684 | -0.3% |
+| agent_id_to_str | 741 | 725 | -2.2% | 737 | -0.5% | 752 → 756 | +0.5% |
+| resource_limits_to_json | 975 | 930 | -4.6% | 971 | -0.4% | 996 → 1005 | +0.9% |
+| injection_scores_to_json | 770 | 725 | -5.8% | 767 | -0.4% | 788 → 788 | +0.0% |
+| audit_entry_full | 2256 | 2180 | -3.4% | 2251 | -0.2% | 2239 → 2235 | -0.2% |
+| accel_flags_to_json | 1618 | 1533 | -5.3% | 1618 | +0.0% | 1657 → 1678 | +1.3% |
+| sandbox_config_default | 23 | 23 | +0.0% | 23 | +0.0% | 24 → 24 | +0.0% |
+| trace_context_child | 574 | 564 | -1.7% | 575 | +0.2% | 595 → 592 | -0.5% |
+| token_usage_from_json | 416 | 399 | -4.1% | 417 | +0.2% | 423 → 431 | +1.9% |
+| message_build_3turn | 365 | 346 | -5.2% | 369 | +1.1% | 373 → 382 | +2.4% |
+| inference_request_full | 362 | 355 | -1.9% | 369 | +1.9% | 376 → 384 | +2.1% |
+| agent_stats_from_json | 287 | 289 | +0.7% | 298 | +3.8% | 289 → 307 | +6.2% |
+| version_roundtrip | 244 | 253 | +3.7% | 256 | +4.9% | 252 → 263 | +4.4% |
+
+**The toolchain is performance-neutral for agnostik.** The A/B's median row is **0.0%**, and 23 of
+25 rows are within ±5%. Only two rows move consistently in both measurements, and both are small:
+
+- `injection_scores_from_json` is faster: −6.8% in the A/B and −7.6% in the median.
+- `version_roundtrip` is slightly slower: +4.4% / +4.9%, about 11 ns, below the gate's 50 ns
+  ns-bracket floor.
+
+`agent_stats_from_json` reads +6.2% in the A/B and +3.8% in the median, about 11–18 ns. The gate
+column (median row −3.4%) is one sample and sits below the medians, as single runs do.
+
+**Host load.** Two earlier gate runs, taken while other sessions' compilers held the 16-core host
+at load 6–8, read +8% and +13.5% on the median row. Both still passed. Neither was recorded,
+because the appended row becomes the next release's baseline, and a baseline inflated by load
+would hide a regression. The release run appended to `docs/benchmarks/history.csv` (25 rows) was
+taken after the host quieted (load ≈ 2.7) and re-checked: the gate passes against it, 25 checked,
+0 regressions. Its commit column reads `07720f0`, HEAD at the time, because
+`scripts/bench-history.sh` records HEAD and the 1.6.5 changes were not yet committed.
+
+Binary size: x86_64 DCE **127,096 → 132,424 B** (+5,328 B, +4.2%) on identical source. That is
+6.6.20's code generation and the re-vendored stdlib's reachable code (2,063 unreachable fns
+removed, 586,347 B, against 1,986 / 553,519 B for the same source on 6.6.6). aarch64 **1,024,016 → 828,648 B** (−19.1%), from
+6.6.18's compile-time syscall-translation fold. All 25 rows resolve (no `UNRESOLVED` lines).
+
+### Verification
+
+- **Every `ci.yml` step, clean-room.** In a throwaway `HOME`, the toolchain was unpacked from the
+  published `cyrius-6.6.20-x86_64-linux.tar.gz` exactly as CI's install step does it. In a copy of
+  the tree, all 19 steps passed, from stdlib sync through the bench-regression gate, the security
+  scan and the version check. The finished tree, with the version bump and the two comment edits,
+  passes the same steps locally. Its dist check was run as an idempotence check, because the
+  regenerated bundle is not committed yet. The tarball matches its `.sha256` sidecar. Its `lib/` and every
+  binary CI uses are byte-identical to the local install; only its bundled `bin/ci.sh` helper
+  differs.
+- **Tests:** 18 files, **1,536 assertions, 0 failures** on x86_64-linux, and the same under
+  `qemu-aarch64` 11.1.1 (`cyrius tests --aarch64`).
+- **Builds:** `CYRIUS_DCE=1` x86_64 **132,424 B** (127,096 B on 6.6.6, same source; plain build
+  718,152 B), aarch64 **828,648 B** (1,024,016 B; 6.6.18 folds aarch64 syscall translation at
+  compile time, and aarch64 DCE still NOP-fills), agnos 132,776 B, Windows 848,384 B.
+- **Gates:** `deps --verify` 33 / 33; api-surface 923 = snapshot; doc-debt 849 = baseline; `cyrius
+  distlib` idempotent (bundle and sidecar byte-identical on a second run); lint and fmt clean;
+  `CYRIUS_TYPE_CHECK=1` no agnostik-side warnings; `cyrius vet` clean. `cyrius audit` passes fmt,
+  lint, tests (18 / 18) and bench, and exits 1 only on its docs phase (1,425 over `src tests`,
+  as at 1.6.4).
+- **Downstream:** kybernet, the consumer on the newest agnostik tag, rebuilt on its own pin with
+  the 1.6.5 bundle, to an unchanged binary size. The full five-repo sweep is the v1.7.0 slot.
+
 ## [1.6.4] - 2026-09-23
 
 **Patch: a review of the two open toolchain-issue records. One is closed and archived; the other is
@@ -1792,7 +2032,7 @@ bench-regression no regressions.
 
 ### Issues
 
-- **Filed**: `docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md`
+- **Filed**: `docs/development/issues/archive/cyrius-derive-comments-in-struct-body-2026-05-10.md`
   — cyrius 5.10.14's `#derive(Serialize)` codegen treats `#`
   inside the struct body as a field-name disruptor, producing
   silent-garbage JSON output. Workaround: keep all comments

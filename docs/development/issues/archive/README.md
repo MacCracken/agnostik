@@ -13,3 +13,4 @@ Active issues live in the parent directory.
 | [`cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md`](cyrius-lint-ufcs-pascal-prefix-snake-case-2026-04-26.md) | Fixed upstream in cyrius 5.7.7 |
 | [`cyrlint-char-literal-brace-bug-2026-05-09.md`](cyrlint-char-literal-brace-bug-2026-05-09.md) | Fixed upstream in cyrius 5.10.10 (cyrfmt at 5.10.6) |
 | [`cyrius-audit-missing-check-script-2026-04-26.md`](cyrius-audit-missing-check-script-2026-04-26.md) | Fixed upstream at 6.2.24 (`check.sh`) and 6.4.73 (audit preamble); the `cyrius self` residue was closed as not a defect at agnostik 1.6.4 |
+| [`cyrius-derive-comments-in-struct-body-2026-05-10.md`](cyrius-derive-comments-in-struct-body-2026-05-10.md) | Fixed upstream in cyrius 6.6.7; verified on the 6.6.20 pin at agnostik 1.6.5. The workaround (comments above the directive) stays while consumers pin below 6.6.7 |

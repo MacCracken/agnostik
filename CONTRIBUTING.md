@@ -82,10 +82,11 @@
   OOB-write the now-smaller alloc.
 - Heap allocation: `alloc()` (bump) for long-lived data, `fl_alloc()` /
   `fl_free()` (freelist) for individual lifetimes.
-- Comments inside `#derive(Serialize)` struct bodies break cyrius 5.10.x's
-  codegen (see
-  [`docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md`](docs/development/issues/cyrius-derive-comments-in-struct-body-2026-05-10.md)).
-  Keep comments above the directive until upstream ships the fix.
+- Keep comments above a `#derive(Serialize)` directive, never inside the
+  struct body. Cyrius fixed the body-comment corruption at 6.6.7, but
+  consumers compile `dist/agnostik.cyr` under their own pins, and below 6.6.7
+  a `#` inside the body silently becomes a field name (see
+  [`docs/development/issues/archive/cyrius-derive-comments-in-struct-body-2026-05-10.md`](docs/development/issues/archive/cyrius-derive-comments-in-struct-body-2026-05-10.md)).
 
 ## Adding New Types
 
