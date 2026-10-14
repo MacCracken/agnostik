@@ -67,3 +67,4 @@ consumer sweeps green.
 - [ADR-003 — The roadmap tracks agnostik work only; upstream papercuts are not carried](003-roadmap-tracks-agnostik-work-only.md)
 - [ADR-004 — OTLP attribute values are AnyValue boxes, encoded canonically through a private buffer](004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md)
 - [ADR-005 — `agent_id_from_str` checks the UUID form, not its version](005-agent-id-parse-checks-form-not-version.md)
+- [ADR-006 — OTLP `string` fields are always valid UTF-8 (invalid AnyValue strings go out as bytes)](006-otlp-strings-are-valid-utf8.md)

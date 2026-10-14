@@ -2,6 +2,265 @@
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-10-14
+
+**Minor:** the OTLP export envelopes and the fields that had no slot. A consumer can now build the exact request
+body an OTLP/HTTP or gRPC collector accepts: resource, scope, spans, logs and metrics, histograms included. Every
+protobuf `string` field is valid UTF-8, at about no cost for valid text. Public API 1,093 → **1,122** (+29, no removals, no signature change; two
+structs grow, which the accessors hide). 24 test files, **2,307 assertions, 0 failures**, on x86_64 and aarch64.
+All five `[deps.agnostik]` consumers build and pass their tests against it.
+
+### Added — Resource, InstrumentationScope and the export requests
+
+- **`Resource_to_otlp_proto(r, sb)`** writes the resource's attributes. The `res_attributes` map is merged with the
+  OpenTelemetry semantic-convention keys `service.name`, `service.version` and `service.instance.id`, taken from
+  the struct's three fields. A non-empty field replaces a map entry under the same key; an empty one leaves the
+  map's entry. **`InstrumentationScope_to_otlp_proto(sc, sb)`** writes the name, version and attributes.
+- **`otlp_traces_request(r, sc, spans, sb)`**, **`otlp_logs_request(r, sc, records, sb)`** and
+  **`otlp_metrics_request(r, sc, metrics, sb)`** write the body of the collector's `ExportTraceServiceRequest` /
+  `ExportLogsServiceRequest` / `ExportMetricsServiceRequest`. Each holds one Resource* / Scope* pair, with each
+  level's schema URL (`res_schema_url`, `iscope_schema_url`); a 0 resource or scope is omitted.
+  - **Batching:** the request is a repeated field, so a second call into the same builder adds a second resource.
+  - **Validation:** the metrics request checks every metric first. It returns `Err`, having written nothing, if any
+    one cannot be encoded.
+- **`metric_new(desc, points)`** pairs an `InstrumentDescriptor` with its points, the unit a metrics request
+  carries. `metric_descriptor`, `metric_points` and `Metric_to_otlp_proto` go with it.
+
+### Added — the fields that had no slot
+
+- **Span status message.** `span_status_message` / `span_set_status_message`; the Span grows 112 → 120 bytes. It
+  is written as `Status.message` only with `SPAN_ERROR`, since OpenTelemetry ignores a description on OK and Unset.
+- **Data-point start time and exemplars.** `mdp_start_time` / `mdp_set_start_time` (OTLP `start_time_unix_nano`,
+  which cumulative sums should carry) and `mdp_exemplars`, a vec of `exemplar_new`. The MetricDataPoint grows
+  48 → 64 bytes.
+  - An exemplar's value is an untyped word, so the point decides: `as_int` when the point holds a `metric_int`,
+    else `as_double`.
+  - Exemplars are written for number and histogram points alike.
+- **Histogram data points.** `histogram_value_new()` builds a `HistogramValue` with a count, an optional sum / min
+  / max (`hval_set_sum` and so on set the presence bit), explicit bounds and bucket counts. `metric_histogram(h)`
+  boxes it.
+  - `metric_to_otlp_proto` now encodes `METRIC_HISTOGRAM` as `Metric.histogram` with HistogramDataPoints: packed
+    `bucket_counts` and `explicit_bounds`, and proto3-optional `sum` / `min` / `max` written only when set.
+  - It returns `Err`, having written nothing, for a point whose shape OTLP forbids:
+    - a bucket-count total other than the count;
+    - other than one more bucket than bounds;
+    - bounds with no buckets;
+    - a negative count;
+    - a non-histogram value.
+  - Through v1.11.0 any histogram metric was an `Err`.
+
+### Changed — every OTLP string field is valid UTF-8 (ADR-006)
+
+Protobuf requires UTF-8 in `string` fields, and the OTLP specification calls invalid UTF-8 from an encoder "a bug
+within OpenTelemetry". [ADR-006](docs/adr/006-otlp-strings-are-valid-utf8.md) follows the two spec texts.
+- **AnyValue strings** that are not valid UTF-8 (attribute values, nested values and the log body) go out as
+  `bytes_value` with the original bytes, as the attribute type mapping specifies.
+- **Every other string** (keys, names, descriptions, units, scope fields, schema URLs, the status message) gets
+  U+FFFD for each maximal ill-formed subpart. That is Unicode §3.9, the rule the OTLP spec gives decoders.
+- **Valid strings** are byte-identical to before, so every v1.10.0 golden vector still matches.
+
+The scanner was differential-tested against Python's `errors="replace"`, with 0 mismatches:
+- 20,000 short edge-case strings, 18,058 of them invalid;
+- 20,000 longer ASCII-heavy ones, which exercise the 8-byte path.
+
+Strings are validated as they are copied, in one pass, so valid text costs about what it did before (see
+Performance).
+
+### Changed — the encoders share one buffer per request
+
+`Span_to_otlp_proto`, `LogRecord_to_otlp_proto` and `metric_to_otlp_proto` now wrap private cores (`_stik_otlp_span`,
+`_stik_otlp_log`, `_stik_otlp_metric` with its separate check) that write into a caller's buffer. A request then
+nests everything in one in-place buffer. Public signatures and output are unchanged.
+
+### Tests — `tests/tcyr/test_v1120_otlp_envelopes.tcyr` (58 assertions)
+
+- **18 protoc golden vectors**, against opentelemetry-proto v1.7.0 including the collector service protos:
+  - the `bytes_value` fallback and the U+FFFD key;
+  - the status message on ERROR and dropped on OK, and a sanitized span name;
+  - the log body as bytes;
+  - int and float points with exemplars and a start time;
+  - a full and a bucketless histogram;
+  - two Resources (struct override, map fallback) and a scope;
+  - a traces request with schema URLs (308 bytes, nested lengths widening at several levels), an empty request and
+    two batched calls;
+  - a logs request, and a metrics request with a gauge and a histogram.
+- **21 UTF-8 edge vectors** from Python: overlongs, surrogates, past U+10FFFF, truncations, lone continuations, and
+  valid 1–4-byte sequences unchanged.
+- **Histogram errors** for each forbidden shape, each writing nothing.
+- **A schema walker** extended to every envelope message, which now also checks that each protobuf `string` field
+  holds valid UTF-8, with an independent RFC 3629 validator. It is itself tested on rejections.
+- **Fuzz:** 150 random traces, logs and metrics requests each, built from raw random bytes so most names, keys and
+  values are invalid UTF-8. Each must be well-formed, UTF-8 clean, complete in KeyValue count and stable, and
+  metrics requests must return `Err` exactly when a generated histogram is malformed.
+
+Mutation-checked: each of 15 deliberate breaks fails the file:
+- the sanitizing disabled, or the `bytes_value` fallback disabled;
+- overlongs accepted after `E0`, or code points past U+10FFFF accepted after `F4`;
+- a packed field with a wrong length;
+- the status message written on OK;
+- exemplars always `as_int`;
+- the histogram count check removed;
+- the resource map overriding the struct;
+- the scope schema URL in the wrong field;
+- histogram min and max swapped;
+- the metrics request writing before its check;
+- three in the single-pass copy: no rewind on an invalid sequence, the word path's high-bit check skipped, and a
+  word stored at the wrong offset.
+
+`test_v1100_otlp.tcyr` now expects the new histogram contract, and its walker knows the histogram messages.
+
+### Build
+
+`CYRIUS_DCE=1` sizes:
+- x86_64: 134,976 B (+56), since the harness calls none of the new encoders;
+- Windows: 920,576 B (+16,384), the third release running in which it grows far more than the other targets; not
+  investigated.
+
+`dist/agnostik.cyr` is 345,519 B. `dist/agnostik.deps` only reorders `vec`.
+
+### Benchmarks
+
+Two new tier-5 rows: `otlp_traces_request` (a resource, a scope and three full spans) and `histogram_otlp`. The
+cost of the UTF-8 scan on the existing OTLP rows is under Performance.
+
+### Security
+
+The minor-cut pass is recorded in [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md)
+§"v1.12.0 minor-cut pass". **No findings.**
+- The UTF-8 scanners read only inside their source, and the single-pass copy rewinds a field it abandons.
+- The sanitizer writes exactly the length it computed (checked across 40,000 differential cases).
+- The envelopes close their nested messages LIFO in one buffer.
+- Histogram shapes are checked before anything is written.
+
+Two robustness gains:
+- An attribute value or log body with invalid UTF-8 can no longer make a strict collector reject a whole export
+  request.
+- `metric_to_otlp_proto` with a 0 descriptor returns `Err` instead of reading address 0.
+
+The re-scan of `src/` is clean (no raw `syscall(`, no `sys_system`, no system-path literal, no 64 KB stack
+buffer), and the private-helper gate passes. F-001..F-027 remain closed.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 24 files, 2,307 assertions, 0 failures, on x86_64 and on aarch64.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor:** of 1,134 fn definitions, 1,026
+  public fns are not called by library code (999 at 1.11.0, by the same method); the 29 new entry points account
+  for it, less the two that other encoders call. The untested count stays at **230**: every new public fn is
+  tested.
+- **Refactor:**
+  - The span, log and metric encoders were split into buffer-level cores and thin public wrappers, so a request
+    nests them in one buffer.
+  - The metric encoder's check was separated from its writer, so a request validates every metric first.
+  - The UTF-8 scan was folded into the copy after measurement (see Performance).
+- **Code review:** every new field order was matched against protoc (18 vectors). The doc comments for the span
+  and data-point layouts, the field tables and `metric_to_otlp_proto` were updated, and the histogram `Err` they
+  described is gone.
+- **Cleanup:** none needed; no helper was orphaned.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 of 5 green, 0 regressed, 0 agnostik-involved
+  duplicate definitions.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.12.0.
+
+### Performance
+
+Paired, interleaved A/B against the 1.11.0 tag tree, 15 rounds each, on the four OTLP rows both trees have. The
+host was loaded by another session's builds (load 2.5–6.8), which raises absolute numbers but not paired ratios:
+
+| Row | first draft (scan, then copy) | 8-byte scan | **single-pass copy (shipped)** |
+|---|---:|---:|---:|
+| `span_otlp_full` | +7.2% (15/15 slower) | +5.1% (15/15) | **−3.2%** (1/15) |
+| `span_otlp_min` | +1.9% (15/15) | +2.8% (15/15) | **+0.8%** (8/15) |
+| `log_record_otlp` | +8.5% (15/15) | +7.6% (15/15) | **+1.2%** (8/15) |
+| `metric_otlp_sum` | +13.2% (15/15) | +12.5% (15/15) | **+3.6%** (9/15) |
+
+The first draft scanned each string, then copied it with the stdlib's byte-by-byte `memcpy`. A 9-round run of that
+draft with the scan bypassed was within noise of 1.11.0 (+0.5%, +3.6%, −0.2%, +2.0%), so the scan was the whole
+cost. The shipped writer validates while it copies, 8 ASCII bytes per `load64` / `store64`, and rewinds to the
+field's start only when it meets an ill-formed sequence. Valid strings now cost about what they did before the
+check existed; the full span is faster. 40,000 differential cases against Python still match after the change.
+
+**Release gate.** Another session's builds kept the host loaded through most of the cut. Two gate runs taken under
+that load (13.8, then 2.0) read every row 1.2–2.3× slower, including rows that run no changed code, and are
+discarded. The gate was rerun once no compiler process had run for a minute and the load was under 1.5. At load
+0.96, `scripts/bench-regression.sh` against the 1.11.0 baseline (taken at load 1.46) gave **29 checked, 2 new, 0
+regressions**. Every row reads 4–9% under that baseline, which was taken on a busier host; the A/B below
+separates the code from the host.
+
+The A/B column is 15 interleaved rounds of the 1.11.0 tag tree against this tree, both on cyrius 6.7.9, run right
+after the gate on the same quiet host. Each row is the median of per-round paired ratios.
+
+| benchmark | 1.11.0 baseline | 1.12.0 gate | Δ gate | 1.11.0 → 1.12.0, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| accel_flags_from_json | 709 | 644 | -9.2% | -3.0% | 0/15 |
+| span_otlp_full | 4331 | 3984 | -8.0% | -2.2% | 0/15 |
+| agent_stats_from_json | 278 | 256 | -7.9% | -1.8% | 0/15 |
+| injection_scores_from_json | 304 | 278 | -8.6% | -1.3% | 0/15 |
+| injection_scores_to_json | 781 | 721 | -7.7% | -1.0% | 0/15 |
+| accelerator_device_full | 101 | 94 | -6.9% | -1.0% | 0/15 |
+| token_usage_from_json | 409 | 380 | -7.1% | -1.0% | 0/15 |
+| message_build_3turn | 367 | 337 | -8.2% | -0.8% | 1/15 |
+| trace_context_child | 573 | 536 | -6.5% | -0.5% | 2/15 |
+| accel_flags_to_json | 1625 | 1545 | -4.9% | -0.3% | 3/15 |
+| inference_request_full | 370 | 343 | -7.3% | -0.3% | 4/15 |
+| agent_id_to_str | 732 | 688 | -6.0% | -0.1% | 6/15 |
+| audit_entry_full | 2262 | 2174 | -3.9% | -0.1% | 2/15 |
+| agent_id_roundtrip | 1030 | 957 | -7.1% | +0.0% | 7/15 |
+| resource_limits_to_json | 984 | 919 | -6.6% | +0.0% | 5/15 |
+| sandbox_config_default | 23 | 21 | -8.7% | +0.0% | 2/15 |
+| token_usage_update | 33 | 31 | -6.1% | +0.0% | 2/15 |
+| trace_context_new | 1149 | 1075 | -6.4% | +0.0% | 7/15 |
+| version_to_str | 108 | 101 | -6.5% | +0.0% | 1/15 |
+| token_usage_to_json | 867 | 804 | -7.3% | +0.1% | 9/15 |
+| traceparent_format | 1795 | 1701 | -5.2% | +0.3% | 11/15 |
+| agent_stats_to_json | 667 | 635 | -4.8% | +0.5% | 10/15 |
+| security_context_full | 667 | 635 | -4.8% | +0.5% | 11/15 |
+| version_roundtrip | 258 | 247 | -4.3% | +0.8% | 13/15 |
+| resource_limits_from_json | 439 | 416 | -5.2% | +1.4% | 15/15 |
+| span_otlp_min | 586 | 547 | -6.7% | +1.4% | 14/15 |
+| log_record_otlp | 1523 | 1459 | -4.2% | +1.8% | 13/15 |
+| metric_otlp_sum | 1718 | 1643 | -4.4% | +2.1% | 15/15 |
+| agent_id_new | 552 | 524 | -5.1% | +2.8% | 8/15 |
+| otlp_traces_request | new | 19825 | – | – | – |
+| histogram_otlp | new | 2515 | – | – | – |
+
+**Neutral.**
+- The paired median row is **+0.0%**, and every row is within ±5%.
+- `span_otlp_full` is −2.2%, faster in all 15 rounds.
+- The UTF-8 validation's residue is +1.4% (`span_otlp_min`), +1.8% (`log_record_otlp`) and +2.1%
+  (`metric_otlp_sum`), about 10–35 ns per encode.
+- `agent_id_new` +2.8% is slower in only 8 of 15 rounds.
+
+The two new rows' first readings: a three-span traces request with a resource and a scope, **19.8 µs**; a 3-bucket
+histogram metric with an exemplar, **2.5 µs**.
+
+The release run is appended to `docs/benchmarks/history.csv` (31 rows, commit column `97bb4d1`, HEAD at the time),
+taken at load 0.96.
+
+Binaries (`CYRIUS_DCE=1`):
+- x86_64: 134,920 → **134,976 B**;
+- aarch64: 896,656 → **896,712 B**;
+- agnos: 135,272 → **135,328 B**;
+- Windows: 904,192 → **920,576 B** (see Build);
+- plain x86_64: 765,704 → 778,048 B.
+
+`dist/agnostik.cyr` grows 320,484 → **345,519 B**.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was committed into a
+  throwaway repo:
+  - every `ci.yml` step except the bench passed, 17 of 17;
+  - `deps --verify` reported 32 verified, 0 failed;
+  - the aarch64 step's script passed: 24 files, 2,307 assertions under `qemu-aarch64`;
+  - `cyrius audit` exits 0.
+- **Gates:**
+  - api-surface 1,122 = snapshot (29 added, 0 removed);
+  - `scripts/doc-debt.sh check`: every fn in `src/` is documented;
+  - `cyrius distlib --check` fresh;
+  - lint, fmt, vet and type-check clean;
+  - DCE builds warning-free on x86_64, aarch64, agnos and Windows.
+- **Differential:** 40,000 strings against Python's UTF-8 replacement, 0 mismatches.
+- **Downstream:** 5 of 5 green.
+
 ## [1.11.0] - 2026-10-14
 
 **Minor:** the contract gaps the v1.9.0 documentation pass recorded. Every trait dispatcher checks its slot, the

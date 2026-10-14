@@ -1,0 +1,1149 @@
+# tests/tcyr/test_v1120_otlp_envelopes.tcyr
+#
+# v1.12.0 OTLP: valid UTF-8 in every string field (ADR-006), Resource and
+# InstrumentationScope, the span status message, data-point start time and
+# exemplars, histogram data points, and the traces / logs / metrics export
+# requests.
+#
+# Golden vectors are protoc's encoding (libprotoc 35.0) of the same message in
+# text format against opentelemetry-proto v1.7.0, including the collector
+# service protos for the requests. The UTF-8 vectors are Python's
+# bytes.decode("utf-8", "replace"), Unicode's maximal-subpart rule; 20,000
+# generated strings matched it with 0 mismatches before this file was written.
+#
+# The fuzz targets build random requests from raw random bytes (names, keys and
+# values are mostly invalid UTF-8) and check each with a schema walker: fields
+# and wire types in the schema, bounds, ascending fields, one AnyValue member,
+# the KeyValue count, and valid UTF-8 in every protobuf `string` field.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# Lowercase hex digit for a nibble 0..15.
+fn hexc(n) {
+    if (n < 10) { return 48 + n; }
+    return 87 + n;
+}
+
+# The bytes of `s` as lowercase hex text.
+fn to_hex(s) {
+    var sb = str_builder_new();
+    var d = str_data(s);
+    var i = 0;
+    while (i < str_len(s)) {
+        var b = load8(d + i);
+        str_builder_putc(sb, hexc(b >> 4));
+        str_builder_putc(sb, hexc(b & 15));
+        i = i + 1;
+    }
+    return str_builder_build(sb);
+}
+
+# 1 if the bytes of `s` are the lowercase hex `hex` (a cstr).
+fn hex_is(s, hex) { return str_eq_cstr(to_hex(s), hex); }
+
+# Value of one hex digit.
+fn hexv(c) {
+    if (c <= 57) { return c - 48; }
+    return c - 87;
+}
+
+# A Str holding the bytes the hex cstr `h` spells.
+fn unhex(h) {
+    var n = strlen(h) / 2;
+    var p = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        store8(p + i, hexv(load8(h + i * 2)) * 16 + hexv(load8(h + i * 2 + 1)));
+        i = i + 1;
+    }
+    return str_new(p, n);
+}
+
+# A fresh `n`-byte id whose byte i is base + i.
+fn ids(base, n) {
+    var p = alloc(n);
+    var i = 0;
+    while (i < n) {
+        store8(p + i, base + i);
+        i = i + 1;
+    }
+    return p;
+}
+
+# The body _stik_pb_text writes for the bytes hex `inp` spells, as a Str.
+fn text_body(inp) {
+    var s = unhex(inp);
+    var b = _stik_pb_new();
+    _stik_pb_text(b, 1, str_data(s), str_len(s));
+    var sb = str_builder_new();
+    _stik_pb_flush(b, sb);
+    var all = str_builder_build(sb);
+    # tag 0x0a, then a one-byte length for these short cases
+    return str_new(str_data(all) + 2, str_len(all) - 2);
+}
+
+# 1 when _stik_pb_text turns hex `inp` into hex `want` (Python's replace).
+fn utf8_case(inp, want) { return hex_is(text_body(inp), want); }
+
+# Each maximal ill-formed subpart becomes one U+FFFD; valid text is unchanged.
+fn test_utf8_edges() {
+    var ok = 0;
+    ok = ok + utf8_case("", "");
+    ok = ok + utf8_case("41", "41");
+    ok = ok + utf8_case("c3a9", "c3a9");
+    ok = ok + utf8_case("e282ac", "e282ac");
+    ok = ok + utf8_case("f09f9880", "f09f9880");
+    ok = ok + utf8_case("ff", "efbfbd");
+    ok = ok + utf8_case("c0af", "efbfbdefbfbd");
+    ok = ok + utf8_case("e080af", "efbfbdefbfbdefbfbd");
+    ok = ok + utf8_case("eda080", "efbfbdefbfbdefbfbd");
+    ok = ok + utf8_case("f4908080", "efbfbdefbfbdefbfbdefbfbd");
+    ok = ok + utf8_case("f09f98", "efbfbd");
+    ok = ok + utf8_case("e282", "efbfbd");
+    ok = ok + utf8_case("c3", "efbfbd");
+    ok = ok + utf8_case("80", "efbfbd");
+    ok = ok + utf8_case("c328", "efbfbd28");
+    ok = ok + utf8_case("f5", "efbfbd");
+    ok = ok + utf8_case("efbfbd", "efbfbd");
+    ok = ok + utf8_case("61ed9fbf62", "61ed9fbf62");
+    ok = ok + utf8_case("f48fbfbf", "f48fbfbf");
+    ok = ok + utf8_case("f0908080", "f0908080");
+    ok = ok + utf8_case("e0a080", "e0a080");
+    assert_eq(ok, 21, "every UTF-8 edge case matches Python's errors=replace");
+    # A long valid string takes the copy path unchanged.
+    var long = alloc(300);
+    memset(long, 0x61, 300);
+    var b = _stik_pb_new();
+    _stik_pb_text(b, 1, long, 300);
+    assert_eq(load64(b + 8), 303, "300 ASCII bytes: tag, two-byte length, the bytes");
+    assert_eq(_stik_utf8_fixed_len(long, 300), 0 - 1, "valid input reports -1");
+    return 0;
+}
+
+# A Str from two bytes.
+fn two(x, y) {
+    var p = alloc(3);
+    store8(p, x);
+    store8(p + 1, y);
+    store8(p + 2, 0);
+    return p;
+}
+
+# AnyValue strings that are not UTF-8 go out as bytes_value; keys get U+FFFD.
+fn test_utf8_anyvalue_and_keys() {
+    var kv = map_new();
+    map_set(kv, "k", any_string(str_new(two(0xFF, 0xFE), 2)));
+    var sb = str_builder_new();
+    AnyValue_to_otlp_proto(any_kvlist(kv), sb);
+    var out = str_builder_build(sb);
+    assert(hex_is(out, "320b0a090a016b12043a02fffe") == 1, "utf8_value_bytes matches protoc");
+    var kk = map_new();
+    map_set(kk, two(0xC3, 0x28), any_int(1));
+    var sb2 = str_builder_new();
+    AnyValue_to_otlp_proto(any_kvlist(kk), sb2);
+    var out2 = str_builder_build(sb2);
+    assert(hex_is(out2, "320c0a0a0a04efbfbd2812021801") == 1, "utf8_key_fffd matches protoc");
+    var lr = log_record_new(LOG_INFO, str_new(two(0xC0, 0x80), 2));
+    store64(lr, 5);
+    var sb3 = str_builder_new();
+    LogRecord_to_otlp_proto(lr, sb3);
+    var out3 = str_builder_build(sb3);
+    assert(hex_is(out3, "09050000000000000010091a04494e464f2a043a02c080") == 1, "log_body_bytes matches protoc");
+    return 0;
+}
+
+# The status message goes out with ERROR only; a span name is sanitized.
+fn test_span_status_message() {
+    var s1 = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
+    store64(s1 + 48, 77);
+    span_set_status(s1, SPAN_ERROR);
+    span_set_status_message(s1, str_from("boom"));
+    assert(str_eq_cstr(span_status_message(s1), "boom") == 1, "status message getter");
+    var sb = str_builder_new();
+    Span_to_otlp_proto(s1, sb);
+    var out = str_builder_build(sb);
+    var xp1 = str_builder_new();
+    str_builder_add_cstr(xp1, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a026f70394d000000000000");
+    str_builder_add_cstr(xp1, "00414d000000000000007a081204626f6f6d1802");
+    assert(str_eq(to_hex(out), str_builder_build(xp1)) == 1, "span_status_msg matches protoc");
+    var s2 = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
+    store64(s2 + 48, 77);
+    span_set_status(s2, SPAN_OK);
+    span_set_status_message(s2, str_from("ignored"));
+    var sb2 = str_builder_new();
+    Span_to_otlp_proto(s2, sb2);
+    var out2 = str_builder_build(sb2);
+    var xp2 = str_builder_new();
+    str_builder_add_cstr(xp2, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a026f70394d000000000000");
+    str_builder_add_cstr(xp2, "00414d000000000000007a021801");
+    assert(str_eq(to_hex(out2), str_builder_build(xp2)) == 1, "span_ok_msg_dropped matches protoc");
+    var bad = alloc(5);
+    store8(bad, 0x61);
+    store8(bad + 1, 0xED);
+    store8(bad + 2, 0xA0);
+    store8(bad + 3, 0x80);
+    store8(bad + 4, 0x62);
+    var s3 = span_new(str_new(bad, 5), ids(0, 16), ids(0xA0, 8));
+    store64(s3 + 48, 77);
+    var sb3 = str_builder_new();
+    Span_to_otlp_proto(s3, sb3);
+    var out3 = str_builder_build(sb3);
+    var xp3 = str_builder_new();
+    str_builder_add_cstr(xp3, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a0b61efbfbdefbfbdefbfbd");
+    str_builder_add_cstr(xp3, "62394d00000000000000414d00000000000000");
+    assert(str_eq(to_hex(out3), str_builder_build(xp3)) == 1, "span_name_fffd matches protoc");
+    assert_eq(span_status_message(span_new(str_from("x"), 0, 0)), 0, "message starts unset");
+    return 0;
+}
+
+# Number data points carry their start time and exemplars, typed like the value.
+fn test_number_point_exemplars() {
+    var p1 = metric_data_point_new(str_from("req"), metric_int(42));
+    store64(p1 + 24, 99);
+    mdp_set_start_time(p1, 10);
+    assert_eq(mdp_start_time(p1), 10, "start time getter");
+    var e1 = exemplar_new(ids(0, 16), ids(0xA0, 8), 7);
+    store64(e1 + 24, 50);
+    map_set(exem_attributes(e1), "user", any_string(str_from("u1")));
+    vec_push(mdp_exemplars(p1), e1);
+    var sb = str_builder_new();
+    MetricDataPoint_to_otlp_proto(p1, sb);
+    var out = str_builder_build(sb);
+    var xp4 = str_builder_new();
+    str_builder_add_cstr(xp4, "110a000000000000001963000000000000002a3c1132000000000000002208a0a1a2a3a4a5a6a72a");
+    str_builder_add_cstr(xp4, "10000102030405060708090a0b0c0d0e0f3107000000000000003a0c0a047573657212040a027531");
+    str_builder_add_cstr(xp4, "312a00000000000000");
+    assert(str_eq(to_hex(out), str_builder_build(xp4)) == 1, "mdp_int_exemplar matches protoc");
+    var p2 = metric_data_point_new(str_from("lat"), metric_float(0x4004000000000000));
+    store64(p2 + 24, 100);
+    var e2 = exemplar_new(0, 0, 0x3FF8000000000000);
+    store64(e2 + 24, 0);
+    vec_push(mdp_exemplars(p2), e2);
+    var sb2 = str_builder_new();
+    MetricDataPoint_to_otlp_proto(p2, sb2);
+    var out2 = str_builder_build(sb2);
+    assert(hex_is(out2, "1964000000000000002100000000000004402a0919000000000000f83f") == 1,
+      "mdp_float_exemplar matches protoc");
+    return 0;
+}
+
+# The histogram fixture: 6 values in buckets (-inf,1] (1,5] (5,inf), sum 12.5,
+# min 0.5, max 9.0, an exemplar and an attribute; DELTA temporality.
+fn hist_point() {
+    var h = histogram_value_new();
+    hval_set_count(h, 6);
+    hval_set_sum(h, 0x4029000000000000);
+    vec_push(hval_bounds(h), 0x3FF0000000000000);
+    vec_push(hval_bounds(h), 0x4014000000000000);
+    vec_push(hval_bucket_counts(h), 1);
+    vec_push(hval_bucket_counts(h), 3);
+    vec_push(hval_bucket_counts(h), 2);
+    hval_set_min(h, 0x3FE0000000000000);
+    hval_set_max(h, 0x4022000000000000);
+    var p = metric_data_point_new(str_from("lat"), metric_histogram(h));
+    store64(p + 24, 300);
+    mdp_set_start_time(p, 200);
+    mdp_set_temporality(p, TEMPORALITY_DELTA);
+    map_set(mdp_attributes(p), "route", any_string(str_from("/x")));
+    var e = exemplar_new(ids(0, 16), ids(0xA0, 8), 0x4008000000000000);
+    store64(e + 24, 250);
+    vec_push(mdp_exemplars(p), e);
+    return p;
+}
+
+# The histogram metric descriptor of the fixtures.
+fn hist_desc() {
+    return instrument_descriptor_new(str_from("http.server.duration"), str_from("d"), str_from("ms"), METRIC_HISTOGRAM);
+}
+
+# metric_to_otlp_proto of `desc` and `pts`; Str on Ok, 0 on Err.
+fn enc_metric(desc, pts) {
+    var sb = str_builder_new();
+    var r_t, r = metric_to_otlp_proto(desc, pts, sb);
+    if (is_ok(r_t) == 1) { return str_builder_build(sb); }
+    return 0;
+}
+
+# A one-point vec.
+fn one(p) {
+    var v = vec_new();
+    vec_push(v, p);
+    return v;
+}
+
+# Histogram metrics, and the HistogramValue accessors.
+fn test_histogram_metric() {
+    var p = hist_point();
+    var h = boxed_payload(mdp_value(p));
+    assert_eq(hval_count(h), 6, "count");
+    assert_eq(hval_has_sum(h), 1, "sum present");
+    assert_eq(hval_has_min(h), 1, "min present");
+    assert_eq(hval_has_max(h), 1, "max present");
+    assert_eq(hval_max(h), 0x4022000000000000, "max bits");
+    assert_eq(vec_len(hval_bounds(h)), 2, "two bounds");
+    var out = enc_metric(hist_desc(), one(p));
+    assert(out != 0, "histogram encodes");
+    var xp5 = str_builder_new();
+    str_builder_add_cstr(xp5, "0a14687474702e7365727665722e6475726174696f6e1201641a026d734aa6010aa10111c8000000");
+    str_builder_add_cstr(xp5, "00000000192c01000000000000210600000000000000290000000000002940321801000000000000");
+    str_builder_add_cstr(xp5, "00030000000000000002000000000000003a10000000000000f03f0000000000001440422e11fa00");
+    str_builder_add_cstr(xp5, "0000000000001900000000000008402208a0a1a2a3a4a5a6a72a10000102030405060708090a0b0c");
+    str_builder_add_cstr(xp5, "0d0e0f4a0d0a05726f75746512040a022f7859000000000000e03f6100000000000022401001");
+    assert(str_eq(to_hex(out), str_builder_build(xp5)) == 1, "metric_histogram matches protoc");
+    var h2 = histogram_value_new();
+    hval_set_count(h2, 3);
+    assert_eq(hval_has_sum(h2), 0, "sum absent until set");
+    var q2 = metric_data_point_new(str_from("x"), metric_histogram(h2));
+    store64(q2 + 24, 0);
+    var out2 = enc_metric(instrument_descriptor_new(str_from("h"), 0, 0, METRIC_HISTOGRAM), one(q2));
+    assert(hex_is(out2, "0a01684a0d0a092103000000000000001002") == 1, "metric_histogram_nobuckets matches protoc");
+    return 0;
+}
+
+# A histogram point with one bucket count changed to `v`.
+fn hist_with_bucket(i, v) {
+    var p = hist_point();
+    vec_set(hval_bucket_counts(boxed_payload(mdp_value(p))), i, v);
+    return p;
+}
+
+# Malformed histograms are an Err, and nothing is written.
+fn test_histogram_errors() {
+    var d = hist_desc();
+    assert_eq(enc_metric(d, one(hist_with_bucket(0, 2))), 0, "bucket sum 7 != count 6");
+    assert_eq(enc_metric(d, one(hist_with_bucket(1, 0 - 1))), 0, "negative bucket count");
+    var p = hist_point();
+    vec_push(hval_bounds(boxed_payload(mdp_value(p))), 0x4024000000000000);
+    assert_eq(enc_metric(d, one(p)), 0, "three bounds, three buckets");
+    var h = histogram_value_new();
+    vec_push(hval_bounds(h), 0x3FF0000000000000);
+    hval_set_count(h, 0);
+    var bp = metric_data_point_new(str_from("x"), metric_histogram(h));
+    assert_eq(enc_metric(d, one(bp)), 0, "bounds without buckets");
+    var neg = histogram_value_new();
+    hval_set_count(neg, 0 - 1);
+    assert_eq(enc_metric(d, one(metric_data_point_new(str_from("x"), metric_histogram(neg)))), 0, "negative count");
+    assert_eq(enc_metric(d, one(metric_data_point_new(str_from("x"), metric_int(3)))), 0, "int point in a histogram");
+    var mixed = vec_new();
+    vec_push(mixed, hist_point());
+    var p2 = hist_point();
+    mdp_set_temporality(p2, TEMPORALITY_CUMULATIVE);
+    vec_push(mixed, p2);
+    assert_eq(enc_metric(d, mixed), 0, "histogram points disagreeing on temporality");
+    var sb = str_builder_new();
+    var r_t, r = metric_to_otlp_proto(d, one(hist_with_bucket(2, 9)), sb);
+    assert(is_err_result(r_t) == 1, "Err");
+    assert_eq(str_len(str_builder_build(sb)), 0, "nothing written");
+    # A number point holding a histogram value is still flagged NO_RECORDED_VALUE.
+    var hp = metric_data_point_new(str_from("x"), metric_histogram(histogram_value_new()));
+    store64(hp + 24, 7);
+    var nb = str_builder_new();
+    MetricDataPoint_to_otlp_proto(hp, nb);
+    assert(hex_is(str_builder_build(nb), "1907000000000000004001") == 1, "time, then flags = NO_RECORDED_VALUE");
+    return 0;
+}
+
+# Fixture resource r1: struct fields plus a map entry the struct overrides.
+fn res1() {
+    var r = resource_new(str_from("svc"), str_from("1.2"), str_from("i-1"));
+    map_set(res_attributes(r), "host.name", any_string(str_from("h")));
+    map_set(res_attributes(r), "service.name", any_string(str_from("override-me")));
+    return r;
+}
+
+# Fixture resource r2: empty struct fields, service.name from the map.
+fn res2() {
+    var r = resource_default();
+    map_set(res_attributes(r), "service.name", any_string(str_from("fromMap")));
+    return r;
+}
+
+# Fixture scope.
+fn scope1() {
+    var sc = instrumentation_scope_new(str_from("agnostik"), str_from("1.12.0"));
+    map_set(iscope_attributes(sc), "lib", any_bool(1));
+    return sc;
+}
+
+# Resource and InstrumentationScope encode with semantic-convention keys.
+fn test_resource_and_scope() {
+    var sb = str_builder_new();
+    Resource_to_otlp_proto(res1(), sb);
+    var out = str_builder_build(sb);
+    var xp6 = str_builder_new();
+    str_builder_add_cstr(xp6, "0a100a09686f73742e6e616d6512030a01680a1c0a13736572766963652e696e7374616e63652e69");
+    str_builder_add_cstr(xp6, "6412050a03692d310a150a0c736572766963652e6e616d6512050a037376630a180a0f7365727669");
+    str_builder_add_cstr(xp6, "63652e76657273696f6e12050a03312e32");
+    assert(str_eq(to_hex(out), str_builder_build(xp6)) == 1, "resource_full matches protoc");
+    var sb2 = str_builder_new();
+    Resource_to_otlp_proto(res2(), sb2);
+    var out2 = str_builder_build(sb2);
+    assert(hex_is(out2, "0a190a0c736572766963652e6e616d6512090a0766726f6d4d6170") == 1,
+      "resource_map_name matches protoc");
+    var sb3 = str_builder_new();
+    InstrumentationScope_to_otlp_proto(scope1(), sb3);
+    var out3 = str_builder_build(sb3);
+    assert(hex_is(out3, "0a0861676e6f7374696b1206312e31322e301a090a036c696212021001") == 1,
+      "scope_full matches protoc");
+    return 0;
+}
+
+# The ERROR / OK span fixtures of the request vectors.
+fn span_err() {
+    var s = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
+    store64(s + 48, 77);
+    span_set_status(s, SPAN_ERROR);
+    span_set_status_message(s, str_from("boom"));
+    return s;
+}
+
+# OK span fixture whose message is dropped.
+fn span_ok() {
+    var s = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
+    store64(s + 48, 77);
+    span_set_status(s, SPAN_OK);
+    span_set_status_message(s, str_from("ignored"));
+    return s;
+}
+
+# The three export requests, an empty one, and two calls batched in one builder.
+fn test_requests() {
+    var r1 = res1();
+    res_set_schema_url(r1, str_from("https://opentelemetry.io/schemas/1.26.0"));
+    var sc = scope1();
+    iscope_set_schema_url(sc, str_from("https://s/1"));
+    var spans = vec_new();
+    vec_push(spans, span_err());
+    vec_push(spans, 0);
+    vec_push(spans, span_ok());
+    var sb = str_builder_new();
+    otlp_traces_request(r1, sc, spans, sb);
+    var out = str_builder_build(sb);
+    var xp7 = str_builder_new();
+    str_builder_add_cstr(xp7, "0ab1020a610a100a09686f73742e6e616d6512030a01680a1c0a13736572766963652e696e737461");
+    str_builder_add_cstr(xp7, "6e63652e696412050a03692d310a150a0c736572766963652e6e616d6512050a037376630a180a0f");
+    str_builder_add_cstr(xp7, "736572766963652e76657273696f6e12050a03312e3212a2010a1d0a0861676e6f7374696b120631");
+    str_builder_add_cstr(xp7, "2e31322e301a090a036c696212021001123c0a10000102030405060708090a0b0c0d0e0f1208a0a1");
+    str_builder_add_cstr(xp7, "a2a3a4a5a6a72a026f70394d00000000000000414d000000000000007a081204626f6f6d18021236");
+    str_builder_add_cstr(xp7, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a026f70394d000000000000");
+    str_builder_add_cstr(xp7, "00414d000000000000007a0218011a0b68747470733a2f2f732f311a2768747470733a2f2f6f7065");
+    str_builder_add_cstr(xp7, "6e74656c656d657472792e696f2f736368656d61732f312e32362e30");
+    assert(str_eq(to_hex(out), str_builder_build(xp7)) == 1, "traces_req matches protoc");
+    var sb2 = str_builder_new();
+    otlp_traces_request(0, 0, 0, sb2);
+    var out2 = str_builder_build(sb2);
+    assert(hex_is(out2, "0a021200") == 1, "traces_req_empty matches protoc");
+    var sb3 = str_builder_new();
+    otlp_traces_request(r1, sc, one(span_ok()), sb3);
+    otlp_traces_request(res2(), 0, one(span_ok()), sb3);
+    var out3 = str_builder_build(sb3);
+    var xp8 = str_builder_new();
+    str_builder_add_cstr(xp8, "0af2010a610a100a09686f73742e6e616d6512030a01680a1c0a13736572766963652e696e737461");
+    str_builder_add_cstr(xp8, "6e63652e696412050a03692d310a150a0c736572766963652e6e616d6512050a037376630a180a0f");
+    str_builder_add_cstr(xp8, "736572766963652e76657273696f6e12050a03312e3212640a1d0a0861676e6f7374696b1206312e");
+    str_builder_add_cstr(xp8, "31322e301a090a036c69621202100112360a10000102030405060708090a0b0c0d0e0f1208a0a1a2");
+    str_builder_add_cstr(xp8, "a3a4a5a6a72a026f70394d00000000000000414d000000000000007a0218011a0b68747470733a2f");
+    str_builder_add_cstr(xp8, "2f732f311a2768747470733a2f2f6f70656e74656c656d657472792e696f2f736368656d61732f31");
+    str_builder_add_cstr(xp8, "2e32362e300a570a1b0a190a0c736572766963652e6e616d6512090a0766726f6d4d617012381236");
+    str_builder_add_cstr(xp8, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a026f70394d000000000000");
+    str_builder_add_cstr(xp8, "00414d000000000000007a021801");
+    assert(str_eq(to_hex(out3), str_builder_build(xp8)) == 1, "traces_req_two matches protoc");
+    var lr = log_record_new(LOG_INFO, str_new(two(0xC0, 0x80), 2));
+    store64(lr, 5);
+    var sb4 = str_builder_new();
+    otlp_logs_request(res2(), 0, one(lr), sb4);
+    var out4 = str_builder_build(sb4);
+    var xp9 = str_builder_new();
+    str_builder_add_cstr(xp9, "0a380a1b0a190a0c736572766963652e6e616d6512090a0766726f6d4d6170121912170905000000");
+    str_builder_add_cstr(xp9, "0000000010091a04494e464f2a043a02c080");
+    assert(str_eq(to_hex(out4), str_builder_build(xp9)) == 1, "logs_req matches protoc");
+    var p2 = metric_data_point_new(str_from("lat"), metric_float(0x4004000000000000));
+    store64(p2 + 24, 100);
+    var e2 = exemplar_new(0, 0, 0x3FF8000000000000);
+    store64(e2 + 24, 0);
+    vec_push(mdp_exemplars(p2), e2);
+    var g = instrument_descriptor_new(str_from("cpu"), 0, str_from("1"), METRIC_GAUGE);
+    var ms = vec_new();
+    vec_push(ms, metric_new(g, one(p2)));
+    vec_push(ms, metric_new(hist_desc(), one(hist_point())));
+    assert_eq(metric_descriptor(vec_get(ms, 0)), g, "metric_descriptor");
+    var sb5 = str_builder_new();
+    var m_t, m = otlp_metrics_request(res2(), sc, ms, sb5);
+    assert(is_ok(m_t) == 1, "metrics request Ok");
+    var out5 = str_builder_build(sb5);
+    var xp10 = str_builder_new();
+    str_builder_add_cstr(xp10, "0ac0020a1b0a190a0c736572766963652e6e616d6512090a0766726f6d4d617012a0020a1d0a0861");
+    str_builder_add_cstr(xp10, "676e6f7374696b1206312e31322e301a090a036c69621202100112290a036370751a01312a1f0a1d");
+    str_builder_add_cstr(xp10, "1964000000000000002100000000000004402a0919000000000000f83f12c6010a14687474702e73");
+    str_builder_add_cstr(xp10, "65727665722e6475726174696f6e1201641a026d734aa6010aa10111c800000000000000192c0100");
+    str_builder_add_cstr(xp10, "00000000002106000000000000002900000000000029403218010000000000000003000000000000");
+    str_builder_add_cstr(xp10, "0002000000000000003a10000000000000f03f0000000000001440422e11fa000000000000001900");
+    str_builder_add_cstr(xp10, "000000000008402208a0a1a2a3a4a5a6a72a10000102030405060708090a0b0c0d0e0f4a0d0a0572");
+    str_builder_add_cstr(xp10, "6f75746512040a022f7859000000000000e03f61000000000000224010011a0b68747470733a2f2f");
+    str_builder_add_cstr(xp10, "732f31");
+    assert(str_eq(to_hex(out5), str_builder_build(xp10)) == 1, "metrics_req matches protoc");
+    # One bad metric: Err, nothing written.
+    vec_push(ms, metric_new(hist_desc(), one(hist_with_bucket(0, 5))));
+    var sb6 = str_builder_new();
+    var x_t, x = otlp_metrics_request(res2(), sc, ms, sb6);
+    assert(is_err_result(x_t) == 1, "a malformed metric fails the request");
+    assert_eq(str_len(str_builder_build(sb6)), 0, "nothing written");
+    var mt = metric_new(hist_desc(), one(hist_point()));
+    var sb7 = str_builder_new();
+    var y_t, y = Metric_to_otlp_proto(mt, sb7);
+    assert(is_ok(y_t) == 1, "Metric_to_otlp_proto Ok");
+    assert(str_eq(str_builder_build(sb7), enc_metric(hist_desc(), one(hist_point()))) == 1,
+      "Metric_to_otlp_proto = metric_to_otlp_proto");
+    return 0;
+}
+
+# ─── schema walker ────
+
+# Walker state: +0 failed flag, +8 KeyValue messages seen.
+var _PB = 0;
+
+# Clears the walker state, allocating it on first use.
+fn pb_reset() {
+    if (_PB == 0) { _PB = alloc(16); }
+    store64(_PB, 0);
+    store64(_PB + 8, 0);
+    return 0;
+}
+
+# Marks the walk as failed.
+fn pb_fail() {
+    store64(_PB, 1);
+    return 0;
+}
+
+# Message ids for pb_spec. STR marks a protobuf `string` field, whose bytes the
+# walker checks are valid UTF-8.
+enum PbMsg {
+    PB_SPAN = 1; PB_EVENT = 2; PB_LINK = 3; PB_STATUS = 4; PB_KV = 5; PB_ANY = 6; PB_ARRAY = 7;
+    PB_KVLIST = 8; PB_LOG = 9; PB_NDP = 10; PB_METRIC = 11; PB_GAUGE = 12; PB_SUM = 13;
+    PB_HIST = 14; PB_HDP = 15; PB_EXEMPLAR = 16; PB_RES = 17; PB_SCOPE = 18; PB_RSPANS = 19;
+    PB_SSPANS = 20; PB_RLOGS = 21; PB_SLOGS = 22; PB_RMETRICS = 23; PB_SMETRICS = 24;
+    PB_TREQ = 25; PB_LREQ = 26; PB_MREQ = 27; STR = 99;
+}
+
+# Schema of field `f` in message `msg`: wire type * 100 + sub-message id (STR
+# for a string, 0 for other scalars and bytes), or -1 when the field is not in
+# the schema (opentelemetry-proto v1.7.0).
+fn pb_spec(msg, f) {
+    if (msg == PB_SPAN) {
+        if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200 + STR; }
+        if (f == 4) { return 200; } if (f == 5) { return 200 + STR; } if (f == 6) { return 0; }
+        if (f == 7) { return 100; } if (f == 8) { return 100; } if (f == 9) { return 200 + PB_KV; }
+        if (f == 10) { return 0; } if (f == 11) { return 200 + PB_EVENT; } if (f == 12) { return 0; }
+        if (f == 13) { return 200 + PB_LINK; } if (f == 14) { return 0; }
+        if (f == 15) { return 200 + PB_STATUS; } if (f == 16) { return 500; }
+    }
+    if (msg == PB_EVENT) {
+        if (f == 1) { return 100; } if (f == 2) { return 200 + STR; } if (f == 3) { return 200 + PB_KV; }
+        if (f == 4) { return 0; }
+    }
+    if (msg == PB_LINK) {
+        if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200 + STR; }
+        if (f == 4) { return 200 + PB_KV; } if (f == 5) { return 0; } if (f == 6) { return 500; }
+    }
+    if (msg == PB_STATUS) {
+        if (f == 2) { return 200 + STR; } if (f == 3) { return 0; }
+    }
+    if (msg == PB_KV) {
+        if (f == 1) { return 200 + STR; } if (f == 2) { return 200 + PB_ANY; }
+    }
+    if (msg == PB_ANY) {
+        if (f == 1) { return 200 + STR; } if (f == 2) { return 0; } if (f == 3) { return 0; }
+        if (f == 4) { return 100; } if (f == 5) { return 200 + PB_ARRAY; }
+        if (f == 6) { return 200 + PB_KVLIST; } if (f == 7) { return 200; }
+    }
+    if (msg == PB_ARRAY) {
+        if (f == 1) { return 200 + PB_ANY; }
+    }
+    if (msg == PB_KVLIST) {
+        if (f == 1) { return 200 + PB_KV; }
+    }
+    if (msg == PB_LOG) {
+        if (f == 1) { return 100; } if (f == 2) { return 0; } if (f == 3) { return 200 + STR; }
+        if (f == 5) { return 200 + PB_ANY; } if (f == 6) { return 200 + PB_KV; } if (f == 7) { return 0; }
+        if (f == 8) { return 500; } if (f == 9) { return 200; } if (f == 10) { return 200; }
+        if (f == 11) { return 100; } if (f == 12) { return 200 + STR; }
+    }
+    if (msg == PB_NDP) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 100; }
+        if (f == 5) { return 200 + PB_EXEMPLAR; }
+        if (f == 6) { return 100; } if (f == 7) { return 200 + PB_KV; } if (f == 8) { return 0; }
+    }
+    if (msg == PB_METRIC) {
+        if (f == 1) { return 200 + STR; } if (f == 2) { return 200 + STR; } if (f == 3) { return 200 + STR; }
+        if (f == 5) { return 200 + PB_GAUGE; } if (f == 7) { return 200 + PB_SUM; }
+        if (f == 9) { return 200 + PB_HIST; }
+    }
+    if (msg == PB_GAUGE) {
+        if (f == 1) { return 200 + PB_NDP; }
+    }
+    if (msg == PB_SUM) {
+        if (f == 1) { return 200 + PB_NDP; } if (f == 2) { return 0; } if (f == 3) { return 0; }
+    }
+    if (msg == PB_HIST) {
+        if (f == 1) { return 200 + PB_HDP; } if (f == 2) { return 0; }
+    }
+    if (msg == PB_HDP) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 100; }
+        if (f == 5) { return 100; } if (f == 6) { return 200; } if (f == 7) { return 200; }
+        if (f == 8) { return 200 + PB_EXEMPLAR; } if (f == 9) { return 200 + PB_KV; }
+        if (f == 10) { return 0; } if (f == 11) { return 100; } if (f == 12) { return 100; }
+    }
+    if (msg == PB_EXEMPLAR) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 200; }
+        if (f == 5) { return 200; } if (f == 6) { return 100; } if (f == 7) { return 200 + PB_KV; }
+    }
+    if (msg == PB_RES) {
+        if (f == 1) { return 200 + PB_KV; } if (f == 2) { return 0; }
+    }
+    if (msg == PB_SCOPE) {
+        if (f == 1) { return 200 + STR; } if (f == 2) { return 200 + STR; } if (f == 3) { return 200 + PB_KV; }
+        if (f == 4) { return 0; }
+    }
+    if (msg == PB_RSPANS) {
+        if (f == 1) { return 200 + PB_RES; } if (f == 2) { return 200 + PB_SSPANS; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_SSPANS) {
+        if (f == 1) { return 200 + PB_SCOPE; } if (f == 2) { return 200 + PB_SPAN; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_RLOGS) {
+        if (f == 1) { return 200 + PB_RES; } if (f == 2) { return 200 + PB_SLOGS; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_SLOGS) {
+        if (f == 1) { return 200 + PB_SCOPE; } if (f == 2) { return 200 + PB_LOG; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_RMETRICS) {
+        if (f == 1) { return 200 + PB_RES; } if (f == 2) { return 200 + PB_SMETRICS; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_SMETRICS) {
+        if (f == 1) { return 200 + PB_SCOPE; } if (f == 2) { return 200 + PB_METRIC; } if (f == 3) { return 200 + STR; }
+    }
+    if (msg == PB_TREQ) {
+        if (f == 1) { return 200 + PB_RSPANS; }
+    }
+    if (msg == PB_LREQ) {
+        if (f == 1) { return 200 + PB_RLOGS; }
+    }
+    if (msg == PB_MREQ) {
+        if (f == 1) { return 200 + PB_RMETRICS; }
+    }
+    return 0 - 1;
+}
+
+# 1 when bytes [p, p + n) are valid UTF-8 by RFC 3629, written independently
+# of the library's scanner: lead byte ranges, continuation ranges, and the
+# E0 / ED / F0 / F4 second-byte limits.
+fn valid_utf8(p, n) {
+    var i = 0;
+    var ok = 1;
+    while (i < n) {
+        if (ok == 0) { i = n; }
+        else {
+            var c = load8(p + i);
+            var need = 0 - 1;
+            var lo = 0x80;
+            var hi = 0xBF;
+            if (c < 0x80) { need = 0; }
+            elif (c < 0xC2) { need = 0 - 1; }
+            elif (c < 0xE0) { need = 1; }
+            elif (c < 0xF0) {
+                need = 2;
+                if (c == 0xE0) { lo = 0xA0; }
+                if (c == 0xED) { hi = 0x9F; }
+            } elif (c < 0xF5) {
+                need = 3;
+                if (c == 0xF0) { lo = 0x90; }
+                if (c == 0xF4) { hi = 0x8F; }
+            }
+            if (need < 0) { ok = 0; }
+            elif (i + need >= n) { ok = 0; }
+            if (ok == 1) {
+                var k = 1;
+                while (k <= need) {
+                    var d = load8(p + i + k);
+                    var l = 0x80;
+                    var h = 0xBF;
+                    if (k == 1) {
+                        l = lo;
+                        h = hi;
+                    }
+                    if (d < l) { ok = 0; }
+                    if (d > h) { ok = 0; }
+                    k = k + 1;
+                }
+                i = i + need + 1;
+            }
+        }
+    }
+    return ok;
+}
+
+# Reads a varint at the position held in `cur`, advancing it; fails the walk
+# on a truncated or over-long varint.
+fn pb_varint(buf, cur, end) {
+    var v = 0;
+    var shift = 0;
+    var done = 0;
+    while (done == 0) {
+        var p = load64(cur);
+        if (p >= end) {
+            pb_fail();
+            done = 1;
+        } else {
+            var b = load8(buf + p);
+            store64(cur, p + 1);
+            if (shift < 64) { v = v | ((b & 0x7F) << shift); }
+            shift = shift + 7;
+            if ((b & 0x80) == 0) { done = 1; }
+            elif (shift >= 70) {
+                pb_fail();
+                done = 1;
+            }
+        }
+    }
+    return v;
+}
+
+# Walks bytes [start, end) of `buf` as message `msg`, recursing into
+# sub-messages, failing the walk on anything the schema does not allow.
+fn pb_walk(buf, start, end, msg, depth) {
+    if (depth > 48) {
+        pb_fail();
+        return 0;
+    }
+    var cur = alloc(8);
+    store64(cur, start);
+    var last = 0;
+    var members = 0;
+    var going = 1;
+    while (going == 1) {
+        if (load64(cur) >= end) { going = 0; }
+        elif (load64(_PB) == 1) { going = 0; }
+        else {
+            var tag = pb_varint(buf, cur, end);
+            var f = tag >> 3;
+            var wt = tag & 7;
+            var sp = pb_spec(msg, f);
+            if (sp < 0) { pb_fail(); }
+            elif (sp / 100 != wt) { pb_fail(); }
+            elif (f < last) { pb_fail(); }
+            else {
+                last = f;
+                if (msg == PB_ANY) { members = members + 1; }
+                if (members > 1) { pb_fail(); }
+                var p = load64(cur);
+                if (wt == 0) { pb_varint(buf, cur, end); }
+                elif (wt == 1) {
+                    if (p + 8 > end) { pb_fail(); }
+                    else { store64(cur, p + 8); }
+                } elif (wt == 5) {
+                    if (p + 4 > end) { pb_fail(); }
+                    else { store64(cur, p + 4); }
+                } else {
+                    var len = pb_varint(buf, cur, end);
+                    var q = load64(cur);
+                    if (len < 0) { pb_fail(); }
+                    elif (q + len > end) { pb_fail(); }
+                    else {
+                        var sub = sp % 100;
+                        if (sub == PB_KV) { store64(_PB + 8, load64(_PB + 8) + 1); }
+                        if (sub == STR) {
+                            if (valid_utf8(buf + q, len) == 0) { pb_fail(); }
+                        } elif (sub != 0) { pb_walk(buf, q, q + len, sub, depth + 1); }
+                        store64(cur, q + len);
+                    }
+                }
+            }
+        }
+    }
+    if (load64(cur) != end) { pb_fail(); }
+    return 0;
+}
+
+# 1 if `out` is a valid `msg` holding exactly `kvs` KeyValue messages.
+fn pb_check(out, msg, kvs) {
+    pb_reset();
+    pb_walk(str_data(out), 0, str_len(out), msg, 0);
+    if (load64(_PB) == 1) { return 0; }
+    if (load64(_PB + 8) != kvs) { return 0; }
+    return 1;
+}
+
+# The walker rejects invalid UTF-8 in a string field and accepts the rest.
+fn test_walker() {
+    var bad = alloc(4);
+    store8(bad, 0x0A);
+    store8(bad + 1, 2);
+    store8(bad + 2, 0xC3);
+    store8(bad + 3, 0x28);
+    assert_eq(pb_check(str_new(bad, 4), PB_SCOPE, 0), 0, "invalid UTF-8 scope name rejected");
+    store8(bad + 3, 0xA9);
+    assert_eq(pb_check(str_new(bad, 4), PB_SCOPE, 0), 1, "valid UTF-8 accepted");
+    assert_eq(pb_check(str_new(bad, 4), PB_RES, 0), 0, "Resource has no string field 1");
+    assert_eq(valid_utf8(str_data(unhex("f09f98")), 3), 0, "truncated 4-byte sequence");
+    assert_eq(valid_utf8(str_data(unhex("eda080")), 3), 0, "surrogate");
+    assert_eq(valid_utf8(str_data(unhex("f4908080")), 4), 0, "past U+10FFFF");
+    assert_eq(valid_utf8(str_data(unhex("e0a080f09f9880")), 7), 1, "valid multi-byte");
+    return 0;
+}
+
+# ─── fuzz ────
+
+# xorshift64 PRNG state — heap slot for mutability across helper fns.
+var _RNG = 0;
+
+# Seeds the xorshift64 PRNG (allocating its state slot on first use; seed 0 becomes 1).
+fn rng_init(seed) {
+    if (_RNG == 0) { _RNG = alloc(8); }
+    if (seed == 0) { seed = 1; }
+    store64(_RNG, seed);
+    return 0;
+}
+
+# Advances the xorshift64 state and returns the new 64-bit value.
+fn rng_next() {
+    var s = load64(_RNG);
+    s = s ^ (s << 13);
+    s = s ^ (s >> 7);
+    s = s ^ (s << 17);
+    store64(_RNG, s);
+    return s;
+}
+
+# A pseudo-random value in 0..n-1.
+fn rng_below(n) { return (rng_next() & 0x7FFFFFFF) % n; }
+
+# A random key of 0..3 bytes: letters, or now and then a raw high byte.
+fn gen_key() {
+    var n = rng_below(4);
+    var k = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        if (rng_below(4) == 0) { store8(k + i, 0x80 + rng_below(127)); }
+        else { store8(k + i, 97 + rng_below(3)); }
+        i = i + 1;
+    }
+    store8(k + n, 0);
+    return k;
+}
+
+# A Str of 0..max random bytes, any byte value (mostly invalid UTF-8).
+fn gen_bytes(max) {
+    var n = rng_below(max + 1);
+    var b = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        store8(b + i, rng_next() & 0xFF);
+        i = i + 1;
+    }
+    return str_new(b, n);
+}
+
+# A random AnyValue box, arrays and kvlists nested below `depth` 3.
+fn gen_value(depth) {
+    var k = rng_below(8);
+    if (depth >= 3) {
+        if (k == 5) { k = 0; }
+        if (k == 6) { k = 0; }
+    }
+    if (k == 0) { return any_string(gen_bytes(8)); }
+    if (k == 1) { return any_bool(rng_next() & 1); }
+    if (k == 2) { return any_int(rng_next()); }
+    if (k == 3) { return any_double(rng_next()); }
+    if (k == 4) { return any_bytes(gen_bytes(8)); }
+    if (k == 5) {
+        var v = vec_new();
+        var n = rng_below(3);
+        var i = 0;
+        while (i < n) {
+            vec_push(v, gen_value(depth + 1));
+            i = i + 1;
+        }
+        return any_array(v);
+    }
+    if (k == 6) { return any_kvlist(gen_map(depth + 1)); }
+    return 0;
+}
+
+# A random attribute map of 0..3 entries (keys may repeat and overwrite).
+fn gen_map(depth) {
+    var m = map_new();
+    var n = rng_below(4);
+    var i = 0;
+    while (i < n) {
+        map_set(m, gen_key(), gen_value(depth));
+        i = i + 1;
+    }
+    return m;
+}
+
+# KeyValue messages an AnyValue box `v` holds, nested ones included.
+fn kv_in_value(v) {
+    if (v == 0) { return 0; }
+    var t = boxed_tag(v);
+    if (t == ANY_KVLIST) { return kv_in_map(boxed_payload(v)); }
+    if (t == ANY_ARRAY) {
+        var a = boxed_payload(v);
+        var total = 0;
+        var i = 0;
+        while (i < vec_len(a)) {
+            total = total + kv_in_value(vec_get(a, i));
+            i = i + 1;
+        }
+        return total;
+    }
+    return 0;
+}
+
+# KeyValue messages map `m` encodes to, nested ones included.
+fn kv_in_map(m) {
+    if (m == 0) { return 0; }
+    var vals = map_values(m);
+    var total = map_size(m);
+    var i = 0;
+    while (i < vec_len(vals)) {
+        total = total + kv_in_value(vec_get(vals, i));
+        i = i + 1;
+    }
+    return total;
+}
+
+# A random resource (or 0) and the KeyValue messages it encodes to. The fuzz
+# keys never spell a service.* key, so each non-empty field adds one.
+var _RES_KVS = 0;
+# Random resource; its KeyValue count is left in _RES_KVS.
+fn gen_resource() {
+    _RES_KVS = 0;
+    if (rng_below(5) == 0) { return 0; }
+    var r = resource_new(gen_bytes(4), gen_bytes(4), gen_bytes(4));
+    store64(r + 24, gen_map(0));
+    _RES_KVS = kv_in_map(load64(r + 24));
+    var f = 0;
+    while (f < 3) {
+        if (str_len(load64(r + f * 8)) > 0) { _RES_KVS = _RES_KVS + 1; }
+        f = f + 1;
+    }
+    if (rng_below(2) == 1) { res_set_schema_url(r, gen_bytes(6)); }
+    return r;
+}
+
+# A random scope (or 0); its KeyValue count is left in _SC_KVS.
+var _SC_KVS = 0;
+# Random scope.
+fn gen_scope() {
+    _SC_KVS = 0;
+    if (rng_below(4) == 0) { return 0; }
+    var sc = instrumentation_scope_new(gen_bytes(5), gen_bytes(3));
+    if (rng_below(2) == 1) { store64(sc + 24, gen_map(0)); }
+    _SC_KVS = kv_in_map(load64(sc + 24));
+    if (rng_below(2) == 1) { iscope_set_schema_url(sc, gen_bytes(6)); }
+    return sc;
+}
+
+var _FUZZ_ITERS = 150;
+
+# Random traces requests: valid, UTF-8 clean, complete, stable.
+fn fuzz_traces(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var r = gen_resource();
+        var kvs = _RES_KVS;
+        var sc = gen_scope();
+        kvs = kvs + _SC_KVS;
+        var spans = vec_new();
+        var ns = rng_below(4);
+        var j = 0;
+        while (j < ns) {
+            var sp = span_new(gen_bytes(6), ids(j, 16), ids(j + 1, 8));
+            span_set_status(sp, rng_below(4));
+            span_set_status_message(sp, gen_bytes(5));
+            store64(sp + 64, gen_map(0));
+            kvs = kvs + kv_in_map(load64(sp + 64));
+            if (rng_below(2) == 1) {
+                var e = span_event_new(gen_bytes(4));
+                store64(e + 16, gen_map(0));
+                kvs = kvs + kv_in_map(load64(e + 16));
+                vec_push(span_events(sp), e);
+            }
+            vec_push(spans, sp);
+            j = j + 1;
+        }
+        var sb = str_builder_new();
+        otlp_traces_request(r, sc, spans, sb);
+        var out = str_builder_build(sb);
+        if (pb_check(out, PB_TREQ, kvs) == 1) {
+            var sb2 = str_builder_new();
+            otlp_traces_request(r, sc, spans, sb2);
+            if (str_eq(out, str_builder_build(sb2)) == 1) { ok = ok + 1; }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz traces request: valid, UTF-8 clean, stable");
+    return 0;
+}
+
+# Random logs requests: valid, UTF-8 clean, complete, stable.
+fn fuzz_logs(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var r = gen_resource();
+        var kvs = _RES_KVS;
+        var sc = gen_scope();
+        kvs = kvs + _SC_KVS;
+        var recs = vec_new();
+        var nr = rng_below(4);
+        var j = 0;
+        while (j < nr) {
+            var body = 0;
+            if (rng_below(4) != 0) { body = gen_bytes(10); }
+            var lr = log_record_new(rng_below(30), body);
+            store64(lr + 32, gen_map(0));
+            kvs = kvs + kv_in_map(load64(lr + 32));
+            vec_push(recs, lr);
+            j = j + 1;
+        }
+        var sb = str_builder_new();
+        otlp_logs_request(r, sc, recs, sb);
+        var out = str_builder_build(sb);
+        if (pb_check(out, PB_LREQ, kvs) == 1) {
+            var sb2 = str_builder_new();
+            otlp_logs_request(r, sc, recs, sb2);
+            if (str_eq(out, str_builder_build(sb2)) == 1) { ok = ok + 1; }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz logs request: valid, UTF-8 clean, stable");
+    return 0;
+}
+
+# A random histogram value; the global _H_GOOD says whether it is well formed.
+var _H_GOOD = 1;
+# Random histogram value box, sometimes deliberately malformed.
+fn gen_histogram() {
+    var h = histogram_value_new();
+    var nb = rng_below(4);
+    var i = 0;
+    while (i < nb) {
+        vec_push(hval_bounds(h), rng_next());
+        i = i + 1;
+    }
+    var total = 0;
+    i = 0;
+    while (i < nb + 1) {
+        var c = rng_below(5);
+        vec_push(hval_bucket_counts(h), c);
+        total = total + c;
+        i = i + 1;
+    }
+    hval_set_count(h, total);
+    if (rng_below(2) == 1) { hval_set_sum(h, rng_next()); }
+    if (rng_below(2) == 1) { hval_set_min(h, rng_next()); }
+    if (rng_below(2) == 1) { hval_set_max(h, rng_next()); }
+    _H_GOOD = 1;
+    if (rng_below(6) == 0) {
+        hval_set_count(h, total + 1);
+        _H_GOOD = 0;
+    }
+    return metric_histogram(h);
+}
+
+# Random metrics requests: Err exactly when a histogram point is malformed,
+# else valid, UTF-8 clean, complete and stable.
+fn fuzz_metrics(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var r = gen_resource();
+        var kvs = _RES_KVS;
+        var sc = gen_scope();
+        kvs = kvs + _SC_KVS;
+        var ms = vec_new();
+        var nm = rng_below(3);
+        var good = 1;
+        var j = 0;
+        while (j < nm) {
+            var kind = rng_below(4);
+            var d = instrument_descriptor_new(gen_bytes(4), gen_bytes(4), gen_bytes(2), kind);
+            var pts = vec_new();
+            var np = rng_below(3);
+            var k = 0;
+            while (k < np) {
+                var mv = metric_int(rng_next());
+                if (kind == METRIC_HISTOGRAM) {
+                    mv = gen_histogram();
+                    if (_H_GOOD == 0) { good = 0; }
+                } elif (rng_below(2) == 1) { mv = metric_float(rng_next()); }
+                var p = metric_data_point_new(gen_bytes(3), mv);
+                store64(p + 16, gen_map(0));
+                kvs = kvs + kv_in_map(load64(p + 16));
+                if (rng_below(2) == 1) { mdp_set_start_time(p, rng_next()); }
+                if (rng_below(2) == 1) {
+                    var ex = exemplar_new(ids(k, 16), ids(k, 8), rng_next());
+                    store64(ex + 32, gen_map(0));
+                    kvs = kvs + kv_in_map(load64(ex + 32));
+                    vec_push(mdp_exemplars(p), ex);
+                }
+                vec_push(pts, p);
+                k = k + 1;
+            }
+            vec_push(ms, metric_new(d, pts));
+            j = j + 1;
+        }
+        var sb = str_builder_new();
+        var r_t, rr = otlp_metrics_request(r, sc, ms, sb);
+        var out = str_builder_build(sb);
+        if (good == 0) {
+            if (is_err_result(r_t) == 1) {
+                if (str_len(out) == 0) { ok = ok + 1; }
+            }
+        } elif (is_ok(r_t) == 1) {
+            if (pb_check(out, PB_MREQ, kvs) == 1) {
+                var sb2 = str_builder_new();
+                var s_t, s2 = otlp_metrics_request(r, sc, ms, sb2);
+                if (str_eq(out, str_builder_build(sb2)) == 1) { ok = ok + 1; }
+            }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz metrics request: Err exactly when malformed, else valid and stable");
+    return 0;
+}
+
+# Test-file entry: runs every test and fuzz target, returns the assertion summary.
+fn main() {
+    println("--- v1.12.0 OTLP: UTF-8, Resource / Scope, status message, exemplars, histograms, requests ---");
+    test_utf8_edges();
+    test_utf8_anyvalue_and_keys();
+    test_span_status_message();
+    test_number_point_exemplars();
+    test_histogram_metric();
+    test_histogram_errors();
+    test_resource_and_scope();
+    test_requests();
+    test_walker();
+    fuzz_traces(0x1120A);
+    fuzz_logs(0x1120B);
+    fuzz_metrics(0x1120C);
+    return assert_summary();
+}

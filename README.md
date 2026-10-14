@@ -11,12 +11,12 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.11.0
+- **Current**: 1.12.0
 - **Toolchain**: Cyrius `6.7.9` (pinned in `cyrius.cyml`)
-- **Tests**: 2,249 assertions across 23 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 2,307 assertions across 24 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
   encoders byte-identical to protoc's encoding of the official schema;
-  api-surface gate locked at 1,093 public fns, every one documented;
+  api-surface gate locked at 1,122 public fns, every one documented;
   `cyrius audit` clean; all five consumers swept green
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
@@ -28,7 +28,7 @@ against successive Cyrius type-system slots.
   no findings; v1.8.0 minor-cut pass — no findings; v1.9.0 minor-cut pass —
   F-026 JSON string escaping, fixed in v1.9.0; v1.10.0 minor-cut pass —
   F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
-  minor-cut pass — no findings).
+  and v1.12.0 minor-cut passes — no findings).
   Cadence: every minor cut, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
@@ -46,7 +46,7 @@ snapshot, [`CHANGELOG.md`](CHANGELOG.md) for release notes,
 | `proto.cyr` | Protobuf wire-format writer — varint, tag, length-delimited, fixed64, and nested messages written in place behind a patched length (v1.10.0). Foundation for the OTLP encoders. |
 | `agent.cyr` | `AgentConfig`, `AgentManifest`, `AgentStatus`, `ResourceLimits`, `HealthCheck`, `LifecycleHooks`, `AgentPool`, `Topic`, `Subscription`, `AgentMessage`. |
 | `security.cyr` | `SandboxConfig`, RBAC (`Role`, `TokenPayload`, `AuthContext`), `CgroupLimits`, `NamespaceConfig`, `LandlockRuleset`, `LinuxCapability` (41), `CapabilitySet`, `SeccompProfile`. |
-| `telemetry.cyr` | `TraceContext` (W3C), `Span`, `MetricDataPoint`, `LogRecord`, `Resource`, `InstrumentationScope`, `Baggage`, `Exemplar`. Traits: `SpanCollector`, `MetricSink`, `TextMapPropagator`, `TextMapCarrier`. Typed `AnyValue` attribute values. **OTLP wire encoders** for `Span` (with attributes, events and links), `LogRecord`, `NumberDataPoint` and `Metric`, byte-identical to protoc (v1.10.0). |
+| `telemetry.cyr` | `TraceContext` (W3C), `Span`, `MetricDataPoint`, `LogRecord`, `Resource`, `InstrumentationScope`, `Baggage`, `Exemplar`. Traits: `SpanCollector`, `MetricSink`, `TextMapPropagator`, `TextMapCarrier`. Typed `AnyValue` attribute values. **OTLP wire encoders** for `Span` (with attributes, events, links and status message), `LogRecord`, `NumberDataPoint` (with exemplars) and `Metric` (gauge, sum, histogram), byte-identical to protoc (v1.10.0); `Resource`, `InstrumentationScope` and the traces / logs / metrics export requests, with valid UTF-8 in every string field (v1.12.0). |
 | `audit.cyr` | `AuditEntry` with HMAC-SHA256 integrity-chain shape, `AuditSeverity`, `AuditSink` trait. |
 | `llm.cyr` | `LlmProvider` (18 variants — major hosted providers + 5 added in v1.1.0), `Message`, `ContentBlock` (8 kinds), `ToolDefinition`/`ToolCall`/`ToolResult`, `SamplingParams`, `InferenceRequest`/`InferenceResponse`, `StreamEvent`, `ModelCapabilities` (15 flags incl. video / caching / parallel-tool-calls). |
 | `secrets.cyr` | `Secret` (zeroize-on-destroy), `SecretMetadata`, `SecretKind`, `SecretStore` trait. |

@@ -448,17 +448,18 @@ fn tctx_from_traceparent(s: Str) {
     store64(ctx + 32, str_from(""));
     return Ok(ctx);
 }
-# A Span: one timed operation within a trace. 112 bytes, all 8-byte slots:
+# A Span: one timed operation within a trace. 120 bytes, all 8-byte slots:
 #   +0 name (Str), +8 trace id, +16 span id, +24 parent span id (0 = none),
 #   +32 status (SpanStatus, SPAN_UNSET), +40 kind (SpanKind, SPAN_INTERNAL),
 #   +48 start time (clock_epoch_ns at creation), +56 duration in ms (0),
 #   +64 attributes (map), +72 events (vec), +80 links (vec), all created empty,
-#   +88 / +96 / +104 dropped attribute / event / link counts (0).
+#   +88 / +96 / +104 dropped attribute / event / link counts (0),
+#   +112 status message (Str, 0; v1.12.0).
 # The id pointers are stored as given, not copied. The start time is
 # clock_epoch_ns(), Unix time in nanoseconds, which OTLP's start_time_unix_nano
 # requires.
 fn span_new(name: Str, trace_id, span_id) {
-    var s = alloc(112);
+    var s = alloc(120);
     store64(s, name);
     store64(s + 8, trace_id);
     store64(s + 16, span_id);
@@ -473,6 +474,7 @@ fn span_new(name: Str, trace_id, span_id) {
     store64(s + 88, 0);
     store64(s + 96, 0);
     store64(s + 104, 0);
+    store64(s + 112, 0);
     return s;
 }
 # Operation name (Str).
@@ -519,6 +521,13 @@ fn span_set_dropped_events(s, v) { store64(s + 96, v); return 0; }
 fn span_dropped_links(s)  { return load64(s + 104); }
 # Set the value span_dropped_links reads, stored as given (not validated). Returns 0.
 fn span_set_dropped_links(s, v) { store64(s + 104, v); return 0; }
+# Status message (Str): the description that goes with SPAN_ERROR, or 0 when
+# none is set (v1.12.0). span_status_error's box payload belongs here.
+fn span_status_message(s) { return load64(s + 112); }
+# Set the status message (a Str, or 0 to clear it). Span_to_otlp_proto writes
+# it only with SPAN_ERROR: OpenTelemetry ignores a description on Ok and Unset.
+# Returns 0.
+fn span_set_status_message(s, v: Str) { store64(s + 112, v); return 0; }
 # AnyValueType: what an AnyValue box holds. Each value is the field number of
 # the matching member of OTLP's AnyValue oneof
 # (opentelemetry/proto/common/v1/common.proto), so 0 is never a valid type.
@@ -651,8 +660,9 @@ fn _stik_otlp_any_value(b, v, path, depth) {
     var t = boxed_tag(v);
     var x = boxed_payload(v);
     if (t == ANY_STRING) {
+        # Invalid UTF-8 goes out as bytes_value (ADR-006).
         if (x == 0) { _stik_pb_bytes(b, 1, 0, 0); }
-        else { _stik_pb_string(b, 1, x); }
+        else { _stik_pb_any_string(b, str_data(x), str_len(x)); }
     } elif (t == ANY_BOOL) {
         _stik_pb_int64(b, 2, x & 1);
     } elif (t == ANY_INT) {
@@ -708,7 +718,7 @@ fn _stik_otlp_attributes(b, field_no, m, path, depth) {
             kl = strlen(k);
         }
         var km = _stik_pb_open(b, field_no);
-        if (kl > 0) { _stik_pb_bytes(b, 1, kp, kl); }
+        if (kl > 0) { _stik_pb_text(b, 1, kp, kl); }
         var vm = _stik_pb_open(b, 2);
         _stik_otlp_any_value(b, map_get(m, k), path, depth);
         _stik_pb_close(b, vm);
@@ -741,7 +751,8 @@ fn AnyValue_to_otlp_proto(v, sb) {
 #  10 / 12 / 14 dropped counts          only when non-zero
 #  11 events (Span.Event)              one per span_event_new in the vec
 #  13 links (Span.Link)                one per span_link_new in the vec
-#  15 status (Status)                  only for SPAN_OK / SPAN_ERROR
+#  15 status (Status)                  only for SPAN_OK / SPAN_ERROR; its
+#                                      message (2) only with SPAN_ERROR
 #  16 flags                            not stored, never written
 # Attribute values must be AnyValue boxes (any_string, any_int, ...).
 #
@@ -787,12 +798,9 @@ fn _stik_otlp_span_link(b, l, path) {
     _stik_pb_close(b, lm);
     return 0;
 }
-# Append span `ptr` to `sb` as an OTLP Span message (field table above).
-# SpanStatus values equal OTLP's StatusCode values, and the code is
-# Status field 3: through v1.9.0 it was written as field 1, which the schema
-# reserves, so collectors read every status as UNSET. A status value outside
-# SpanStatus writes no status. Returns 0.
-fn Span_to_otlp_proto(ptr, sb) {
+# Write the fields of span `ptr` (field table above) into buffer `b`: the body
+# of a Span message, without its own tag. Returns 0.
+fn _stik_otlp_span(b, ptr, path) {
     var trace_id = load64(ptr + 8);
     var span_id  = load64(ptr + 16);
     var parent   = load64(ptr + 24);
@@ -800,8 +808,6 @@ fn Span_to_otlp_proto(ptr, sb) {
     var kind     = load64(ptr + 40);
     var start_ns = load64(ptr + 48);
     var dur_ms   = load64(ptr + 56);
-    var b = _stik_pb_new();
-    var path = alloc(128);
     # field 1: trace_id (16 raw bytes — agent_id_new returns alloc(16)).
     # A 0 id is omitted rather than read from address 0 (F-027).
     if (trace_id != 0) { _stik_pb_bytes(b, 1, trace_id, 16); }
@@ -858,9 +864,26 @@ fn Span_to_otlp_proto(ptr, sb) {
     if (status == SPAN_ERROR) { code = 2; }
     if (code != 0) {
         var sm = _stik_pb_open(b, 15);
+        # Status.message (2) goes with ERROR only (v1.12.0)
+        var msg = load64(ptr + 112);
+        if (code == 2) {
+            if (msg != 0) {
+                if (str_len(msg) > 0) { _stik_pb_string(b, 2, msg); }
+            }
+        }
         _stik_pb_int64(b, 3, code);
         _stik_pb_close(b, sm);
     }
+    return 0;
+}
+# Append span `ptr` to `sb` as an OTLP Span message (field table above).
+# SpanStatus values equal OTLP's StatusCode values, and the code is
+# Status field 3: through v1.9.0 it was written as field 1, which the schema
+# reserves, so collectors read every status as UNSET. A status value outside
+# SpanStatus writes no status. Returns 0.
+fn Span_to_otlp_proto(ptr, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_span(b, ptr, alloc(128));
     _stik_pb_flush(b, sb);
     return 0;
 }
@@ -960,21 +983,23 @@ fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
 fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
 # Set the resource (a resource_new pointer, or 0). Returns 0.
 fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
-# Append log record `ptr` to `sb` as an OTLP LogRecord message
+# Write log record `ptr` as the fields of an OTLP LogRecord message
 # (opentelemetry.proto.logs.v1.LogRecord, logs.proto), fields in ascending
 # number order, defaults omitted as proto3 omits them:
 #   1 time_unix_nano       the record's timestamp, when non-zero
 #   2 severity_number      the LogSeverity value, when it is 1..24
 #                          (LogSeverity values are OTLP SeverityNumber values)
 #   3 severity_text        log_severity_name, for the six named severities
-#   5 body                 AnyValue string_value holding the body Str
+#   5 body                 AnyValue string_value holding the body Str, or
+#                          bytes_value when it is not valid UTF-8
 #   6 attributes           the record's map, keys sorted; AnyValue values
 #   9 / 10 trace_id / span_id   when set (16 / 8 bytes)
 # observed_time_unix_nano, dropped_attributes_count, flags and event_name are
 # not stored and not written. The resource belongs to the enclosing
-# ResourceLogs message, not to the record. Returns 0.
-fn LogRecord_to_otlp_proto(ptr, sb) {
-    var b = _stik_pb_new();
+# ResourceLogs message, not to the record (otlp_logs_request writes both).
+# Writes into buffer `b`, the body of a LogRecord without its own tag.
+# Returns 0.
+fn _stik_otlp_log(b, ptr, path) {
     var ts = load64(ptr);
     if (ts != 0) { _stik_pb_fixed64(b, 1, ts); }
     var sev = load64(ptr + 16);
@@ -990,20 +1015,28 @@ fn LogRecord_to_otlp_proto(ptr, sb) {
     if (sev == LOG_FATAL) { named = 1; }
     if (named == 1) {
         var sn = log_severity_name(sev);
-        _stik_pb_bytes(b, 3, sn, strlen(sn));
+        _stik_pb_text(b, 3, sn, strlen(sn));
     }
     var body = load64(ptr + 24);
     if (body != 0) {
-        # body: an AnyValue holding string_value (field 1), written directly
+        # body: an AnyValue holding string_value (field 1), or bytes_value
+        # (field 7) when the body is not valid UTF-8 (ADR-006)
         var bm = _stik_pb_open(b, 5);
-        _stik_pb_string(b, 1, body);
+        _stik_pb_any_string(b, str_data(body), str_len(body));
         _stik_pb_close(b, bm);
     }
-    _stik_otlp_attributes(b, 6, load64(ptr + 32), alloc(128), 0);
+    _stik_otlp_attributes(b, 6, load64(ptr + 32), path, 0);
     var tid = load64(ptr + 40);
     if (tid != 0) { _stik_pb_bytes(b, 9, tid, 16); }
     var sid = load64(ptr + 48);
     if (sid != 0) { _stik_pb_bytes(b, 10, sid, 8); }
+    return 0;
+}
+# Append log record `ptr` to `sb` as an OTLP LogRecord message (field table
+# above). Returns 0.
+fn LogRecord_to_otlp_proto(ptr, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_log(b, ptr, alloc(128));
     _stik_pb_flush(b, sb);
     return 0;
 }
@@ -1159,18 +1192,80 @@ fn metric_float(val) { return tagged_new(MV_FLOAT, val); }
 fn metric_value_type(mv) { return boxed_tag(mv); }
 # Payload of a metric value box: the raw 8-byte value it was built with.
 fn metric_value_val(mv)  { return boxed_payload(mv); }
-# A MetricDataPoint: one recorded value of an instrument. 48 bytes, all 8-byte
-# slots: +0 instrument name (Str), +8 value (a metric_int / metric_float box),
-#   +16 attributes (map, created on first access), +24 timestamp
-#   (clock_epoch_ns at creation), +32 temporality (TEMPORALITY_CUMULATIVE), +40 monotonic flag (0).
+# A HistogramValue: the aggregated value of a histogram data point (v1.12.0).
+# 56 bytes, all 8-byte slots: +0 count, +8 sum (raw IEEE-754 double bits),
+# +16 presence flags (bit 0 sum, bit 1 min, bit 2 max), +24 explicit bounds
+# (vec of double bits, created on first access), +32 bucket counts (vec,
+# created on first access), +40 min and +48 max (double bits). All start 0.
+# Box it with metric_histogram for a data point. metric_to_otlp_proto checks
+# the shape OTLP requires: one more bucket count than bounds, and a count that
+# equals the buckets' sum.
+fn histogram_value_new() {
+    var h = alloc(56);
+    var i = 0;
+    while (i < 56) {
+        store64(h + i, 0);
+        i = i + 8;
+    }
+    return h;
+}
+# Number of recorded values.
+fn hval_count(h) { return load64(h); }
+# Set the number of recorded values. Returns 0.
+fn hval_set_count(h, v) { store64(h, v); return 0; }
+# Sum of the recorded values (double bits); meaningful when hval_has_sum is 1.
+fn hval_sum(h) { return load64(h + 8); }
+# Set the sum (double bits) and mark it present. Returns 0.
+fn hval_set_sum(h, bits) {
+    store64(h + 8, bits);
+    store64(h + 16, load64(h + 16) | 1);
+    return 0;
+}
+# 1 when a sum was set, else 0.
+fn hval_has_sum(h) { return load64(h + 16) & 1; }
+# Minimum recorded value (double bits); meaningful when hval_has_min is 1.
+fn hval_min(h) { return load64(h + 40); }
+# Set the minimum (double bits) and mark it present. Returns 0.
+fn hval_set_min(h, bits) {
+    store64(h + 40, bits);
+    store64(h + 16, load64(h + 16) | 2);
+    return 0;
+}
+# 1 when a minimum was set, else 0.
+fn hval_has_min(h) { return (load64(h + 16) >> 1) & 1; }
+# Maximum recorded value (double bits); meaningful when hval_has_max is 1.
+fn hval_max(h) { return load64(h + 48); }
+# Set the maximum (double bits) and mark it present. Returns 0.
+fn hval_set_max(h, bits) {
+    store64(h + 48, bits);
+    store64(h + 16, load64(h + 16) | 4);
+    return 0;
+}
+# 1 when a maximum was set, else 0.
+fn hval_has_max(h) { return (load64(h + 16) >> 2) & 1; }
+# vec of explicit bucket bounds (double bits, ascending); push to it.
+fn hval_bounds(h) { return _stik_lazy_vec(h + 24); }
+# vec of bucket counts, one more than the bounds; push to it.
+fn hval_bucket_counts(h) { return _stik_lazy_vec(h + 32); }
+# A histogram metric value: a tagged box with tag MV_HISTOGRAM and
+# HistogramValue `h` as payload (v1.12.0).
+fn metric_histogram(h) { return tagged_new(MV_HISTOGRAM, h); }
+# A MetricDataPoint: one recorded value of an instrument. 64 bytes, all 8-byte
+# slots: +0 instrument name (Str), +8 value (a metric_int / metric_float /
+#   metric_histogram box), +16 attributes (map, created on first access),
+#   +24 timestamp (clock_epoch_ns at creation), +32 temporality
+#   (TEMPORALITY_CUMULATIVE), +40 monotonic flag (0), +48 start time (0) and
+#   +56 exemplars (vec, created on first access); the last two since v1.12.0.
 fn metric_data_point_new(inst_name: Str, mv) {
-    var dp = alloc(48);
+    var dp = alloc(64);
     store64(dp, inst_name);
     store64(dp + 8, mv);
     store64(dp + 16, 0);
     store64(dp + 24, clock_epoch_ns());
     store64(dp + 32, TEMPORALITY_CUMULATIVE);
     store64(dp + 40, 0);
+    store64(dp + 48, 0);
+    store64(dp + 56, 0);
     return dp;
 }
 # Name of the instrument the point belongs to (Str), not an InstrumentDescriptor.
@@ -1191,40 +1286,140 @@ fn mdp_set_temporality(dp, v) { store64(dp + 32, v); return 0; }
 fn mdp_is_monotonic(dp) { return load64(dp + 40); }
 # Set the value mdp_is_monotonic reads, stored as given (not validated). Returns 0.
 fn mdp_set_monotonic(dp, v) { store64(dp + 40, v); return 0; }
+# Start of the interval the value covers (Unix ns), or 0 when unset; OTLP's
+# start_time_unix_nano, which cumulative sums should carry (v1.12.0).
+fn mdp_start_time(dp) { return load64(dp + 48); }
+# Set the interval start (Unix ns). Returns 0.
+fn mdp_set_start_time(dp, v) { store64(dp + 48, v); return 0; }
+# vec of Exemplars (exemplar_new) recorded with this point, created empty on
+# first access (v1.12.0).
+fn mdp_exemplars(dp) { return _stik_lazy_vec(dp + 56); }
+# Append each Exemplar of data point `ptr` as field `field_no` of the point in
+# buffer `b`: time 2, as_double 3 or as_int 6, span_id 4, trace_id 5,
+# filtered_attributes 7, in that ascending order (v1.12.0). Exemplar values are
+# untyped words, so the point decides: as_int when its value is a metric_int,
+# else as_double. The value is a oneof member, written even when 0. Returns 0.
+fn _stik_otlp_exemplars(b, field_no, ptr, path) {
+    var ex = load64(ptr + 56);
+    if (ex == 0) { return 0; }
+    var as_int = 0;
+    var mv = load64(ptr + 8);
+    if (mv != 0) {
+        if (boxed_tag(mv) == MV_INT) { as_int = 1; }
+    }
+    var n = vec_len(ex);
+    var i = 0;
+    while (i < n) {
+        var e = vec_get(ex, i);
+        if (e != 0) {
+            var em = _stik_pb_open(b, field_no);
+            var ts = load64(e + 24);
+            if (ts != 0) { _stik_pb_fixed64(b, 2, ts); }
+            if (as_int == 0) { _stik_pb_fixed64(b, 3, load64(e + 16)); }
+            var sid = load64(e + 8);
+            if (sid != 0) { _stik_pb_bytes(b, 4, sid, 8); }
+            var tid = load64(e);
+            if (tid != 0) { _stik_pb_bytes(b, 5, tid, 16); }
+            if (as_int == 1) { _stik_pb_fixed64(b, 6, load64(e + 16)); }
+            _stik_otlp_attributes(b, 7, load64(e + 32), path, 0);
+            _stik_pb_close(b, em);
+        }
+        i = i + 1;
+    }
+    return 0;
+}
 # Write the NumberDataPoint fields of data point `ptr` (field table below)
 # into buffer `b`, the body of the message without its own tag. Returns 0.
 fn _stik_otlp_number_point(b, ptr, path) {
+    var st = load64(ptr + 48);
+    if (st != 0) { _stik_pb_fixed64(b, 2, st); }
     var ts = load64(ptr + 24);
     if (ts != 0) { _stik_pb_fixed64(b, 3, ts); }
     var mv = load64(ptr + 8);
-    var recorded = 0;
-    if (mv != 0) {
-        var t = boxed_tag(mv);
-        if (t == MV_FLOAT) {
-            _stik_pb_fixed64(b, 4, boxed_payload(mv));
-            recorded = 1;
-        }
-        if (t == MV_INT) {
-            _stik_pb_fixed64(b, 6, boxed_payload(mv));
-            recorded = 1;
-        }
-    }
+    var t = 0 - 1;
+    if (mv != 0) { t = boxed_tag(mv); }
+    if (t == MV_FLOAT) { _stik_pb_fixed64(b, 4, boxed_payload(mv)); }
+    _stik_otlp_exemplars(b, 5, ptr, path);
+    if (t == MV_INT) { _stik_pb_fixed64(b, 6, boxed_payload(mv)); }
     _stik_otlp_attributes(b, 7, load64(ptr + 16), path, 0);
+    var recorded = 0;
+    if (t == MV_FLOAT) { recorded = 1; }
+    if (t == MV_INT) { recorded = 1; }
     if (recorded == 0) { _stik_pb_int64(b, 8, 1); }
+    return 0;
+}
+# 1 when HistogramValue box `mv` has the shape OTLP requires, else 0: no
+# negative count or bucket count, no bounds without buckets, and when there are
+# buckets, one more than the bounds and summing to the count.
+fn _stik_otlp_histogram_ok(mv) {
+    if (mv == 0) { return 0; }
+    if (boxed_tag(mv) != MV_HISTOGRAM) { return 0; }
+    var h = boxed_payload(mv);
+    if (h == 0) { return 0; }
+    var count = load64(h);
+    if (count < 0) { return 0; }
+    var nb = 0;
+    var bounds = load64(h + 24);
+    if (bounds != 0) { nb = vec_len(bounds); }
+    var nc = 0;
+    var counts = load64(h + 32);
+    if (counts != 0) { nc = vec_len(counts); }
+    if (nc == 0) {
+        if (nb != 0) { return 0; }
+        return 1;
+    }
+    if (nc != nb + 1) { return 0; }
+    var total = 0;
+    var neg = 0;
+    var i = 0;
+    while (i < nc) {
+        var c = vec_get(counts, i);
+        if (c < 0) { neg = 1; }
+        total = total + c;
+        i = i + 1;
+    }
+    if (neg == 1) { return 0; }
+    if (total != count) { return 0; }
+    return 1;
+}
+# Write the HistogramDataPoint fields of data point `ptr`, whose value is a
+# metric_histogram box already checked by _stik_otlp_histogram_ok, into buffer
+# `b` (v1.12.0). Fields ascend: start 2, time 3, count 4 (fixed64), sum 5,
+# bucket_counts 6 and explicit_bounds 7 (packed), exemplars 8, attributes 9,
+# min 11, max 12. sum, min and max are proto3 optional: written when set, even
+# as 0. Returns 0.
+fn _stik_otlp_histogram_point(b, ptr, path) {
+    var h = boxed_payload(load64(ptr + 8));
+    var st = load64(ptr + 48);
+    if (st != 0) { _stik_pb_fixed64(b, 2, st); }
+    var ts = load64(ptr + 24);
+    if (ts != 0) { _stik_pb_fixed64(b, 3, ts); }
+    var count = load64(h);
+    if (count != 0) { _stik_pb_fixed64(b, 4, count); }
+    var fl = load64(h + 16);
+    if ((fl & 1) != 0) { _stik_pb_fixed64(b, 5, load64(h + 8)); }
+    _stik_pb_packed_fixed64(b, 6, load64(h + 32));
+    _stik_pb_packed_fixed64(b, 7, load64(h + 24));
+    _stik_otlp_exemplars(b, 8, ptr, path);
+    _stik_otlp_attributes(b, 9, load64(ptr + 16), path, 0);
+    if ((fl & 2) != 0) { _stik_pb_fixed64(b, 11, load64(h + 40)); }
+    if ((fl & 4) != 0) { _stik_pb_fixed64(b, 12, load64(h + 48)); }
     return 0;
 }
 # Append data point `ptr` to `sb` as an OTLP NumberDataPoint message
 # (opentelemetry.proto.metrics.v1.NumberDataPoint, metrics.proto), fields in
 # ascending number order:
+#   2 start_time_unix_nano  mdp_set_start_time's value, when non-zero
 #   3 time_unix_nano   the point's timestamp, when non-zero
 #   4 as_double        for a metric_float value: its raw IEEE-754 bits
+#   5 exemplars        mdp_exemplars, as_int or as_double like the value
 #   6 as_int           for a metric_int value (sfixed64)
 #   7 attributes       the point's map, keys sorted; AnyValue values
 #   8 flags            1 (FLAG_NO_RECORDED_VALUE) when the point holds no
 #                      int or float value, so no value field is written
-# start_time_unix_nano and exemplars are not stored and not written. The
-# instrument name, temporality and monotonic flag belong to the enclosing
-# Metric; metric_to_otlp_proto writes that. Returns 0.
+# The instrument name, temporality and monotonic flag belong to the enclosing
+# Metric; metric_to_otlp_proto writes that, and a metric_histogram point as a
+# HistogramDataPoint. Returns 0.
 fn MetricDataPoint_to_otlp_proto(ptr, sb) {
     var b = _stik_pb_new();
     _stik_otlp_number_point(b, ptr, alloc(128));
@@ -1239,57 +1434,84 @@ fn _stik_temporality_to_otlp(t) {
     if (t == TEMPORALITY_CUMULATIVE) { return 2; }
     return 0;
 }
-# Append an OTLP Metric message (metrics.proto) to `sb`: name 1, description 2
-# and unit 3 from InstrumentDescriptor `desc` (each omitted when 0 or empty),
-# then the data points in `points` (a vec of metric_data_point_new pointers; 0
-# entries are skipped) as NumberDataPoint messages inside the member its kind
-# selects:
-#   METRIC_GAUGE             gauge (5)
-#   METRIC_COUNTER           sum (7), is_monotonic true
-#   METRIC_UP_DOWN_COUNTER   sum (7), is_monotonic false (omitted)
-# A sum's aggregation_temporality is the points' temporality, mapped to OTLP's
-# numbering; with no points it is CUMULATIVE. A gauge ignores temporality.
-# Returns Ok(0). Returns an invalid-argument Err, having written nothing, for
-# METRIC_HISTOGRAM or any other kind (agnostik has no histogram data point),
-# or for a sum with a point whose temporality is not an AggregationTemporality
-# or whose points disagree on temporality (OTLP carries one per Sum).
-fn metric_to_otlp_proto(desc, points, sb) {
-    var kind = load64(desc + 24);
-    var member = 0;
-    if (kind == METRIC_GAUGE) { member = 5; }
-    if (kind == METRIC_COUNTER) { member = 7; }
-    if (kind == METRIC_UP_DOWN_COUNTER) { member = 7; }
-    if (member == 0) { return stik_err_invalid_argument(str_from("metric kind has no OTLP number data point")); }
-    var temporality = 2;
+# The OTLP data member a MetricKind selects: gauge 5, sum 7 (counter and
+# up-down counter) or histogram 9, and 0 for any other kind.
+fn _stik_otlp_metric_member(kind) {
+    if (kind == METRIC_GAUGE) { return 5; }
+    if (kind == METRIC_COUNTER) { return 7; }
+    if (kind == METRIC_UP_DOWN_COUNTER) { return 7; }
+    if (kind == METRIC_HISTOGRAM) { return 9; }
+    return 0;
+}
+# 0 when InstrumentDescriptor `desc` and data points `points` encode as an
+# OTLP Metric, else why not: 1 an unknown kind, 2 a point with an unknown
+# temporality, 3 points that disagree on temporality (sums and histograms
+# carry one), 4 a histogram point whose value is not a well-formed
+# metric_histogram. A 0 desc is 1. Writes nothing.
+fn _stik_otlp_metric_check(desc, points) {
+    if (desc == 0) { return 1; }
+    var member = _stik_otlp_metric_member(load64(desc + 24));
+    if (member == 0) { return 1; }
     var np = 0;
     if (points != 0) { np = vec_len(points); }
-    # A gauge has no temporality; a sum's points must all carry the same valid one.
+    var first = 0;
     var seen = 0;
     var bad = 0;
     var i = 0;
     while (i < np) {
         var p = vec_get(points, i);
-        if (member == 7) {
-            if (p != 0) {
+        if (p != 0) {
+            if (bad == 0) {
+                if (member == 9) {
+                    if (_stik_otlp_histogram_ok(load64(p + 8)) == 0) { bad = 4; }
+                }
+            }
+            if (member != 5) {
                 var tt = _stik_temporality_to_otlp(load64(p + 32));
                 if (bad == 0) {
-                    if (tt == 0) { bad = 1; }
+                    if (tt == 0) { bad = 2; }
                     elif (seen == 1) {
-                        if (tt != temporality) { bad = 2; }
+                        if (tt != first) { bad = 3; }
                     }
                 }
                 if (seen == 0) {
-                    temporality = tt;
+                    first = tt;
                     seen = 1;
                 }
             }
         }
         i = i + 1;
     }
-    if (bad == 1) { return stik_err_invalid_argument(str_from("unknown data point temporality")); }
-    if (bad == 2) { return stik_err_invalid_argument(str_from("data points disagree on temporality")); }
-    var b = _stik_pb_new();
-    var path = alloc(128);
+    return bad;
+}
+# The invalid-argument Err for a non-zero _stik_otlp_metric_check code.
+fn _stik_otlp_metric_err(code) {
+    if (code == 1) { return stik_err_invalid_argument(str_from("unknown metric kind")); }
+    if (code == 2) { return stik_err_invalid_argument(str_from("unknown data point temporality")); }
+    if (code == 3) { return stik_err_invalid_argument(str_from("data points disagree on temporality")); }
+    return stik_err_invalid_argument(str_from("malformed histogram data point"));
+}
+# Write the Metric fields for `desc` and `points`, which
+# _stik_otlp_metric_check passed, into buffer `b` (field table at
+# metric_to_otlp_proto). Returns 0.
+fn _stik_otlp_metric(b, desc, points, path) {
+    var kind = load64(desc + 24);
+    var member = _stik_otlp_metric_member(kind);
+    var np = 0;
+    if (points != 0) { np = vec_len(points); }
+    var temporality = 2;
+    var k = 0;
+    var found = 0;
+    while (k < np) {
+        var fp = vec_get(points, k);
+        if (found == 0) {
+            if (fp != 0) {
+                temporality = _stik_temporality_to_otlp(load64(fp + 32));
+                found = 1;
+            }
+        }
+        k = k + 1;
+    }
     var nm = load64(desc);
     if (nm != 0) {
         if (str_len(nm) > 0) { _stik_pb_string(b, 1, nm); }
@@ -1308,16 +1530,250 @@ fn metric_to_otlp_proto(desc, points, sb) {
         var q = vec_get(points, j);
         if (q != 0) {
             var pm = _stik_pb_open(b, 1);
-            _stik_otlp_number_point(b, q, path);
+            if (member == 9) { _stik_otlp_histogram_point(b, q, path); }
+            else { _stik_otlp_number_point(b, q, path); }
             _stik_pb_close(b, pm);
         }
         j = j + 1;
     }
-    if (member == 7) {
+    if (member != 5) {
         _stik_pb_int64(b, 2, temporality);
         if (kind == METRIC_COUNTER) { _stik_pb_int64(b, 3, 1); }
     }
     _stik_pb_close(b, dm);
+    return 0;
+}
+# Append an OTLP Metric message (metrics.proto) to `sb`: name 1, description 2
+# and unit 3 from InstrumentDescriptor `desc` (each omitted when 0 or empty),
+# then the data points in `points` (a vec of metric_data_point_new pointers; 0
+# entries are skipped) inside the member its kind selects:
+#   METRIC_GAUGE             gauge (5), NumberDataPoints
+#   METRIC_COUNTER           sum (7), NumberDataPoints, is_monotonic true
+#   METRIC_UP_DOWN_COUNTER   sum (7), NumberDataPoints, is_monotonic false
+#   METRIC_HISTOGRAM         histogram (9), HistogramDataPoints (v1.12.0)
+# A sum's or histogram's aggregation_temporality is the points' temporality,
+# mapped to OTLP's numbering; with no points it is CUMULATIVE. A gauge ignores
+# temporality. Returns Ok(0). Returns an invalid-argument Err, having written
+# nothing, for an unknown kind, for a sum or histogram with a point whose
+# temporality is not an AggregationTemporality or whose points disagree on it
+# (OTLP carries one per Sum / Histogram), or for a histogram point that is not
+# a well-formed metric_histogram (see histogram_value_new).
+fn metric_to_otlp_proto(desc, points, sb) {
+    var code = _stik_otlp_metric_check(desc, points);
+    if (code != 0) { return _stik_otlp_metric_err(code); }
+    var b = _stik_pb_new();
+    _stik_otlp_metric(b, desc, points, alloc(128));
+    _stik_pb_flush(b, sb);
+    return Ok(0);
+}
+# A Metric: an InstrumentDescriptor and its data points, the unit an OTLP
+# metrics request carries (v1.12.0). 16 bytes: +0 descriptor, +8 points (a vec
+# of metric_data_point_new pointers), both stored as given.
+fn metric_new(desc, points) {
+    var m = alloc(16);
+    store64(m, desc);
+    store64(m + 8, points);
+    return m;
+}
+# The metric's InstrumentDescriptor.
+fn metric_descriptor(m) { return load64(m); }
+# The metric's data points (vec).
+fn metric_points(m) { return load64(m + 8); }
+# Append Metric `m` to `sb` as an OTLP Metric message: metric_to_otlp_proto of
+# its descriptor and points, with the same Ok / Err.
+fn Metric_to_otlp_proto(m, sb) {
+    return metric_to_otlp_proto(load64(m), load64(m + 8), sb);
+}
+# Write the Resource fields of resource `r` into buffer `b`: its attributes
+# (field 1) are the res_attributes map plus the OpenTelemetry semantic-convention
+# keys service.name, service.version and service.instance.id from the struct's
+# three Strs. A non-empty struct field replaces a map entry under the same key;
+# an empty one leaves the map's entry, if any. Keys are sorted, as for every
+# attribute set. Returns 0.
+fn _stik_otlp_resource(b, r, path) {
+    var merged = map_new();
+    var attrs = load64(r + 24);
+    if (attrs != 0) {
+        var keys = map_keys(attrs);
+        var i = 0;
+        while (i < vec_len(keys)) {
+            var k = vec_get(keys, i);
+            map_set(merged, k, map_get(attrs, k));
+            i = i + 1;
+        }
+    }
+    var nm = load64(r);
+    if (nm != 0) {
+        if (str_len(nm) > 0) { map_set(merged, "service.name", any_string(nm)); }
+    }
+    var ver = load64(r + 8);
+    if (ver != 0) {
+        if (str_len(ver) > 0) { map_set(merged, "service.version", any_string(ver)); }
+    }
+    var inst = load64(r + 16);
+    if (inst != 0) {
+        if (str_len(inst) > 0) { map_set(merged, "service.instance.id", any_string(inst)); }
+    }
+    _stik_otlp_attributes(b, 1, merged, path, 0);
+    return 0;
+}
+# Append resource `r` to `sb` as the body of an OTLP Resource message
+# (resource.proto): its attributes, with service.name / service.version /
+# service.instance.id from the struct (see _stik_otlp_resource). The schema URL
+# belongs to the enclosing ResourceSpans / ResourceLogs / ResourceMetrics, which
+# the otlp_*_request builders write. Returns 0.
+fn Resource_to_otlp_proto(r, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_resource(b, r, alloc(128));
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# Write the InstrumentationScope fields of scope `sc` into buffer `b`: name 1
+# and version 2 (omitted when empty), attributes 3. Returns 0.
+fn _stik_otlp_scope(b, sc, path) {
+    var nm = load64(sc);
+    if (nm != 0) {
+        if (str_len(nm) > 0) { _stik_pb_string(b, 1, nm); }
+    }
+    var ver = load64(sc + 8);
+    if (ver != 0) {
+        if (str_len(ver) > 0) { _stik_pb_string(b, 2, ver); }
+    }
+    _stik_otlp_attributes(b, 3, load64(sc + 24), path, 0);
+    return 0;
+}
+# Append scope `sc` to `sb` as the body of an OTLP InstrumentationScope message
+# (common.proto). Its schema URL belongs to the enclosing Scope* message.
+# Returns 0.
+fn InstrumentationScope_to_otlp_proto(sc, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_scope(b, sc, alloc(128));
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# Open the Resource* / Scope* envelope shared by the three request builders:
+# field 1 of the request (ResourceSpans / ResourceLogs / ResourceMetrics), its
+# resource (1, omitted when `r` is 0), then field 2 (ScopeSpans / ScopeLogs /
+# ScopeMetrics) with its scope (1, omitted when `sc` is 0). Returns the two
+# marks packed as outer * 2^32 + inner, for _stik_otlp_envelope_close.
+fn _stik_otlp_envelope_open(b, r, sc, path) {
+    var outer = _stik_pb_open(b, 1);
+    if (r != 0) {
+        var rm = _stik_pb_open(b, 1);
+        _stik_otlp_resource(b, r, path);
+        _stik_pb_close(b, rm);
+    }
+    var inner = _stik_pb_open(b, 2);
+    if (sc != 0) {
+        var sm = _stik_pb_open(b, 1);
+        _stik_otlp_scope(b, sc, path);
+        _stik_pb_close(b, sm);
+    }
+    return outer * 4294967296 + inner;
+}
+# Close an envelope from _stik_otlp_envelope_open: the scope's schema URL (3)
+# and the Scope* message, then the resource's schema URL (3) and the Resource*
+# message. A 0 or empty schema URL is omitted. Returns 0.
+fn _stik_otlp_envelope_close(b, marks, r, sc) {
+    if (sc != 0) {
+        var su = load64(sc + 16);
+        if (su != 0) {
+            if (str_len(su) > 0) { _stik_pb_string(b, 3, su); }
+        }
+    }
+    _stik_pb_close(b, marks & 0xFFFFFFFF);
+    if (r != 0) {
+        var ru = load64(r + 32);
+        if (ru != 0) {
+            if (str_len(ru) > 0) { _stik_pb_string(b, 3, ru); }
+        }
+    }
+    _stik_pb_close(b, (marks >> 32) & 0xFFFFFFFF);
+    return 0;
+}
+# Append an OTLP ExportTraceServiceRequest body to `sb`
+# (collector/trace/v1/trace_service.proto; the same bytes as TracesData): one
+# ResourceSpans for resource `r`, holding one ScopeSpans for scope `sc` with
+# every span in vec `spans` (0 entries skipped), and each level's schema URL. A
+# 0 resource or scope is omitted. The request is a repeated field, so appending
+# a second call's output to the same builder adds a second ResourceSpans,
+# which batches several resources or scopes into one request. Returns 0.
+fn otlp_traces_request(r, sc, spans, sb) {
+    var b = _stik_pb_new();
+    var path = alloc(128);
+    var marks = _stik_otlp_envelope_open(b, r, sc, path);
+    var n = 0;
+    if (spans != 0) { n = vec_len(spans); }
+    var i = 0;
+    while (i < n) {
+        var sp = vec_get(spans, i);
+        if (sp != 0) {
+            var m = _stik_pb_open(b, 2);
+            _stik_otlp_span(b, sp, path);
+            _stik_pb_close(b, m);
+        }
+        i = i + 1;
+    }
+    _stik_otlp_envelope_close(b, marks, r, sc);
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# Append an OTLP ExportLogsServiceRequest body to `sb` (logs_service.proto):
+# one ResourceLogs for `r` holding one ScopeLogs for `sc` with every record in
+# vec `records`, laid out and batched as otlp_traces_request. Returns 0.
+fn otlp_logs_request(r, sc, records, sb) {
+    var b = _stik_pb_new();
+    var path = alloc(128);
+    var marks = _stik_otlp_envelope_open(b, r, sc, path);
+    var n = 0;
+    if (records != 0) { n = vec_len(records); }
+    var i = 0;
+    while (i < n) {
+        var lr = vec_get(records, i);
+        if (lr != 0) {
+            var m = _stik_pb_open(b, 2);
+            _stik_otlp_log(b, lr, path);
+            _stik_pb_close(b, m);
+        }
+        i = i + 1;
+    }
+    _stik_otlp_envelope_close(b, marks, r, sc);
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# Append an OTLP ExportMetricsServiceRequest body to `sb`
+# (metrics_service.proto): one ResourceMetrics for `r` holding one ScopeMetrics
+# for `sc` with every Metric (metric_new) in vec `metrics`, laid out and
+# batched as otlp_traces_request. Every metric is checked first: returns Ok(0),
+# or the Err metric_to_otlp_proto would give for the first one that cannot be
+# encoded, having written nothing.
+fn otlp_metrics_request(r, sc, metrics, sb) {
+    var n = 0;
+    if (metrics != 0) { n = vec_len(metrics); }
+    var i = 0;
+    var code = 0;
+    while (i < n) {
+        var mt = vec_get(metrics, i);
+        if (mt != 0) {
+            if (code == 0) { code = _stik_otlp_metric_check(load64(mt), load64(mt + 8)); }
+        }
+        i = i + 1;
+    }
+    if (code != 0) { return _stik_otlp_metric_err(code); }
+    var b = _stik_pb_new();
+    var path = alloc(128);
+    var marks = _stik_otlp_envelope_open(b, r, sc, path);
+    var j = 0;
+    while (j < n) {
+        var m2 = vec_get(metrics, j);
+        if (m2 != 0) {
+            var mm = _stik_pb_open(b, 2);
+            _stik_otlp_metric(b, load64(m2), load64(m2 + 8), path);
+            _stik_pb_close(b, mm);
+        }
+        j = j + 1;
+    }
+    _stik_otlp_envelope_close(b, marks, r, sc);
     _stik_pb_flush(b, sb);
     return Ok(0);
 }

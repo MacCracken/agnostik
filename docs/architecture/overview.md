@@ -40,7 +40,9 @@ agnostik (Cyrius)
 │                        OTLP wire encoders: Span_to_otlp_proto (v1.2.0; attributes,
 │                        events and links v1.10.0), LogRecord_to_otlp_proto,
 │                        MetricDataPoint_to_otlp_proto, metric_to_otlp_proto,
-│                        AnyValue_to_otlp_proto (v1.10.0).
+│                        AnyValue_to_otlp_proto (v1.10.0); Resource /
+│                        InstrumentationScope encoders, histograms, exemplars
+│                        and the otlp_*_request envelopes (v1.12.0).
 ├── src/audit.cyr      — AuditEntry, AuditSeverity, AuditResult, IntegrityFields,
 │                        RetentionPolicy, AuditSink trait
 ├── src/llm.cyr        — LlmProvider (18 variants — incl. v1.1.0 additions: Together,
@@ -136,6 +138,12 @@ adds its attributes, events and links, `LogRecord_to_otlp_proto`,
 defaults omitted, keys sorted) and tested byte for byte against protoc's
 encoding of the official schema. See
 [ADR-004](../adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md).
+v1.12.0 adds `Resource_to_otlp_proto`, `InstrumentationScope_to_otlp_proto`,
+histogram data points (`histogram_value_new` / `metric_histogram`), exemplars
+and start times on data points, the span status message, and the
+`otlp_traces_request` / `otlp_logs_request` / `otlp_metrics_request` builders
+for the collector's Export*ServiceRequest bodies. Every `string` field is valid
+UTF-8 ([ADR-006](../adr/006-otlp-strings-are-valid-utf8.md)).
 
 ## Consumers
 

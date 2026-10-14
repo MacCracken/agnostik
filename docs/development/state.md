@@ -5,6 +5,21 @@
 
 ## Version
 
+**1.12.0** — Minor. **The OTLP export envelopes and the remaining fields:**
+- `otlp_traces_request` / `otlp_logs_request` / `otlp_metrics_request` build the collector's Export*ServiceRequest
+  bodies (resource, scope, schema URLs; two calls into one builder batch two resources);
+- `Resource_to_otlp_proto`, with the `service.*` semantic-convention keys, and
+  `InstrumentationScope_to_otlp_proto`;
+- the span status message (Span 112 → 120 bytes);
+- data-point start time and exemplars (MetricDataPoint 48 → 64 bytes);
+- histogram data points (`histogram_value_new`, `metric_histogram`);
+- `metric_new`.
+
+Every OTLP `string` field is valid UTF-8 (ADR-006): invalid AnyValue strings go out as `bytes_value`, other strings
+get U+FFFD per maximal subpart. The validating copy is a single pass, so valid text costs about what it did. API
+1,093 → 1,122, no removals. 2,307 assertions / 24 files on x86_64 and aarch64; sweep 5 / 5 green; bench neutral
+(paired median +0.0%, every row within ±5%; the full span −2.2%). No audit findings.
+
 **1.11.0** — Minor. **The contract gaps from the v1.9.0 documentation pass:**
 - every trait dispatcher checks its slot (unset → 0), and `as_query`, `ss_rotate` and `ss_search_by_tag` return a
   not-supported `Err` for an unset optional slot;
@@ -840,13 +855,13 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 |-----------------------|-----------|------------------------------------|
 | Source LOC (src/)     | 4,057     | non-blank, non-comment lines across `src/*.cyr` (4,527 raw), measured at 1.6.2. Same measure: 3,617 at 1.3.0, 4,054 at 1.5.0. The ~3,180 recorded here earlier predates 1.3.0. Ported from 7,121 LOC of Rust |
 | Module count          | 12        | plus `src/proto.cyr` (OTLP wire helpers)   |
-| Test files            | 23        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0, +test_v170_classification_setters at v1.7.0, +test_v180_enum_parse at v1.8.0, +test_v190_fixes at v1.9.0, +test_v1100_otlp at v1.10.0, +test_v1110_contract_gaps at v1.11.0) |
-| Test assertions       | 2,249     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.11.0 (cyrius 6.7.9). +101 the contract-gap test at v1.11.0; 2,148 at 1.10.0. +103 the OTLP completion test at v1.10.0; 2,045 at 1.9.0. +27 the v1.9.0 fixes, +17 `RestartPolicy` at v1.9.0; 2,001 at 1.8.0. +427 enum name/parse at v1.8.0; 1,574 at 1.7.0–1.7.1. +38 `ClassificationResult` setters at v1.7.0; 1,536 at 1.6.3–1.6.5. +123 `AgentInfo` round-trip + 1 fuzz target at v1.6.3; 1,412 at v1.6.2 (+10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0); 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
-| Benchmarks            | 29        | `tests/bcyr/agnostik.bcyr` — tier 5 (OTLP: `span_otlp_full`, `span_otlp_min`, `log_record_otlp`, `metric_otlp_sum`) added at 1.10.0; gained the missing `src/proto.cyr` include at 1.3.6 |
-| Test binary           | 134,920 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.11.0 (cyrius 6.7.9); plain 765,704 B, aarch64 896,656 B, agnos 135,272 B and Windows 904,192 B at 1.11.0 (Windows grew more than the other targets at 1.10.0 and 1.11.0; not investigated). 134,728 B at 1.10.0; plain 753,224 B, aarch64 896,464 B, agnos 135,080 B and Windows 889,344 B at 1.10.0 (the harness calls none of the new encoders, so DCE drops them). 134,456 B at 1.9.0; plain 744,760 B and aarch64 896,192 B at 1.9.0, where the doc comments add no byte. 134,408 B at 1.8.0 (132,552 B at 1.7.0–1.7.1, 132,424 B at 1.6.5); plain 740,616 B and aarch64 896,144 B at 1.8.0; at 1.7.x plain 718,280 B, aarch64 828,776 B (DCE still NOP-fills there; 1,024,016 B on 6.6.6, before 6.6.18's compile-time syscall fold). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE); 127,128 B at 1.6.2 (6.6.6); 127,096 B at 1.6.3–1.6.4; **132,424 B at 1.6.5** (6.6.20, same source) |
+| Test files            | 24        | tests/tcyr/ (+test_v140_enum_parse at v1.4.0, +test_v150_capability_numbers at v1.5.0, +test_v170_classification_setters at v1.7.0, +test_v180_enum_parse at v1.8.0, +test_v190_fixes at v1.9.0, +test_v1100_otlp at v1.10.0, +test_v1110_contract_gaps at v1.11.0, +test_v1120_otlp_envelopes at v1.12.0) |
+| Test assertions       | 2,307     | 0 failed on x86_64-linux **and** aarch64 (`qemu-aarch64`) at 1.12.0 (cyrius 6.7.9). +58 the OTLP envelope test at v1.12.0; 2,249 at 1.11.0. +101 the contract-gap test at v1.11.0; 2,148 at 1.10.0. +103 the OTLP completion test at v1.10.0; 2,045 at 1.9.0. +27 the v1.9.0 fixes, +17 `RestartPolicy` at v1.9.0; 2,001 at 1.8.0. +427 enum name/parse at v1.8.0; 1,574 at 1.7.0–1.7.1. +38 `ClassificationResult` setters at v1.7.0; 1,536 at 1.6.3–1.6.5. +123 `AgentInfo` round-trip + 1 fuzz target at v1.6.3; 1,412 at v1.6.2 (+10 `cglim_set_*` at v1.5.1; +35 capability numbers at v1.5.0); 1,367 at v1.4.0; 886 at v1.3.7; 858 through v1.3.6. The 1.6.0 CHANGELOG's "788" is an undercount |
+| Benchmarks            | 31        | `tests/bcyr/agnostik.bcyr` — tier 5 gains `otlp_traces_request` and `histogram_otlp` at 1.12.0; tier 5 (OTLP: `span_otlp_full`, `span_otlp_min`, `log_record_otlp`, `metric_otlp_sum`) added at 1.10.0; gained the missing `src/proto.cyr` include at 1.3.6 |
+| Test binary           | 134,976 B | `build/agnostik`, `CYRIUS_DCE=1`, x86_64 at 1.12.0 (cyrius 6.7.9); plain 778,048 B, aarch64 896,712 B, agnos 135,328 B and Windows 920,576 B at 1.12.0 (Windows grew more than the other targets at 1.10.0, 1.11.0 and 1.12.0; not investigated). 134,920 B at 1.11.0; plain 765,704 B, aarch64 896,656 B, agnos 135,272 B and Windows 904,192 B at 1.11.0. 134,728 B at 1.10.0; plain 753,224 B, aarch64 896,464 B, agnos 135,080 B and Windows 889,344 B at 1.10.0 (the harness calls none of the new encoders, so DCE drops them). 134,456 B at 1.9.0; plain 744,760 B and aarch64 896,192 B at 1.9.0, where the doc comments add no byte. 134,408 B at 1.8.0 (132,552 B at 1.7.0–1.7.1, 132,424 B at 1.6.5); plain 740,616 B and aarch64 896,144 B at 1.8.0; at 1.7.x plain 718,280 B, aarch64 828,776 B (DCE still NOP-fills there; 1,024,016 B on 6.6.6, before 6.6.18's compile-time syscall fold). DCE has really eliminated code since cyrius 6.5.72; before that it NOP-filled and DCE and plain builds were byte-identical. History: 261→273 KB at 1.0.2; 274 KB at 1.0.3+; ~311 KB at 1.2.0; 313,344 B at 1.2.3; 311,264 B at 1.3.0; 392,840 B at 1.3.1 (+~119 KB NOPed `bayan`); 350,016 B at 1.3.4; 413,512 B at 1.3.5; 629,032 B at 1.3.6–1.5.x (NOPed `bayan` PDF subsystem); **126,960 B at 1.6.0/1.6.1** (6.6.2, first eliminating DCE); 127,128 B at 1.6.2 (6.6.6); 127,096 B at 1.6.3–1.6.4; **132,424 B at 1.6.5** (6.6.20, same source) |
 | Build warnings        | 0         | on x86_64-linux, aarch64, agnos and Windows at 6.7.9 (on 6.6.20 the Windows build carried one stdlib-internal warning). | aarch64's raw-`getrandom`-318 warning (live since at least the 6.6.2 pin, unseen because CI skipped aarch64) fixed at 1.6.2 (F-022) |
 | Lint warnings         | 0         | (28 UFCS false positives resolved upstream in cyrius 5.7.7) |
-| Lib bundle (dist/)    | 320,484 B | `dist/agnostik.cyr`, regenerated by `cyrius distlib`; tracked in CI sync check. 1.11.0 diff: the 91 setters, 2 getters and 6 other new fns, checked dispatch, banner; the `.deps` sidecar now lists `fnptr`. 300,423 B at 1.10.0; 1.10.0 diff: `AnyValue`, the OTLP encoders, the `proto.cyr` buffer, banner. 279,466 B at 1.9.0; 1.9.0 diff: the 849 doc comments (almost all of the growth), the three fixes, the `RestartPolicy` pair, banner. 197,447 B at 1.8.0; 1.8.0 diff: the 50 enum fns, banner. 166,565 B at 1.7.1; 1.7.1 diff: `sys_write` in `agnostik_err_print`, banner. 166,569 B at 1.7.0; 1.7.0 diff: the `_stik_` rename, the four `cresult_*` fns, comments, banner. 164,427 B at 1.6.5; 1.6.5 diff: the 6.6.18 requires block (12 `include` lines), two comments, banner; sidecar 15 → 12 leaves. 164,007 B at 1.6.3; 1.6.3 diff: F-023, the `AgentInfo` fix, doc comments, banner. 1.6.2's bundle is 161,663 B; this file said 161,433 B until 1.6.3, a figure measured before 1.6.2's last comment edit |
+| Lib bundle (dist/)    | 345,519 B | `dist/agnostik.cyr`, regenerated by `cyrius distlib`; tracked in CI sync check. 1.12.0 diff: the UTF-8 writer, Resource / Scope encoders, request builders, histograms, exemplars, banner. 320,484 B at 1.11.0; 1.11.0 diff: the 91 setters, 2 getters and 6 other new fns, checked dispatch, banner; the `.deps` sidecar now lists `fnptr`. 300,423 B at 1.10.0; 1.10.0 diff: `AnyValue`, the OTLP encoders, the `proto.cyr` buffer, banner. 279,466 B at 1.9.0; 1.9.0 diff: the 849 doc comments (almost all of the growth), the three fixes, the `RestartPolicy` pair, banner. 197,447 B at 1.8.0; 1.8.0 diff: the 50 enum fns, banner. 166,565 B at 1.7.1; 1.7.1 diff: `sys_write` in `agnostik_err_print`, banner. 166,569 B at 1.7.0; 1.7.0 diff: the `_stik_` rename, the four `cresult_*` fns, comments, banner. 164,427 B at 1.6.5; 1.6.5 diff: the 6.6.18 requires block (12 `include` lines), two comments, banner; sidecar 15 → 12 leaves. 164,007 B at 1.6.3; 1.6.3 diff: F-023, the `AgentInfo` fix, doc comments, banner. 1.6.2's bundle is 161,663 B; this file said 161,433 B until 1.6.3, a figure measured before 1.6.2's last comment edit |
 | Undocumented pub fns  | 0         | since v1.9.0: every fn in `src/` is documented, and `scripts/doc-debt.sh check` fails on any undocumented one (the grandfathered baseline it diffed against from 1.6.3 to 1.8.0 is gone). Before: 1.6.3 (a new undocumented fn fails; so does a listed fn that has since been documented). Per-file `cyrius doc --check` sum over `src/*.cyr`: 860 at 1.6.2, 853 at 6.5.35. `cyrius audit`'s docs phase counts over `src tests`; it was the sole reason `audit` exited non-zero until 1.9.0 documented the tests and bench too, and `audit` now exits 0 |
 
 ## Consumers
@@ -854,7 +869,7 @@ F-001..F-005, `test_audit_5712` for F-008..F-010). Benches at
 Repos that declare `[deps.agnostik]` in their `cyrius.cyml`, from a census of
 every local AGNOS checkout at 1.6.5. These are the repos a release can break.
 `scripts/consumer-sweep.sh` (`--list` for the live census) builds and tests
-each one against the working tree on its own pin; the 1.11.0 release swept
+each one against the working tree on its own pin; the 1.12.0 release swept
 5 / 5 green with no agnostik-involved duplicate definitions. kybernet 1.7.9 pins
 argonaut 1.15.4, whose `argonaut_restart_policy_parse` cleared the way for
 agnostik's `restart_policy_parse`:
@@ -876,7 +891,10 @@ and the `_hex_nibble` one noted at 1.6.5 (sigil) surfaced.
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.11.0`**, the
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.12.0`**, the
+OTLP export envelopes (requests, Resource / Scope, histograms, exemplars,
+status message) and valid UTF-8 in every OTLP string field.
+Prior: `1.11.0`, the
 contract gaps (checked trait slots, reentrant hand-offs, the UUID separator
 check, 91 setters and 2 getters, newer Landlock rights, `rlimit_type_resource`).
 Prior: `1.10.0`, the OTLP

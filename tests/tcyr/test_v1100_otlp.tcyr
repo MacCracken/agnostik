@@ -562,6 +562,7 @@ fn pb_fail() {
 enum PbMsg {
     PB_SPAN = 1; PB_EVENT = 2; PB_LINK = 3; PB_STATUS = 4; PB_KV = 5; PB_ANY = 6; PB_ARRAY = 7;
     PB_KVLIST = 8; PB_LOG = 9; PB_NDP = 10; PB_METRIC = 11; PB_GAUGE = 12; PB_SUM = 13;
+    PB_HIST = 14; PB_HDP = 15; PB_EXEMPLAR = 16;
 }
 
 # Schema of field `f` in message `msg`: wire type * 100 + sub-message id
@@ -609,11 +610,27 @@ fn pb_spec(msg, f) {
     }
     if (msg == PB_NDP) {
         if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 100; }
+        if (f == 5) { return 200 + PB_EXEMPLAR; }
         if (f == 6) { return 100; } if (f == 7) { return 200 + PB_KV; } if (f == 8) { return 0; }
     }
     if (msg == PB_METRIC) {
         if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200; }
         if (f == 5) { return 200 + PB_GAUGE; } if (f == 7) { return 200 + PB_SUM; }
+        if (f == 9) { return 200 + PB_HIST; }
+    }
+    # v1.12.0: histograms and exemplars.
+    if (msg == PB_HIST) {
+        if (f == 1) { return 200 + PB_HDP; } if (f == 2) { return 0; }
+    }
+    if (msg == PB_HDP) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 100; }
+        if (f == 5) { return 100; } if (f == 6) { return 200; } if (f == 7) { return 200; }
+        if (f == 8) { return 200 + PB_EXEMPLAR; } if (f == 9) { return 200 + PB_KV; }
+        if (f == 10) { return 0; } if (f == 11) { return 100; } if (f == 12) { return 100; }
+    }
+    if (msg == PB_EXEMPLAR) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 200; }
+        if (f == 5) { return 200; } if (f == 6) { return 100; } if (f == 7) { return 200 + PB_KV; }
     }
     if (msg == PB_GAUGE) {
         if (f == 1) { return 200 + PB_NDP; }
@@ -949,7 +966,11 @@ fn fuzz_metric(seed) {
         var r_t, r = metric_to_otlp_proto(d, pts, sb);
         var out = str_builder_build(sb);
         var want_err = 0;
-        if (kind == METRIC_HISTOGRAM) { want_err = 1; }
+        # Since v1.12.0 a histogram encodes; this generator never builds a
+        # well-formed metric_histogram, so any point makes it an Err.
+        if (kind == METRIC_HISTOGRAM) {
+            if (np > 0) { want_err = 1; }
+        }
         if (kind > METRIC_HISTOGRAM) { want_err = 1; }
         if (kind == METRIC_COUNTER) { want_err = mixed; }
         if (kind == METRIC_UP_DOWN_COUNTER) { want_err = mixed; }

@@ -2,11 +2,11 @@
 
 ## Status
 
-**v1.11.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+**v1.12.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
 modules plus `src/proto.cyr` (the protobuf writer behind the OTLP encoders),
-1,093 public fns (every fn documented), and 2,249 test assertions across 23
+1,122 public fns (every fn documented), and 2,307 test assertions across 24
 `.tcyr` files, passing on x86_64-linux and on aarch64 under `qemu-aarch64`.
-There are 29 benchmarks and no external dependencies.
+There are 31 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
 tree before each release. CI runs the suite on x86_64 and on aarch64 (under
@@ -14,7 +14,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5 and v1.7.0 through v1.11.0 passes).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5 and v1.7.0 through v1.12.0 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -22,33 +22,7 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.12.0](#v1120--otlp-export-envelopes-and-remaining-fields-minor) | minor | OTLP `Resource` / `InstrumentationScope` and the export envelopes; status message, exemplars, histogram points; UTF-8 in string fields |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
-
----
-
-## v1.12.0 — OTLP export envelopes and remaining fields (minor)
-
-✨ v1.10.0 encodes the data-plane messages. A collector receives them inside envelopes, and a few fields have no
-slot yet:
-
-- **`Resource_to_otlp_proto`** and **`InstrumentationScope_to_otlp_proto`**. agnostik's `Resource` stores service
-  name, version and instance id as fields; OTLP carries them as the `service.name`, `service.version` and
-  `service.instance.id` attributes, so the encoder maps them.
-- **Export envelopes:** `ResourceSpans` / `ScopeSpans`, `ResourceLogs` / `ScopeLogs` and `ResourceMetrics` /
-  `ScopeMetrics`. Either as encoders over vecs, or as an `Export*ServiceRequest` builder.
-- **Fields with no slot:**
-  - the span `Status.message` (`span_status_error` builds a box the span cannot hold);
-  - exemplars on number data points;
-  - `start_time_unix_nano` for cumulative sums;
-  - histogram data points (`metric_to_otlp_proto` returns `Err` for `METRIC_HISTOGRAM` today).
-
-  Adding a slot grows a struct's allocation. The accessors hide the layout, so that is not an API break.
-- **UTF-8 in string fields.** Protobuf requires `string` fields to be valid UTF-8, and a strict decoder may reject
-  a message that is not. The encoders write strings as given. Decide between validating (return `Err`) and
-  replacing invalid sequences with U+FFFD, as some OTel SDKs do, and record the choice in an ADR.
-
-The protoc golden-vector method from v1.10.0 applies unchanged. No consumer has asked for this yet.
 
 ---
 

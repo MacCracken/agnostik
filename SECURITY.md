@@ -4,8 +4,8 @@
 
 | Version  | Supported |
 |----------|-----------|
-| 1.11.x   | Yes (current) |
-| < 1.11.0 | No (upgrade to the current 1.x release) |
+| 1.12.x   | Yes (current) |
+| < 1.12.0 | No (upgrade to the current 1.x release) |
 
 Security fixes ship in a new release on the current line. There are no
 backport branches: every 1.x release keeps the public API (additions only,
@@ -45,9 +45,11 @@ only). Primary attack surfaces:
    through a schema walker. The encoders read caller-built structs, not
    external bytes. Attribute values are typed `AnyValue` boxes; an unknown
    type, nesting 16 levels deep or a cycle encodes as an empty value, not a
-   crash or unbounded recursion. Strings are written as given: a caller that
-   puts invalid UTF-8 in a string field produces a message a strict protobuf
-   decoder may reject.
+   crash or unbounded recursion. Since v1.12.0 every protobuf `string` field
+   is valid UTF-8 (ADR-006): an attribute value or log body that is not goes
+   out as `bytes_value`, unchanged, and other strings get U+FFFD for each
+   ill-formed subpart. So a strict decoder never rejects a message over a
+   caller's bytes.
 4. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
    install the pinned Cyrius toolchain through `scripts/ci-install-cyrius.sh`.
    It checks the release's `SHA256SUMS.sig` against the cyrius Ed25519
@@ -77,6 +79,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.9.0 minor-cut pass (same report, fifth section): `RestartPolicy` pair, every fn documented, Unix-time stamps, span-id byte order | F-026 (LOW): two JSON string fields (`export_endpoint`, `AgentInfo` `name`) serialized unescaped; fixed in 1.9.0 | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.10.0 minor-cut pass (same report, sixth section): OTLP completion, the in-place protobuf buffer, the Status field fix | F-027 (LOW, defense in depth): the OTLP encoders could write out of bounds on a negative-length `Str` or read address 0 on null span fields; fixed in 1.10.0 | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.11.0 minor-cut pass (same report, seventh section): checked trait dispatch, argument-passing hand-offs, the UUID separator check, 91 setters, newer Landlock rights | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
+| 2026-10-14 | v1.12.0 minor-cut pass (same report, eighth section): the UTF-8 writer, Resource / Scope encoders, export requests, histograms, exemplars | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

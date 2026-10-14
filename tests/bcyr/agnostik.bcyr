@@ -79,6 +79,23 @@ var _bench_span_min = 0;
 var _bench_log = 0;
 var _bench_metric_desc = 0;
 var _bench_metric_points = 0;
+var _bench_resource = 0;
+var _bench_scope = 0;
+var _bench_spans3 = 0;
+var _bench_hist_desc = 0;
+var _bench_hist_points = 0;
+# Encodes a traces request: the resource, the scope and three full spans.
+fn _b_traces_request() {
+    var sb = str_builder_new();
+    otlp_traces_request(_bench_resource, _bench_scope, _bench_spans3, sb);
+    return 0;
+}
+# Encodes a histogram metric with one 3-bucket point and an exemplar.
+fn _b_histogram_otlp() {
+    var sb = str_builder_new();
+    var r_t, r = metric_to_otlp_proto(_bench_hist_desc, _bench_hist_points, sb);
+    return 0;
+}
 # Encodes the prebuilt full span (3 attributes, 2 events, 1 link, a status).
 fn _b_span_otlp_full() { _ser(_bench_span_full, &Span_to_otlp_proto); return 0; }
 # Encodes the prebuilt span with no attributes, events or links.
@@ -124,6 +141,29 @@ fn _bench_otlp_fixtures() {
     _bench_metric_points = vec_new();
     vec_push(_bench_metric_points, p1);
     vec_push(_bench_metric_points, p2);
+    var res = resource_new(str_from("agnos-api"), str_from("1.12.0"), str_from("node-7"));
+    map_set(res_attributes(res), "host.name", any_string(str_from("agnos-01")));
+    _bench_resource = res;
+    _bench_scope = instrumentation_scope_new(str_from("agnostik"), str_from("1.12.0"));
+    _bench_spans3 = vec_new();
+    vec_push(_bench_spans3, sp);
+    vec_push(_bench_spans3, sp);
+    vec_push(_bench_spans3, sp);
+    var h = histogram_value_new();
+    vec_push(hval_bounds(h), 0x4024000000000000);
+    vec_push(hval_bounds(h), 0x4059000000000000);
+    vec_push(hval_bucket_counts(h), 7);
+    vec_push(hval_bucket_counts(h), 12);
+    vec_push(hval_bucket_counts(h), 3);
+    hval_set_count(h, 22);
+    hval_set_sum(h, 0x4097700000000000);
+    var hp = metric_data_point_new(str_from("http.server.duration"), metric_histogram(h));
+    map_set(mdp_attributes(hp), "route", any_string(str_from("/api/v1/agents")));
+    vec_push(mdp_exemplars(hp), exemplar_new(trace_id_new(), span_id_new(), 0x4040000000000000));
+    _bench_hist_desc = instrument_descriptor_new(str_from("http.server.duration"), str_from("Request latency"),
+      str_from("ms"), METRIC_HISTOGRAM);
+    _bench_hist_points = vec_new();
+    vec_push(_bench_hist_points, hp);
     return 0;
 }
 var _bench_rl_json = 0;
@@ -247,6 +287,8 @@ fn main() {
     run("span_otlp_min", &_b_span_otlp_min, 2000, 5);
     run("log_record_otlp", &_b_log_otlp, 1000, 5);
     run("metric_otlp_sum", &_b_metric_otlp, 1000, 5);
+    run("otlp_traces_request", &_b_traces_request, 200, 5);
+    run("histogram_otlp", &_b_histogram_otlp, 1000, 5);
     println("\n=== done ===");
     return 0;
 }
