@@ -34,7 +34,7 @@ only). Primary attack surfaces:
    portable `sys_getrandom` (F-022, v1.6.2), never a raw syscall number.
    If it cannot supply the bytes, they fail loudly — a stderr message and
    exit 70 — rather than degrade to a deterministic seed (see audit F-001).
-   There is no `/dev/urandom` fallback: F-023 (unreleased) removed it, since
+   There is no `/dev/urandom` fallback: F-023 (v1.6.3) removed it, since
    its raw syscall numbers were wrong on agnos. A Linux kernel older than
    3.17, or a sandbox that denies `getrandom`, therefore exits rather than
    generating IDs.
@@ -42,6 +42,14 @@ only). Primary attack surfaces:
    `Span_to_otlp_proto`. Output is byte-exact-tested; helpers don't read
    external input directly (callers pass `str_builder` and pre-validated
    struct pointers).
+4. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
+   install the pinned Cyrius toolchain through `scripts/ci-install-cyrius.sh`.
+   It checks the release's `SHA256SUMS.sig` against the cyrius Ed25519
+   release key pinned in that script, then the tarball against `SHA256SUMS`,
+   and only then unpacks. It fails closed: a tampered, re-signed or unsigned
+   toolchain does not build agnostik's release artifacts. The library itself
+   reaches the kernel only through the stdlib `sys_*` wrappers, and the CI
+   scan rejects a raw `syscall(` in `src/`.
 
 Out of scope: process spawning, file write surface, network surface,
 shell interpolation — verified by the `Security Scan` job in
@@ -58,6 +66,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-09-23 | v1.6.2 cross-target syscall review (cyrius 6.6.2 → 6.6.6) | F-022 (MEDIUM) closed in 1.6.2; F-023 and F-024 (LOW) closed in 1.6.3 | [`docs/audit/2026-09-23-audit.md`](docs/audit/2026-09-23-audit.md) |
 | 2026-10-14 | v1.6.5 toolchain refresh (cyrius 6.6.6 → 6.6.20): advisories CYRIUS-2026-0009..0035 against agnostik's reach | No findings; CYRIUS-2026-0028 reaches `version_to_str` but was never exploitable there | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.7.0 minor-cut pass (same report, second section) | F-025 (LOW): unnamespaced private helpers could be replaced by another library's in a consumer's unit; fixed in 1.7.0 (`_stik_` prefix + CI gate) | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
+| 2026-10-14 | v1.7.1 release pass (same report, third section): raw-syscall gate, verified toolchain install, aarch64 CI | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

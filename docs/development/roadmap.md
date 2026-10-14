@@ -2,17 +2,18 @@
 
 ## Status
 
-**v1.7.0** is the most recent stable release, on Cyrius `6.6.20`. It has 12
+**v1.7.1** is the most recent stable release, on Cyrius `6.6.20`. It has 12
 modules plus `src/proto.cyr` (OTLP wire helpers), 927 public fns, and 1,574
 test assertions across 19 `.tcyr` files, passing on x86_64-linux and on aarch64
 under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
-tree before each release.
+tree before each release. CI runs the suite on x86_64 and on aarch64 (under
+`qemu-user`), on a signature-verified toolchain.
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5 pass and the v1.7.0 minor-cut pass).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0 and v1.7.1 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -20,7 +21,6 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.7.1](#v171--ci-and-release-hardening-patch) | patch | Raw-syscall gate, aarch64 tests in CI, toolchain checksum, orphan `keccak.cyr` |
 | [v1.7.2 – v1.7.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, small modules |
 | [v1.8.0](#v180--cyrius-679-pin-and-enum-nameparse-completion-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them |
 | [v1.8.1 – v1.8.2](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, mid-size modules |
@@ -30,30 +30,7 @@ longer here.
 
 ---
 
-## v1.7.x — Hardening
-
-### v1.7.1 — CI and release hardening (patch)
-
-- **Raw-syscall gate** ([ADR-003](../adr/003-roadmap-tracks-agnostik-work-only.md)).
-  `src/error.cyr`'s four stderr writes are the last raw `syscall(1, 2, …)` sites
-  in `src/`. They are correct on every target today (1 is `write` on
-  x86_64-linux and agnos, and it is routed on aarch64 and Windows), but the
-  compiler diagnoses raw numbers for aarch64 and Windows, not agnos. Move them
-  to `sys_write(2, …)`,
-  then make the CI security scan fail on any `syscall(` in `src/`. F-022 and
-  F-023 were both raw numbers that meant something else on another target.
-- **Run the aarch64 suite in CI.** CI cross-builds aarch64 but does not run it.
-  The full suite passes locally under `qemu-aarch64`. Install `qemu-user` on
-  the runner and run `cyrius tests --aarch64`.
-- **Verify the toolchain download.** CI and release install Cyrius from the
-  release tarball without checking it. Check it against the published
-  `.sha256` sidecar before unpacking. cyrius 6.6.20's CYRIUS-2026-0035 hardened
-  its own installers against stripped signatures, and this job bypasses them.
-- **Remove the orphan `lib/keccak.cyr`.** It is git-tracked only because the
-  ecosystem template's `!lib/k*.cyr` ignore exception matched it. No module
-  includes it, `[deps] stdlib` does not declare it, and `cyrius deps --verify`
-  now has to vouch for it. Delete it and the exception, relock, and update
-  CLAUDE.md's `.gitignore` note.
+## v1.7.x — Documentation debt
 
 ### Documentation-debt burn-down (v1.7.2 onward)
 

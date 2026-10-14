@@ -19,27 +19,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Cyrius toolchain
-        # Lays out ~/.cyrius/versions/<VERSION>/{bin,lib} and symlinks
-        # ~/.cyrius/{bin,lib} -> versions/<VERSION>/{bin,lib}. v5.10.9+
-        # cc5 resolves arch-peer includes (e.g. syscalls_x86_64_linux.cyr)
-        # against the version-pinned path; the un-versioned ~/.cyrius/lib
-        # layout that worked pre-5.10.9 no longer finds peer files.
-        run: |
-          CYRIUS_VERSION="${CYRIUS_VERSION:-$(grep -oP '(?<=^cyrius = ")[^"]+' cyrius.cyml)}"
-          echo "Installing Cyrius $CYRIUS_VERSION"
-          curl -sLO "https://github.com/MacCracken/cyrius/releases/download/$CYRIUS_VERSION/cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          tar xzf "cyrius-$CYRIUS_VERSION-x86_64-linux.tar.gz"
-          CYRIUS_DIR="cyrius-$CYRIUS_VERSION-x86_64-linux"
-          VERSIONED="$HOME/.cyrius/versions/$CYRIUS_VERSION"
-          mkdir -p "$VERSIONED/bin" "$VERSIONED/lib"
-          cp "$CYRIUS_DIR/bin/"* "$VERSIONED/bin/" 2>/dev/null || true
-          cp -r "$CYRIUS_DIR/lib/"* "$VERSIONED/lib/" 2>/dev/null || true
-          chmod +x "$VERSIONED/bin/"* 2>/dev/null || true
-          ln -sfn "$VERSIONED/bin" "$HOME/.cyrius/bin"
-          ln -sfn "$VERSIONED/lib" "$HOME/.cyrius/lib"
-          echo "$CYRIUS_VERSION" > "$HOME/.cyrius/current"
-          echo "$HOME/.cyrius/bin" >> $GITHUB_PATH
-          echo "CYRIUS_HOME=$HOME/.cyrius" >> $GITHUB_ENV
+        # Verified install of the pinned toolchain (v1.7.1+). The script checks
+        # SHA256SUMS.sig against a release key pinned in the script (stock
+        # OpenSSL Ed25519), then the tarball against that SHA256SUMS, before
+        # unpacking. Fail-closed. Version comes from cyrius.cyml, never YAML.
+        run: bash scripts/ci-install-cyrius.sh
 
       - name: Sync stdlib snapshot
         # cyrius 6.0.x serves stdlib from the version-pinned snapshot;
@@ -189,6 +173,30 @@ jobs:
           done
           [ $fail -eq 0 ] || { echo "test failures"; exit 1; }
 
+      - name: Test (aarch64 under qemu-user)
+        # v1.7.1+. CI cross-built aarch64 but never ran it, so a result that is
+        # wrong only on aarch64 (the F-022 class: a raw syscall number that is
+        # -ENOSYS there) could ship behind a green build. This runs every .tcyr
+        # under qemu-aarch64, which cyrius execs from /usr/bin. Not best-effort:
+        # a missing emulator or cross-compiler fails the step, because a silent
+        # skip is how F-022 went unseen. So does a file that prints no verdict.
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-user > /dev/null
+          [ -x /usr/bin/qemu-aarch64 ] || { echo "ERROR: qemu-user did not provide /usr/bin/qemu-aarch64"; exit 1; }
+          [ -x "$HOME/.cyrius/bin/cycc_aarch64" ] || { echo "ERROR: the toolchain ships no cycc_aarch64"; exit 1; }
+          fail=0; files=0; total=0
+          for t in tests/tcyr/*.tcyr; do
+            [ -f "$t" ] || continue
+            files=$((files + 1))
+            out=$(cyrius test --aarch64 "$t" 2>&1) || { echo "$out"; echo "FAIL: $t"; fail=1; continue; }
+            n=$(printf '%s\n' "$out" | grep -E '^[0-9]+ passed, 0 failed' | tail -1 | grep -oE '^[0-9]+')
+            [ -n "$n" ] || { echo "$out"; echo "FAIL: $t printed no passing verdict"; fail=1; continue; }
+            total=$((total + n))
+          done
+          echo "aarch64: $files test file(s), $total assertions"
+          [ $fail -eq 0 ] && [ $files -gt 0 ]
+
       - name: Bench
         run: cyrius bench tests/bcyr/agnostik.bcyr
 
@@ -225,10 +233,14 @@ jobs:
               FAIL=1
             fi
           }
-          # No raw fork/execve/clone in a type-vocabulary library.
-          scan "raw execve"   'syscall( *59'
-          scan "raw fork"     'syscall( *57'
-          scan "raw clone"    'syscall( *56'
+          # No raw syscall at all (v1.7.1+; ADR-003). A raw number is
+          # x86_64-linux numbering: aarch64 and Windows translate only some
+          # numbers, and agnos numbers its own, which the compiler does not
+          # diagnose. F-022 (getrandom 318) and F-023 (the /dev/urandom
+          # fallback) were both raw numbers that meant something else on
+          # another target. Go through the stdlib sys_* wrappers. This also
+          # covers the raw execve / fork / clone this scan used to name.
+          scan "raw syscall"  '\bsyscall *('
           # sys_system in src/ is a hard fail — agnostik should never spawn.
           scan "sys_system"   '\bsys_system\s*('
           # Hardcoded system paths agnostik should never read/write.

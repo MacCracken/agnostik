@@ -2,6 +2,178 @@
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-10-14
+
+**Patch: CI and release hardening.**
+- No raw syscalls left in `src/`, with a CI gate to keep it that way.
+- The test suite runs on aarch64 in CI.
+- CI and release install a signature-verified cyrius toolchain.
+- The orphan `lib/keccak.cyr` is removed.
+
+No public API change (927 fns), no wire-format or layout change. 19 test files, **1,574
+assertions, 0 failures**, on x86_64-linux and on aarch64. All five `[deps.agnostik]` consumers
+build and pass their tests against it.
+
+### Changed — no raw syscalls in `src/`; CI enforces it
+
+`agnostik_err_print` (`src/error.cyr`) wrote to stderr with four raw `syscall(1, 2, …)` calls,
+the last raw syscalls in `src/`. They were correct everywhere: 1 is `write` on x86_64-linux and
+agnos, and aarch64 and Windows translate it. But the compiler diagnoses raw numbers only for
+aarch64 and Windows. agnos numbers its syscalls differently and gets no warning, which is how
+F-023 went unseen. They are now `sys_write(2, …)`, the stdlib wrapper every target defines (Linux,
+aarch64 and macOS through `syscalls_linux_common.cyr`, plus the Windows and agnos peers).
+`src/types.cyr` has used the same wrapper for its fail-loud path since 1.6.3.
+
+**Same bytes out.** A probe calling `agnostik_err_print` and `result_print_agnostik_err` produces
+byte-identical stderr against the 1.7.0 tag, natively and under `qemu-aarch64`. The x86_64,
+aarch64 and agnos binaries keep their sizes; the Windows one shrinks 512 B.
+
+CI's security scan replaces its three raw-number patterns (execve 59, fork 57, clone 56) with one
+that fails on **any** raw `syscall(` in `src/`
+([ADR-003](docs/adr/003-roadmap-tracks-agnostik-work-only.md)'s agnostik-side answer to the
+missing agnos diagnostic). Run the way CI runs it (`bash -e`), it passes on this tree and fails
+on a planted `syscall(39)`. Like every pattern in that scan, it skips comment lines but not a
+trailing comment after code. CLAUDE.md's syscall rule now says `src/` has none.
+
+### Added — the test suite runs on aarch64 in CI
+
+CI cross-built aarch64 but never ran it, so a result wrong only on aarch64 could ship behind a
+green build. F-022, a raw `getrandom` that is `-ENOSYS` there, was that class. A new step,
+**"Test (aarch64 under qemu-user)"**, installs `qemu-user` and runs every `.tcyr` under
+`qemu-aarch64`, which cyrius execs from `/usr/bin`. It is deliberately not best-effort: it fails
+when the emulator or `cycc_aarch64` is missing, or when a file prints no passing verdict, because
+a silently skipped aarch64 step is how F-022 went unseen through 1.6.1.
+
+The step's script, run locally as written apart from the `apt-get` lines, reports **19 test
+files, 1,574 assertions**. A planted failing assertion fails it with exit 1. The package install
+on GitHub's runner is the one part that only the first CI run can exercise.
+
+### Changed — CI and release install a signature-verified toolchain
+
+Both workflows downloaded the cyrius tarball with `curl -sLO` and unpacked it unchecked. That
+bypassed the guarantee cyrius's own installers give (CYRIUS-2026-0035, 6.6.20: refuse a release
+with a stripped signature), and `-sL` without `-f` would also have saved an HTTP error page as
+the tarball. Both inline install steps are now one script, **`scripts/ci-install-cyrius.sh`**. It
+downloads the tarball, `SHA256SUMS` and `SHA256SUMS.sig`, and before unpacking anything it checks:
+
+1. **The signature**: `SHA256SUMS.sig` must be a valid Ed25519 signature over `SHA256SUMS` under
+   the cyrius release key **pinned in the script**, not the `cyrius-release.ed25519.pub` the
+   release ships, which anyone able to swap the tarball could swap too. It uses stock
+   `openssl pkeyutl -rawin` (OpenSSL 3.0+), so no prior `cyrsign` is needed.
+2. **The hash**: the tarball must match its single line in that `SHA256SUMS`.
+
+The roadmap asked only for the `.sha256` sidecar. A same-origin checksum catches corruption, not
+substitution, so the script checks the signature too. The pinned key was byte-identical in three
+places at pinning time: the 6.6.20 release asset, `keys/cyrius-release.ed25519.pub` in the cyrius
+repo, and `CYRIUS_RELEASE_PUBKEY` in cyrius's `install.sh`. A key rotation fails closed, and the
+script's header says how to re-pin.
+
+Proven both ways:
+- In a throwaway `HOME`, it installs 6.6.20 with `cycc`, `cyrius` and `cycc_aarch64`
+  byte-identical to the local install. Every `ci.yml` step except the bench then passed on that
+  toolchain, 17 of 17.
+- A one-digit change to the pinned key, and a tarball corrupted after download, each exit 1
+  before anything is installed.
+
+The version still comes only from `cyrius.cyml`. CLAUDE.md's CI section and SECURITY.md (a new
+"build toolchain supply chain" scope item) describe the check.
+
+### Removed — the orphan `lib/keccak.cyr`
+
+It was git-tracked only because the ecosystem template's `!lib/k*.cyr` ignore exception matched
+its name. No module includes it, `[deps] stdlib` does not declare it, `lib sync` never touched it,
+and since 1.6.5 `cyrius deps --verify` had to vouch for it. The file and the exception are gone,
+and `cyrius.lock` is re-hashed: **33 → 32** entries, `deps --verify` 32 / 32. A fresh checkout with
+an empty `lib/` reproduces the committed lock byte for byte through `lib sync` + `deps`, and
+nothing recreates the file. CLAUDE.md's `.gitignore` note now says all of `lib/*.cyr` is ignored.
+
+### Security
+
+The release pass is recorded in [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md)
+§"v1.7.1 release pass". **No findings.** The release is itself hardening: the raw-syscall gate,
+and the signature-verified toolchain install, whose input validation and fail-closed paths were
+probed (malformed versions are refused before any network access, and a wrong key or a corrupted
+tarball installs nothing). F-001..F-025 remain closed.
+
+### Fixed — docs
+
+SECURITY.md said F-023 was "unreleased"; it shipped in 1.6.3. `state.md` drops its `keccak.cyr`
+and 33-file lock figures and records the aarch64 CI run and the verified install.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.7.0 baseline in `history.csv`: **25 checked, 0 new, 0
+regressions.** The A/B column is 15 rounds interleaving the 1.7.0 tag tree with the 1.7.1 tree,
+both on cyrius 6.6.20, with order alternating each round, taken right after the gate at load 5 to 7.
+
+| benchmark | 1.7.0 baseline | 1.7.1 gate | Δ gate | 1.7.0 tree, median of 15 | 1.7.1 tree, median of 15 | Δ A/B |
+|---|---:|---:|---:|---:|---:|---:|
+| token_usage_from_json | 465 | 404 | -13.1% | 424 | 417 | -1.7% |
+| agent_id_roundtrip | 1118 | 994 | -11.1% | 1029 | 1025 | -0.4% |
+| agent_id_new | 611 | 560 | -8.3% | 575 | 573 | -0.3% |
+| token_usage_to_json | 955 | 844 | -11.6% | 874 | 872 | -0.2% |
+| audit_entry_full | 2402 | 2221 | -7.5% | 2264 | 2259 | -0.2% |
+| trace_context_child | 655 | 586 | -10.5% | 589 | 588 | -0.2% |
+| agent_stats_to_json | 739 | 647 | -12.4% | 674 | 673 | -0.1% |
+| security_context_full | 744 | 665 | -10.6% | 686 | 685 | -0.1% |
+| injection_scores_to_json | 859 | 774 | -9.9% | 793 | 792 | -0.1% |
+| traceparent_format | 1947 | 1757 | -9.8% | 1832 | 1830 | -0.1% |
+| accelerator_device_full | 112 | 98 | -12.5% | 102 | 102 | +0.0% |
+| agent_id_to_str | 797 | 722 | -9.4% | 746 | 746 | +0.0% |
+| inference_request_full | 454 | 364 | -19.8% | 375 | 375 | +0.0% |
+| sandbox_config_default | 25 | 23 | -8.0% | 23 | 23 | +0.0% |
+| token_usage_update | 37 | 33 | -10.8% | 33 | 33 | +0.0% |
+| version_roundtrip | 284 | 255 | -10.2% | 261 | 261 | +0.0% |
+| trace_context_new | 1253 | 1155 | -7.8% | 1162 | 1163 | +0.1% |
+| resource_limits_to_json | 1074 | 959 | -10.7% | 986 | 989 | +0.3% |
+| accel_flags_to_json | 1781 | 1579 | -11.3% | 1644 | 1654 | +0.6% |
+| message_build_3turn | 413 | 369 | -10.7% | 373 | 376 | +0.8% |
+| version_to_str | 120 | 106 | -11.7% | 108 | 109 | +0.9% |
+| agent_stats_from_json | 321 | 298 | -7.2% | 300 | 305 | +1.7% |
+| accel_flags_from_json | 770 | 731 | -5.1% | 729 | 748 | +2.6% |
+| injection_scores_from_json | 344 | 321 | -6.7% | 315 | 331 | +5.1% |
+| resource_limits_from_json | 501 | 478 | -4.6% | 461 | 494 | +7.2% |
+
+**No performance change.** The A/B's median row is **0.0%**, and 23 of 25 rows are within ±5%,
+most within ±1%. The gate's median row reads **−10.5%** because the 1.7.0 baseline row was
+load-inflated, as its own CHANGELOG entry warned. The unchanged 1.7.0 tree, measured as the
+control, reads −8.0% against that row too.
+
+**The two rows that move are code placement, not slower code.** `resource_limits_from_json`
+(+7.2%) and `injection_scores_from_json` (+5.1%) move consistently, on medians and on
+per-round minimums alike, and neither calls the one changed fn. `cyrius bench` builds without
+DCE. In that build, `agnostik_err_print`'s `sys_write` calls resize code in `src/error.cyr`, the
+first module in the bundle, so every later fn moves. The two non-DCE bench binaries are the same
+size, but 164,822 bytes differ. With `CYRIUS_DCE=1`, the way release binaries are built, the bench
+binary is **byte-identical** to 1.7.0's, so the shipped code is unchanged.
+
+**The appended baseline is clean.** The release run appended to `docs/benchmarks/history.csv`
+(25 rows; commit column `8fd28b7`, HEAD at the time) was taken at load ≈ 3. Its median row is
+**+1.8%** of 1.6.5's quiet-host row, so it replaces 1.7.0's inflated row (+13.5%) as the next
+gate's baseline. The gate passes against it, and all 25 rows resolve.
+
+Binaries (`CYRIUS_DCE=1`): x86_64 132,552 B, aarch64 828,776 B and agnos 132,896 B, all
+unchanged; Windows 849,408 → 848,896 B.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was
+  committed into a throwaway repo. Every `ci.yml` step except the bench passed, 17 of 17. So did
+  the security scan as CI runs it (`bash -e`), and the new aarch64 step's script (19 files,
+  1,574 assertions under `qemu-aarch64`). Earlier, the same steps also passed on a toolchain that
+  `scripts/ci-install-cyrius.sh` itself installed into a throwaway `HOME`.
+- **Tests:** 19 files, **1,574 assertions, 0 failures** on x86_64-linux and on aarch64.
+- **Gates:** api-surface 927 = snapshot, doc-debt 849 = baseline, `cyrius distlib --check`
+  fresh, `deps --verify` 32 / 32, private-helper gate clean. Both workflow files parse.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree, 5 of 5 green, 0 regressed, 0
+  agnostik-involved duplicate definitions. That includes aegis, which builds its own copy of
+  `src/error.cyr` on its 6.6.2 pin.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read
+  1.7.1, and the release workflow's version gate accepts tag `1.7.1`.
+- **Links:** every relative link in every Markdown file resolves.
+- **Not verifiable locally:** the `apt-get install qemu-user` on GitHub's runner, and the
+  installer running there. The first CI run on this release exercises both.
+
 ## [1.7.0] - 2026-10-14
 
 **Minor: the consumer safety net.** A cross-consumer build sweep, `_stik_`-namespaced private

@@ -203,7 +203,7 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
 - Trait objects via vtable dispatch: `trait_obj_new(vtable, data)`
 - Function pointers via `fncall0` / `fncall1` / `fncall2` (inline asm)
 - `#derive(Serialize)` generates correct `_to_json` — integers as bare numbers, `: Str` fields as quoted strings
-- **Syscalls go through the stdlib `sys_*` wrappers** (`sys_getrandom`, `sys_write`, `sys_exit`, …), not raw `syscall(N, …)`. A raw number is x86_64-linux numbering: aarch64 and Windows translate only some numbers, and agnos numbers its own (audit F-022 / F-023). Any remaining raw site must be justified against every target.
+- **Syscalls go through the stdlib `sys_*` wrappers** (`sys_getrandom`, `sys_write`, `sys_exit`, …), not raw `syscall(N, …)`. A raw number is x86_64-linux numbering: aarch64 and Windows translate only some numbers, and agnos numbers its own (audit F-022 / F-023). `src/` has no raw `syscall(` at all since 1.7.1, and the CI security scan fails on one; add a stdlib wrapper use instead.
 - Enum values for constants — don't consume `gvar_toks` slots (4,096 initialized globals limit)
 - **`var` is block-scoped.** A `var` declared inside `{ … }` ends at the `}` (using it afterwards is a compile error), and re-declaring an outer name inside a block creates a new variable that shadows it: `var t = 1; if (c) { var t = 5; } return t;` returns 1. To carry a value out of a block, declare it above the block and assign inside. Older notes calling `var` "function-scoped" are wrong.
 - `break` in a while loop with `var` declarations: don't — flag + `continue` (see Rules)
@@ -215,13 +215,14 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
 ## CI / Release
 
 - **Toolchain pin**: `cyrius = "X.Y.Z"` field in `cyrius.cyml [package]`. CI and release both read this; no hardcoded version strings in YAML.
+- **Verified toolchain install**: CI and release install cyrius through `scripts/ci-install-cyrius.sh`, which checks `SHA256SUMS.sig` against the cyrius release key pinned in that script (stock OpenSSL Ed25519), then the tarball against `SHA256SUMS`, before unpacking. It fails closed. If cyrius rotates its key, confirm the new one out of band (the cyrius repo's `keys/` and `install.sh`) before updating the pin.
 - **Toolchain binary names**: the compiler is `cycc` and the aarch64 cross-compiler `cycc_aarch64` (renamed from `cc5` / `cc5_aarch64` at cyrius 6.0.0; no 6.x release tarball ships the old names). A workflow step that probes for a binary must use these names — a probe for a missing name makes its step skip silently.
 - **Dead code elimination**: every `cyrius build` in CI and release runs with `CYRIUS_DCE=1`. Binary size is a release metric — track it.
 - **Tag filter**: release workflow triggers on semver tags only (`v1.2.3` or `1.2.3`; this repo's tags are bare `1.2.3`). Non-numeric tags do not ship a release.
 - **Version-verify gate**: release asserts `VERSION == cyrius.cyml version == git tag` before building. Mismatch fails the run.
 - **Lint step**: CI runs `cyrius lint` per source file. Warnings fail.
 - **Workflow layout**:
-  - `.github/workflows/ci.yml` — stdlib sync, fmt, lint, vet, DCE build, type-check, API-surface snapshot, documentation debt, dist-bundle sync, aarch64 cross-build, tests, bench + bench-regression gate, security scan, required-docs and version checks; reusable via `workflow_call`
+  - `.github/workflows/ci.yml` — stdlib sync, fmt, lint, vet, DCE build, type-check, API-surface snapshot, documentation debt, dist-bundle sync, aarch64 cross-build, tests, the suite again on aarch64 under qemu-user, bench + bench-regression gate, security scan (including no raw `syscall(` and `_stik_`-prefixed private helpers), required-docs and version checks; reusable via `workflow_call`
   - `.github/workflows/release.yml` — version gate → CI gate → DCE builds (x86_64, aarch64) → artifacts (source tarball, bundled `.cyr`, DCE binaries, `cyrius.lock` when one exists, SHA256SUMS)
 - **Concurrency**: CI uses `cancel-in-progress: true` keyed on workflow + ref — only the latest push is tested.
 
@@ -245,7 +246,7 @@ New quirks land in `docs/architecture/` as numbered items (`NNN-kebab-case.md`).
 
 **Not yet present**: the first-party documentation standard also expects `docs/guides/` (task-oriented how-tos) and `docs/examples/` (runnable examples); neither exists here yet. When earned: `docs/sources.md` (source citations), `docs/proposals/` (pre-ADR drafts), `docs/api/` (curated public-surface reference), `standards/`, `compliance/`, `faq.md`.
 
-**`.gitignore`**: the repo's own file is authoritative. `dist/` is **tracked** — `dist/agnostik.cyr` is the bundle consumers vendor, and CI fails when it drifts from `src/` — so the ecosystem template's `/dist/` line does not apply here. `lib/*.cyr` is ignored except the tracked `lib/keccak.cyr` (`!lib/k*.cyr`).
+**`.gitignore`**: the repo's own file is authoritative. `dist/` is **tracked** — `dist/agnostik.cyr` is the bundle consumers vendor, and CI fails when it drifts from `src/` — so the ecosystem template's `/dist/` line does not apply here. `lib/*.cyr` is ignored, all of it: `lib/` is vendored by `cyrius lib sync` + `cyrius deps`, and the committed `cyrius.lock` pins its hashes. (The template's `!lib/k*.cyr` exception kept an orphan `lib/keccak.cyr` tracked until 1.7.1.)
 
 ## CHANGELOG Format
 
