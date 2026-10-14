@@ -112,8 +112,13 @@ fn _stik_pb_fixed64(b, field_no, n) {
 }
 
 # bytes field — tag + varint(len) + `len` raw bytes from `ptr`.
-# Used by OTLP for trace_id (16 bytes), span_id (8 bytes), etc.
+# Used by OTLP for trace_id (16 bytes), span_id (8 bytes), etc. A negative
+# `len` or a 0 `ptr` writes an empty field: a negative length would move the
+# write position below the buffer, and the next write would land outside it
+# (audit F-027).
 fn _stik_pb_bytes(b, field_no, ptr, len) {
+    if (len < 0) { len = 0; }
+    if (ptr == 0) { len = 0; }
     _stik_pb_tag(b, field_no, PROTO_WT_LENGTH);
     _stik_pb_varint(b, len);
     _stik_pb_reserve(b, len);
@@ -123,8 +128,13 @@ fn _stik_pb_bytes(b, field_no, ptr, len) {
     return 0;
 }
 
-# string field — tag + varint(len) + the Str's bytes.
+# string field — tag + varint(len) + the Str's bytes. A 0 Str writes an
+# empty string.
 fn _stik_pb_string(b, field_no, s: Str) {
+    if (s == 0) {
+        _stik_pb_bytes(b, field_no, 0, 0);
+        return 0;
+    }
     _stik_pb_bytes(b, field_no, str_data(s), str_len(s));
     return 0;
 }

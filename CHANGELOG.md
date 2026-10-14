@@ -2,12 +2,16 @@
 
 ## [Unreleased]
 
-v1.10.0 work: the OTLP wire format, completed. Spans gain attributes, events and links; log records, number data
+## [1.10.0] - 2026-10-14
+
+**Minor:** the OTLP wire format, completed. Spans gain attributes, events and links; log records, number data
 points and metrics get encoders; attribute values get a type, `AnyValue`. Every encoder is checked byte for byte
-against protoc's encoding of the official schema, which found that v1.2.0 wrote the span status code to a
-reserved field. Public API 979 → **994** (+15, no removals, no signature or layout change). 22 test files,
-**2,143 assertions, 0 failures**, on x86_64 and aarch64. All five `[deps.agnostik]` consumers build and pass
-their tests against it.
+against protoc's encoding of the official schema. That check found v1.2.0 writing the span status code to a
+reserved field, and the minor-cut audit found the encoders faulting on malformed values (F-027, LOW); both are
+fixed.
+
+Public API 979 → **994** (+15, no removals, no signature or layout change). 22 test files, **2,148 assertions, 0
+failures**, on x86_64 and aarch64. All five `[deps.agnostik]` consumers build and pass their tests against it.
 
 ### Fixed — `Span_to_otlp_proto` wrote the status code to a reserved field
 
@@ -97,7 +101,7 @@ The shift is a hand-written backward copy, because the stdlib has no `memmove`. 
 an ecosystem census of 14 hand-rolled copies and chunked-copy measurements, is filed at
 `cyrius/docs/development/proposals/2026-10-14-memmove.md`.
 
-### Tests — `tests/tcyr/test_v1100_otlp.tcyr` (98 assertions)
+### Tests — `tests/tcyr/test_v1100_otlp.tcyr` (103 assertions)
 
 - **32 golden vectors**, each the bytes protoc (libprotoc 35.0) encodes from the same message in text format
   against the official `.proto` files. They cover:
@@ -112,6 +116,8 @@ an ecosystem census of 14 hand-rolled copies and chunked-copy measurements, is f
 - **Determinism:** reversed insertion orders encode identically; an empty key is omitted.
 - **Errors:** histogram, unknown kind, mixed temporality and an unknown temporality each return `Err` and write
   nothing. A gauge ignores temporality.
+- **Malformed values (F-027):** a negative-length or null-data `Str` encodes as empty, a later entry is intact, and
+  a span with a 0 name and 0 ids encodes without a fault.
 - **Fuzz:** 200 random spans, 200 log records and 200 metric sets, with random attribute trees, unknown tags and
   arbitrary bytes. A schema walker checks each encoding:
   - every field exists in the schema with its wire type;
@@ -123,14 +129,53 @@ an ecosystem census of 14 hand-rolled copies and chunked-copy measurements, is f
   is itself tested: it rejects the old field-1 status, truncation, two AnyValue members and a wrong KeyValue
   count.
 
-Mutation-checked: each of 15 deliberate breaks fails the file. They include:
+Mutation-checked: each of 19 deliberate breaks fails the file. They include:
 - the status written to field 1;
 - unsorted keys, no cycle cut, an elided `int_value` zero;
 - an ordinal temporality, wrong event or link field numbers, `as_int` written as a double;
 - a dropped no-value flag, an unchecked severity range, mixed temporality accepted, an empty key written;
-- three in the buffer: no shift on close, a forward shift, a buffer that never grows.
+- three in the buffer: no shift on close, a forward shift, a buffer that never grows;
+- each F-027 guard removed. Two of these crash the test binary; the other two fail assertions.
 
 `test_v120_otlp.tcyr`'s primitive tests are ported to `_stik_pb_*`.
+
+### Security
+
+The minor-cut pass is recorded in [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md)
+§"v1.10.0 minor-cut pass". **One finding, fixed in this release:**
+
+- **F-027 (LOW, defense in depth): the OTLP encoders could write out of bounds or read address 0 on malformed
+  values.**
+  - **Negative length:** `_stik_pb_bytes` trusted a `Str`'s length. A negative one, such as
+    `str_new(p, 0 - 1000)` in an attribute value, moved the buffer's write position below zero, so the next field
+    landed before the buffer, on the heap.
+  - **Null pointers:** a 0 span name, trace id or span id was read from address 0 (`SIGSEGV`). That is pre-existing
+    since v1.2.0.
+
+  Both need a caller-built malformed struct; nothing parses external bytes into these. **Fixed:**
+  - a negative length or 0 data pointer writes an empty field;
+  - `_stik_pb_string` treats a 0 `Str` as empty;
+  - `Span_to_otlp_proto` omits 0 ids.
+
+  `test_malformed_values` reproduces each fault and fails, or crashes, when its guard is removed.
+
+The re-scan of `src/` is clean (no raw `syscall(`, no `sys_system`, no system-path literal, no 64 KB stack
+buffer), and the private-helper gate passes. F-001..F-026 remain closed.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 22 files, 2,148 assertions, 0 failures, on x86_64 and on aarch64. `cyrius audit` exits 0.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor:** of 983 fn definitions, 901 public
+  fns are not called by library code (887 at 1.9.0, by the same method). The 15 new entry points add to it, and
+  `log_severity_name` leaves it, now that the log encoder calls it. The untested count falls 294 → **288**.
+- **Refactor:** the protobuf helpers were replaced by the in-place buffer (above). That was measured, not
+  speculative.
+- **Code review:** each encoder's output was compared with protoc's. The review of the buffer found F-027. The
+  doc comments the change made stale were rewritten: the Span field table and the attribute getters.
+- **Cleanup:** the private `_stik_proto_*` helpers are gone, with no remaining references.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 of 5 green, 0 regressed, 0 agnostik-involved
+  duplicate definitions.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.10.0.
 
 ### Performance
 
@@ -145,8 +190,66 @@ New benchmark tier 5 (`tests/bcyr/agnostik.bcyr`), x86_64, cyrius 6.7.9:
 
 Against the released 1.9.0 encoder, a minimal span (OK status, 3 ms duration) went from a median **735 ns to
 477 ns** (−35%, 7 interleaved rounds, faster in all 7). It now carries an empty attribute map and still costs
-less. The `CYRIUS_DCE=1` x86_64 harness is 134,728 B (+272): `src/main.cyr` calls none of the new encoders, so DCE
-drops them.
+less.
+
+**Release gate.** `scripts/bench-regression.sh` ran against the 1.9.0 baseline on the final tree, at load 1.23:
+**25 checked, 4 new, 0 regressions**. The A/B column is 15 interleaved rounds of the 1.9.0 tag tree against this
+tree, both on cyrius 6.7.9, and each row is the median of per-round paired ratios. The A/B ran before the F-027
+guards, which touch only OTLP code that none of the 25 rows run.
+
+| benchmark | 1.9.0 baseline | 1.10.0 gate | Δ gate | 1.9.0 → 1.10.0, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| agent_stats_from_json | 283 | 257 | -9.2% | -1.8% | 0/15 |
+| trace_context_new | 1141 | 1090 | -4.5% | -0.4% | 4/15 |
+| security_context_full | 669 | 616 | -7.9% | -0.3% | 5/15 |
+| token_usage_to_json | 874 | 819 | -6.3% | -0.2% | 5/15 |
+| agent_id_to_str | 737 | 690 | -6.4% | -0.1% | 5/15 |
+| resource_limits_to_json | 976 | 915 | -6.2% | -0.1% | 4/15 |
+| agent_id_roundtrip | 1026 | 971 | -5.4% | +0.0% | 7/15 |
+| agent_stats_to_json | 675 | 633 | -6.2% | +0.0% | 7/15 |
+| inference_request_full | 372 | 351 | -5.6% | +0.0% | 7/15 |
+| token_usage_update | 33 | 31 | -6.1% | +0.0% | 2/15 |
+| version_to_str | 108 | 101 | -6.5% | +0.0% | 2/15 |
+| audit_entry_full | 2267 | 2193 | -3.3% | +0.1% | 9/15 |
+| accel_flags_to_json | 1642 | 1517 | -7.6% | +0.1% | 9/15 |
+| agent_id_new | 556 | 523 | -5.9% | +0.2% | 8/15 |
+| trace_context_child | 573 | 529 | -7.7% | +0.4% | 9/15 |
+| traceparent_format | 1812 | 1673 | -7.7% | +0.5% | 11/15 |
+| version_roundtrip | 257 | 247 | -3.9% | +0.8% | 14/15 |
+| resource_limits_from_json | 447 | 414 | -7.4% | +1.1% | 13/15 |
+| injection_scores_to_json | 770 | 732 | -4.9% | +1.8% | 14/15 |
+| message_build_3turn | 372 | 344 | -7.5% | +2.7% | 14/15 |
+| token_usage_from_json | 403 | 386 | -4.2% | +4.0% | 14/15 |
+| accelerator_device_full | 98 | 95 | -3.1% | +4.2% | 13/15 |
+| sandbox_config_default | 23 | 22 | -4.3% | +4.5% | 13/15 |
+| injection_scores_from_json | 302 | 280 | -7.3% | +5.4% | 14/15 |
+| accel_flags_from_json | 695 | 664 | -4.5% | +6.3% | 14/15 |
+| span_otlp_full | new | 4038 | – | – | – |
+| span_otlp_min | new | 543 | – | – | – |
+| log_record_otlp | new | 1463 | – | – | – |
+| metric_otlp_sum | new | 1612 | – | – | – |
+
+**Neutral.** The paired median row is **+0.1%**, and 23 of 25 rows are within ±5%. Two drift up, both slower in 14
+of 15 rounds:
+- `accel_flags_from_json`: +6.3%, about 45 ns;
+- `injection_scores_from_json`: +5.4%, about 16 ns.
+
+Neither runs any code this release changed, so this is the code-placement effect in the non-DCE bench build that
+1.8.0 and 1.9.0 recorded. `token_usage_from_json` and `accelerator_device_full`, the two rows 1.9.0 saw move
+down, are back up by 4.0% and 4.2%.
+
+The release run is appended to `docs/benchmarks/history.csv` (29 rows, commit column `0f4fd8d`, HEAD at the
+time), taken at load 1.23.
+
+Binaries (`CYRIUS_DCE=1`):
+- x86_64: 134,456 → **134,728 B**;
+- aarch64: 896,192 → **896,464 B**;
+- agnos: 134,808 → **135,080 B**;
+- Windows: 875,520 → **889,344 B** (the Windows growth was not investigated);
+- plain x86_64: 744,760 → 753,224 B.
+
+`src/main.cyr` calls none of the new encoders, so DCE drops them. `dist/agnostik.cyr` grows 279,466 → **300,423
+B**.
 
 ### Docs
 
@@ -159,6 +262,22 @@ drops them.
 - **CLAUDE.md:** the closeout doc sync now includes SECURITY.md's Supported Versions, so the table moves with each
   minor.
 - **README and architecture overview:** the module rows and the OTLP example are updated.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was committed into a
+  throwaway repo:
+  - every `ci.yml` step except the bench passed, 17 of 17;
+  - `deps --verify` reported 32 verified, 0 failed;
+  - the aarch64 step's script passed: 22 files, 2,148 assertions under `qemu-aarch64`;
+  - `cyrius audit` exits 0.
+- **Gates:**
+  - api-surface 994 = snapshot;
+  - `scripts/doc-debt.sh check`: every fn in `src/` is documented;
+  - `cyrius distlib --check` fresh;
+  - lint, fmt, vet and type-check clean;
+  - DCE builds warning-free on x86_64, aarch64, agnos and Windows.
+- **Downstream:** 5 of 5 green.
 
 ## [1.9.0] - 2026-10-14
 

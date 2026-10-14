@@ -518,6 +518,27 @@ fn test_metric_errors() {
     return 0;
 }
 
+# Malformed caller-built values encode safely (audit F-027): a negative-length
+# or null-data Str is written as empty, and a span with a 0 name or 0 ids
+# encodes without reading address 0.
+fn test_malformed_values() {
+    var g = alloc(16);
+    memset(g, 0x5A, 16);
+    assert(hex_is(enc_av(any_string(str_new(g, 0 - 1000))), "0a00") == 1, "negative-length string is empty");
+    assert(hex_is(enc_av(any_bytes(str_new(0, 5))), "3a00") == 1, "null-data bytes are empty");
+    var m = map_new();
+    map_set(m, "a", any_string(str_new(g, 0 - 3)));
+    map_set(m, "b", any_int(1));
+    assert(hex_is(enc_av(any_kvlist(m)), "32120a070a016112020a000a070a016212021801") == 1,
+      "a later entry is intact after a negative length");
+    var sp = span_new(0, 0, 0);
+    store64(sp + 48, 77);
+    var out = enc_span(sp);
+    assert(hex_is(out, "2a00394d00000000000000414d00000000000000") == 1, "0 name and ids: no fault");
+    assert_eq(load8(g + 15), 0x5A, "bytes beside the source untouched");
+    return 0;
+}
+
 # ─── schema walker ────
 
 # Walker state: +0 failed flag, +8 KeyValue messages seen.
@@ -986,6 +1007,7 @@ fn main() {
     test_number_data_point_golden();
     test_metric_golden();
     test_metric_errors();
+    test_malformed_values();
     test_walker_rejects();
     fuzz_span(0x1100A);
     fuzz_log(0x1100B);

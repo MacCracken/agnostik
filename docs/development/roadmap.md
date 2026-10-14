@@ -2,10 +2,11 @@
 
 ## Status
 
-**v1.9.0** is the most recent stable release, on Cyrius `6.7.9`; v1.10.0 is in flight under `[Unreleased]`. It has 12
-modules plus `src/proto.cyr` (OTLP wire helpers), 979 public fns (every fn
-documented), and 2,045 test assertions across 21 `.tcyr` files, passing on x86_64-linux and on aarch64
-under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
+**v1.10.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+modules plus `src/proto.cyr` (the protobuf writer behind the OTLP encoders),
+994 public fns (every fn documented), and 2,148 test assertions across 22
+`.tcyr` files, passing on x86_64-linux and on aarch64 under `qemu-aarch64`.
+There are 29 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
 tree before each release. CI runs the suite on x86_64 and on aarch64 (under
@@ -13,7 +14,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1, v1.8.0 and v1.9.0 passes).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1, v1.8.0, v1.9.0 and v1.10.0 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -21,25 +22,9 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.10.0](#v1100--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
 | [v1.11.0](#v1110--contract-gaps-from-the-documentation-pass-minor) | minor | Missing setters / getters, unset vtable slots, reentrancy, `agent_id_from_str` validation, newer Landlock rights, `RlimitType` → `RLIMIT_*` |
 | [v1.12.0](#v1120--otlp-export-envelopes-and-remaining-fields-minor) | minor | OTLP `Resource` / `InstrumentationScope` and the export envelopes; status message, exemplars, histogram points; UTF-8 in string fields |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
-
----
-
-## v1.10.0 — OTLP wire-format completion (minor)
-
-✅ **Done under `[Unreleased]`** (see the CHANGELOG and
-[ADR-004](../adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md)):
-- typed `AnyValue` attribute values;
-- Span attributes, events and links;
-- `LogRecord_to_otlp_proto` and `MetricDataPoint_to_otlp_proto` (a `NumberDataPoint`);
-- `metric_to_otlp_proto`, a `Metric` with its gauge or sum and the temporality mapped to OTLP's numbering.
-
-Every encoder is tested byte for byte against protoc's encoding of the official schema, and fuzzed through a schema
-walker. That check found v1.2.0's status code in a reserved field, which is fixed. The protobuf writer moved to a
-private in-place buffer: 2–4× faster than the first draft, and a minimal span costs less than in 1.9.0.
 
 ---
 
