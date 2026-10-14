@@ -2,15 +2,17 @@
 
 ## Status
 
-**v1.6.5** is the most recent stable release, on Cyrius `6.6.20`. It has 12
-modules plus `src/proto.cyr` (OTLP wire helpers), 923 public fns, and 1,536
-test assertions across 18 `.tcyr` files, passing on x86_64-linux and on aarch64
+**v1.7.0** is the most recent stable release, on Cyrius `6.6.20`. It has 12
+modules plus `src/proto.cyr` (OTLP wire helpers), 927 public fns, and 1,574
+test assertions across 19 `.tcyr` files, passing on x86_64-linux and on aarch64
 under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
-Five repos declare `[deps.agnostik]`: aegis, anuenue, ark, kybernet and mela.
+Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
+`scripts/consumer-sweep.sh` builds and tests all of them against the working
+tree before each release.
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5 pass and the v1.7.0 minor-cut pass).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -18,7 +20,6 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.7.0](#v170--consumer-safety-net-minor) | minor | Cross-consumer sweep, private-helper namespacing, `ClassificationResult` setters |
 | [v1.7.1](#v171--ci-and-release-hardening-patch) | patch | Raw-syscall gate, aarch64 tests in CI, toolchain checksum, orphan `keccak.cyr` |
 | [v1.7.2 – v1.7.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, small modules |
 | [v1.8.0](#v180--cyrius-679-pin-and-enum-nameparse-completion-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them |
@@ -29,29 +30,7 @@ longer here.
 
 ---
 
-## v1.7.x — Consumer safety net and hardening
-
-### v1.7.0 — Consumer safety net (minor)
-
-All three items are done under `[Unreleased]` (see the CHANGELOG). The slot
-leaves this file at the 1.7.0 cut.
-
-1. ✅ **Cross-consumer build sweep**: `scripts/consumer-sweep.sh`, wired into
-   CLAUDE.md's closeout step 8. It discovers every sibling repo that declares
-   `[deps.agnostik]` (five today: aegis, anuenue, ark, kybernet, mela). It
-   builds and tests each one twice on its own pin, once at the agnostik tag it
-   pins and once resolving this working tree through a `path` dep, and it
-   verifies that the second run really vendored the in-flight code. A CI job
-   can follow if the consumer repos become cloneable from the runner.
-2. ✅ **Private-helper namespacing**: all 21 `_`-prefixed helpers in shipped
-   modules are now `_stik_*`, and a CI step rejects an unprefixed one. The
-   sweep found `_hex_nibble` colliding with sigil in four of five consumers. A
-   wider scan found `_json_int` / `_json_str` colliding, at a different arity,
-   with ai-hwaccel and itihas, and `_hex_byte` with bote.
-3. ✅ **`ClassificationResult` setters**: `cresult_set_level`,
-   `cresult_set_auto_level` and `cresult_set_confidence` validate and return
-   a `Result`. Confidence is parts per thousand (0..1000), and
-   `cresult_has_confidence` tells a set 0 from an unset score.
+## v1.7.x — Hardening
 
 ### v1.7.1 — CI and release hardening (patch)
 

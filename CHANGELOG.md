@@ -2,9 +2,14 @@
 
 ## [Unreleased]
 
-v1.7.0 work, the consumer safety net. All three roadmap items are in. Public API
-923 → **927** fns (+4, no removals). 19 test files, **1,574 assertions, 0
-failures**, on x86_64-linux and on aarch64 (under `qemu-aarch64`).
+## [1.7.0] - 2026-10-14
+
+**Minor: the consumer safety net.** A cross-consumer build sweep, `_stik_`-namespaced private
+helpers (F-025), and setters for `ClassificationResult`. Public API 923 → **927** fns (+4, no
+removals, no signature or wire-format change). `ClassificationResult` grows 48 → 56 B, with every
+existing offset unchanged. 19 test files, **1,574 assertions, 0 failures**, on x86_64-linux and on
+aarch64 (under `qemu-aarch64`). Every consumer that declares `[deps.agnostik]` builds and passes
+its tests against this release on its own pin: 5 of 5.
 
 ### Added — `scripts/consumer-sweep.sh`: every consumer, built and tested against the working tree
 
@@ -142,14 +147,132 @@ shipped.
   dropped at 1.6.5. It now names the five `[deps.agnostik]` repos, and the gate-script list gains
   the sweep.
 
+### Security
+
+The minor-cut security pass is recorded in
+[`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) §"v1.7.0 minor-cut pass". One
+finding, fixed in this release:
+
+- **F-025 (LOW, defense in depth) — agnostik's parsers could run another library's code.** A
+  consumer compiles agnostik into one unit together with the other libraries it vendors, and a
+  same-named, same-arity fn there wins by definition order. So in aegis, ark and mela, sigil's
+  `_hex_nibble` replaced agnostik's. That helper does the hex decoding for the UUID parser
+  (`agent_id_from_str`), `trace_id_from_str`, `span_id_from_str`, `tctx_from_traceparent`, and the
+  JSON `\u` escape decoder. The two
+  definitions are identical today, so nothing parsed differently. A diverging same-arity copy
+  would have silently changed how agnostik parses untrusted UUIDs, traceparents and JSON. The
+  different-arity collisions (`_json_int` / `_json_str` against ai-hwaccel and itihas,
+  `_hex_byte` against bote) fail the build instead, an availability problem rather than an
+  integrity one. Fixed by the `_stik_` rename above and the CI gate that keeps it.
+
+The re-scan of `src/` finds no `sys_system`, no `/etc` / `/bin` / `/sbin` literal and no stack
+buffer of 64 KB or more. The only raw syscalls are `src/error.cyr`'s four `syscall(1, 2, …)`
+stderr writes, unchanged and correct on every target; they move to `sys_write` at v1.7.1. The
+new setters validate their input. `scripts/consumer-sweep.sh` runs consumer code by design: it is
+a local release tool, not shipped code, and not in CI.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 19 files, 1,574 assertions, 0 failures, on x86_64 and on aarch64.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor recorded:** of 903
+  textual fn definitions in shipped modules, 767 public fns are called by no library code. They
+  are consumers' entry points, as expected for a type library, and 294 of them are referenced by
+  no test or harness either. That untested-entry-point count is the figure to drive down.
+- **Refactor:** none needed. The two level setters share one validation line, below CLAUDE.md's
+  wait-for-the-third rule.
+- **Code review** of the diff since 1.6.5. The setters test's crash on an unexpected `Ok`, found
+  by mutation, was fixed before the release (see above). Two fixes to the new sweep script:
+  - It now refuses to run when `mktemp` fails. An empty scratch path would have aimed its copies
+    at `/base`, `/new` and `/logs`. A mutant with `mktemp` forced to fail exits 2 and creates
+    nothing.
+  - Its preflight now prints what `cyrius distlib --check` reported, instead of always claiming
+    the bundle is stale. An unwritable `TMPDIR` produced exactly that misleading message.
+- **Cleanup:**
+  - `src/secrets.cyr` said `SecretMetadata.expires_at` / `.owner` "have getters but no setters",
+    false since 1.4.0 added `smeta_set_expires_at` / `smeta_set_owner`.
+  - SECURITY.md's attack-surface section named the pre-rename `_json_*` helpers.
+
+  Both corrected.
+- **Security re-scan:** as above.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 consumers, 0 regressed, 0
+  invalid, 0 agnostik-involved duplicate definitions. Assertions unchanged: aegis 428,
+  anuenue 402, ark 392, kybernet 876, mela 492.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner all read
+  1.7.0, and `cyrius.cyml` reads `VERSION`. The release workflow's version gate accepts tag
+  `1.7.0`.
+- **Full build from clean:** see Verification.
+
 ### Performance
 
-This is not a release. The full gate table and an interleaved A/B are recorded at the 1.7.0 cut.
-`scripts/bench-regression.sh` against the 1.6.5 baseline gives **25 checked, 0 regressions**.
-That run was taken while other sessions held the host at load 6.8, and every row read about +13%,
-uniformly, including code this change does not touch. The rename does not change the generated
-code, and no benchmark exercises the new setters or `classification_result_new`. DCE binary
-132,424 → 132,552 B (+128 B).
+`scripts/bench-regression.sh` against the 1.6.5 baseline in `history.csv`: **25 checked, 0 new, 0
+regressions.** The host was shared with other sessions' compilers for the whole cut (load 2.6 to
+12), so the gate's Δ column is mostly host, not code. The A/B separates the two: 15 rounds
+interleaving the 1.6.5 tag tree with the 1.7.0 tree, both on cyrius 6.6.20, with order alternating
+each round, taken right after the gate.
+
+| benchmark | 1.6.5 baseline | 1.7.0 gate | Δ gate | 1.6.5 tree, median of 15 | 1.7.0 tree, median of 15 | Δ A/B |
+|---|---:|---:|---:|---:|---:|---:|
+| token_usage_update | 32 | 34 | +6.2% | 38 | 37 | -2.6% |
+| traceparent_format | 1759 | 1868 | +6.2% | 2068 | 2035 | -1.6% |
+| inference_request_full | 363 | 379 | +4.4% | 427 | 421 | -1.4% |
+| agent_stats_to_json | 644 | 689 | +7.0% | 762 | 753 | -1.2% |
+| token_usage_to_json | 836 | 895 | +7.1% | 986 | 977 | -0.9% |
+| resource_limits_from_json | 447 | 473 | +5.8% | 520 | 516 | -0.8% |
+| agent_stats_from_json | 290 | 312 | +7.6% | 342 | 340 | -0.6% |
+| resource_limits_to_json | 948 | 1013 | +6.9% | 1113 | 1107 | -0.5% |
+| accel_flags_to_json | 1571 | 1684 | +7.2% | 1851 | 1842 | -0.5% |
+| agent_id_roundtrip | 988 | 1054 | +6.7% | 1162 | 1161 | -0.1% |
+| audit_entry_full | 2200 | 2302 | +4.6% | 2441 | 2442 | +0.0% |
+| token_usage_from_json | 406 | 434 | +6.9% | 477 | 478 | +0.2% |
+| message_build_3turn | 360 | 384 | +6.7% | 421 | 422 | +0.2% |
+| version_roundtrip | 247 | 266 | +7.7% | 299 | 300 | +0.3% |
+| agent_id_new | 583 | 581 | -0.3% | 618 | 623 | +0.8% |
+| agent_id_to_str | 740 | 757 | +2.3% | 838 | 846 | +1.0% |
+| security_context_full | 653 | 704 | +7.8% | 758 | 767 | +1.2% |
+| injection_scores_from_json | 296 | 324 | +9.5% | 352 | 357 | +1.4% |
+| accelerator_device_full | 95 | 105 | +10.5% | 113 | 115 | +1.8% |
+| injection_scores_to_json | 743 | 811 | +9.2% | 876 | 893 | +1.9% |
+| accel_flags_from_json | 685 | 745 | +8.8% | 804 | 820 | +2.0% |
+| version_to_str | 104 | 110 | +5.8% | 122 | 125 | +2.5% |
+| trace_context_child | 577 | 591 | +2.4% | 650 | 668 | +2.8% |
+| trace_context_new | 1188 | 1189 | +0.1% | 1291 | 1332 | +3.2% |
+| sandbox_config_default | 24 | 24 | +0.0% | 26 | 27 | +3.8% |
+
+**1.7.0 is performance-neutral.** The A/B's median row is **+0.2%**, every one of the 25 rows is
+within ±5%, and the largest move is `sandbox_config_default` at +3.8% (26 → 27 ns). None of the
+benchmarks exercises the new setters, and the `_stik_` rename leaves the generated code unchanged.
+The gate's median row, **+6.7%**, is load. The unchanged 1.6.5 tree, measured in the same window
+as the control, read +17.5% against its own baseline, as the load rose during the A/B.
+
+**The appended baseline is load-inflated.** The release run appended to
+`docs/benchmarks/history.csv` (25 rows, commit column `0f5a9b7`, HEAD at the time) was taken at
+load ≈ 5. It reads **+13.5%** on the median row over 1.6.5's quiet-host row (range +4.2% to
++25.1%), with code that the A/B shows is neutral. So the next gate compares against a baseline
+about 13% lenient. That is small against the gate's 50% / 80% thresholds, but next release's
+deltas should be read with it in mind, or the row re-captured on a quiet host. The gate passes
+against the new row.
+
+All 25 rows resolve (no `UNRESOLVED` lines). DCE binary 132,424 → **132,552 B** (+128 B, the
+setters and the 56-byte allocation). Plain build 718,152 → 718,280 B; aarch64 828,648 →
+828,776 B.
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree was committed into a throwaway repo
+  and built from an empty `build/`. Every `ci.yml` step except the bench passed, 17 of 17, from
+  stdlib sync through the security scan and version check, with the dist check run against a real
+  committed HEAD. The new "Private helpers are namespaced" step passed too. The bench gate ran
+  separately (above).
+- **Tests:** 19 files, **1,574 assertions, 0 failures** on x86_64-linux, and the same under
+  `qemu-aarch64` 11.1.1.
+- **Builds** (`CYRIUS_DCE=1`): x86_64 132,552 B, aarch64 828,776 B, agnos 132,896 B, Windows
+  849,408 B. No warning comes from agnostik source; the Windows build's one warning is in the
+  stdlib's `lib/syscalls_windows.cyr`, as at 1.6.5.
+- **Gates:** api-surface 927 = snapshot; doc-debt 849 = baseline (all four new fns documented);
+  `cyrius distlib --check` fresh; `deps --verify` 33 / 33; fmt, lint, type-check and vet clean.
+- **Downstream:** `scripts/consumer-sweep.sh`, 5 of 5 green, 0 regressed, 0 invalid, 0
+  agnostik-involved duplicate definitions.
+- **Links:** every relative link in every Markdown file resolves (0 broken).
 
 ## [1.6.5] - 2026-10-14
 

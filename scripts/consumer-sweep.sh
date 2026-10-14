@@ -126,12 +126,20 @@ fi
 
 # ── preflight ────────────────────────────────────────────────────────────
 command -v timeout > /dev/null || { echo "consumer-sweep: needs coreutils timeout" >&2; exit 2; }
-if ! (cd "$REPO_ROOT" && cyrius distlib --check > /dev/null 2>&1); then
-    echo "consumer-sweep: dist/agnostik.cyr is stale against src/ — run 'cyrius distlib' first" >&2
+if ! dl_out="$(cd "$REPO_ROOT" && cyrius distlib --check 2>&1)"; then
+    echo "consumer-sweep: 'cyrius distlib --check' failed. A stale dist/agnostik.cyr" >&2
+    echo "  needs 'cyrius distlib'; otherwise see its output:" >&2
+    printf '%s\n' "$dl_out" | tail -5 | sed 's/^/    /' >&2
     exit 2
 fi
 
-SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/agnostik-sweep.XXXXXX")"
+SCRATCH="$(mktemp -d "${TMPDIR:-/tmp}/agnostik-sweep.XXXXXX")" || SCRATCH=""
+# Every path below is "$SCRATCH/…": an empty SCRATCH would aim the copies and
+# the cleanup at the filesystem root.
+if [ -z "$SCRATCH" ] || [ ! -d "$SCRATCH" ]; then
+    echo "consumer-sweep: could not create a scratch directory under ${TMPDIR:-/tmp}" >&2
+    exit 2
+fi
 if [ $KEEP -eq 0 ]; then trap 'rm -rf "$SCRATCH"' EXIT; fi
 mkdir -p "$SCRATCH/base" "$SCRATCH/new" "$SCRATCH/logs"
 
