@@ -22,7 +22,40 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
+| [v1.12.1](#v1121--cyrius-67x-toolchain-refresh-patch) | patch | Cyrius `6.7.9` → 6.7.x (after cyrius's upcoming repair and audit releases), the last 1.x refresh before v2.0.0 |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
+
+---
+
+## v1.12.1 — Cyrius 6.7.x toolchain refresh (patch)
+
+🔧 Move the pin in `cyrius.cyml` from `6.7.9` to a later 6.7.x, so the v2.0.0 work starts on a current toolchain.
+The target stays 6.7.x for now. Cyrius has a run of repair and audit releases coming, and this slot waits until
+they wrap up; the version is chosen then, not before. This is a toolchain-only patch: no source or API change is
+planned, and any change the new pin forces is recorded as such. 1.8.0's move to 6.7.9 is the precedent.
+
+- **Re-vendor:**
+  - `cyrius lib sync`, then `cyrius deps`;
+  - `cyrius deps --relock` if `deps` refuses transitive leaves under the committed lock ("DISAGREE under an
+    unchanged pin");
+  - then `cyrius deps --verify`, and check that a fresh checkout reproduces `cyrius.lock`.
+- **Advisories and silent changes:** read the cyrius CHANGELOG for every release after 6.7.9 up to the target. Check every advisory and
+  every behaviour change that could alter compiled code without a diagnostic against `src/`, as 1.8.0 did for
+  6.7.x.
+- **Regenerate and re-check:** `cyrius distlib` (the bundle and its `.deps` sidecar), the API-surface snapshot, and
+  the doc gate (`cyrius doc --check` may count differently).
+- **Full verification:**
+  - the suite on x86_64 and under `qemu-aarch64`;
+  - `CYRIUS_DCE=1` builds on all four targets, with sizes recorded;
+  - the consumer sweep;
+  - the security pass;
+  - a clean-room CI replay.
+- **Benchmark gate:** mandatory on every bump, toolchain-only ones included. Isolate the toolchain's effect with a
+  paired A/B of the same tree on the old and new pins, interleaved, not against the history baseline alone.
+- **The Windows size question:** the `CYRIUS_DCE=1` Windows build grew 13.8 KB, 14.8 KB and 16.4 KB at 1.10.0,
+  1.11.0 and 1.12.0, while x86_64 grew by tens to hundreds of bytes. Build the same tree for `--win` on both pins:
+  if the new pin changes the gap, the toolchain owns it. If not, record the per-release growth and look at which
+  code survives DCE on Windows only. Either way, the finding goes in this slot's CHANGELOG entry.
 
 ---
 
