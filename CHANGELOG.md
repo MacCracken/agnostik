@@ -2,6 +2,77 @@
 
 ## [Unreleased]
 
+v1.8.0 work. Part 1 of 3 is in: the cyrius pin move. Enum name/parse completion and the
+documentation burn-down follow. The documentation work rides this minor rather than releases of
+its own.
+
+### Changed — cyrius pin 6.6.20 → **6.7.9**; stdlib re-vendored
+
+The first move onto the 6.7.x line, a language minor. 6.7.x adds real traits, `const` and
+`const fn`, `bool` with `true` / `false`, if-expressions, `loop` / `do`, compound assignment,
+tuples, default and named arguments, checked `dyn`, and an opt-in bounds-checked mode. **No source
+change was needed**, and the cyrius 6.7.0–6.7.9 CHANGELOG does not mention agnostik.
+
+**The changes that could have altered agnostik's behaviour silently were checked against its
+source, not assumed.** agnostik uses none of the affected patterns:
+- 6.7.8 made `*p` through a narrow `*T` read and write at the element's width; agnostik has no
+  narrow typed pointers.
+- 6.7.8 made a signed slice element read sign-extended; agnostik has no slice types.
+- 6.7.8 stopped an untyped parameter from being treated as a slice.
+- Before 6.7.3 the lexer silently dropped a lone `!`, so `!x` compiled as `x`; agnostik has no
+  lone `!`.
+- 6.7.x reserves `dyn` and adds `const`, `bool`, `true`, `false`, `do` and `loop`; none is an
+  agnostik identifier.
+
+The compile-time checks the line added (calls to later fns arity-checked, constant indexes
+range-checked, `for` steps ending at their `)`) all pass: every target builds with zero warnings.
+
+`lib/` re-vendored with `cyrius lib sync` + `cyrius deps`. All **32** files are byte-identical to
+the 6.7.9 snapshot: 21 changed content (`alloc`, `alloc_agnos`, `atomic`, `bayan`, `boxed`,
+`fmt`, `fnptr`, `hashmap`, `hashmap_fast`, `io`, `str`, `tagged`, `trait`, `vec`, and `syscalls`
+with its six peers), and 11 did not. Nothing new, nothing gone.
+
+**The pin move needed `cyrius deps --relock`.** It is the first pin move with a committed lock;
+1.6.5 created the lock fresh. `lib sync` re-locks the 26 files it copies under the new pin.
+`cyrius deps` then found the two transitive leaves it adds, `atomic` and `boxed`, with 6.6.20
+hashes in a lock already stamped 6.7.9. It refused them as "cyrius.lock and the pinned stdlib
+snapshot DISAGREE under an unchanged pin" and left the stale 6.6.20 copies in place, which
+`deps --verify` still passed against those hashes. `cyrius deps --relock` accepted the new content.
+A fresh checkout with an empty `lib/` then reproduces the committed lock byte for byte (32 / 32).
+CLAUDE.md's refresh note now spells out the step.
+
+**Regenerated outputs are unchanged.** `cyrius distlib` reproduces `dist/agnostik.cyr` and its
+12-leaf sidecar byte for byte, and the api-surface snapshot stays at 927 fns. No consumer-facing
+artifact moves.
+
+**Binaries** (`CYRIUS_DCE=1`, identical source): x86_64 132,552 B, the same size as on 6.6.20,
+but 57,335 bytes differ (code generation changed); aarch64 828,776 → 828,752 B; agnos 132,896 B;
+Windows 848,896 → 849,408 B. Plain x86_64 build 718,280 B.
+
+**Security in range.** 6.7.x published two advisories:
+- The cyriusly `cmdtools` current-directory script: CI never runs `cyriusly`.
+- The dropped-`!` lexer bug: agnostik has no lone `!`, so its compiled code never differed.
+
+The 6.7.6 `lib/fnptr.cyr` fix for `fncall8`'s swapped arguments 7 and 8 does not reach agnostik,
+which uses only `fncall2`. The 6.7.9 release verifies against the cyrius release key pinned in
+`scripts/ci-install-cyrius.sh`. Its `lib/` and every binary match the local install, apart from
+the bundled `ci.sh` helper.
+
+**Verification:**
+- Every `ci.yml` step except the bench passes on 6.7.9, 17 of 17.
+- 19 test files, **1,574 assertions, 0 failures**, on x86_64 and under `qemu-aarch64`.
+- `scripts/consumer-sweep.sh`: 5 of 5 green.
+
+**Performance: preliminary; re-measured at the 1.8.0 cut.** The host was at load 14 throughout,
+from other sessions' compilers:
+- A single-shot `scripts/bench-regression.sh` reported 19 regressions.
+- 15 interleaved rounds of the 1.7.1 tree on 6.6.20 against this tree on 6.7.9 (identical
+  source) swing ±20% per row in both directions.
+- The aggregate is neutral: median row −2.4% on medians, −1.1% on per-round minimums.
+
+That is too noisy to call any single row, so the gate table and the A/B are taken again at the
+cut.
+
 ## [1.7.1] - 2026-10-14
 
 **Patch: CI and release hardening.**

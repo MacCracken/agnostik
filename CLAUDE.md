@@ -54,7 +54,7 @@ bash scripts/consumer-sweep.sh                         # build + test every [dep
 cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — read per-phase verdicts, not the exit code
 ```
 
-Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. `deps` rewrites `cyrius.lock`; commit it with the pin move. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
+Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. `deps` rewrites `cyrius.lock`; commit it with the pin move. On a pin move with a committed lock, `lib sync` re-locks only the files it copies, so `deps` then refuses the transitive leaves it adds whose content changed ("DISAGREE under an unchanged pin"); run `cyrius deps --relock` to accept the new snapshot, then check that `cyrius deps --verify` passes and a fresh checkout reproduces the lock. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
 
 ## Key Principles
 

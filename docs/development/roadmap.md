@@ -21,44 +21,22 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.7.2 – v1.7.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, small modules |
-| [v1.8.0](#v180--cyrius-679-pin-and-enum-nameparse-completion-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them |
-| [v1.8.1 – v1.8.2](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, mid-size modules |
+| [v1.8.0](#v180--cyrius-679-pin-enum-nameparse-documentation-debt-minor) | minor | Cyrius pin `6.6.20` → `6.7.9`; `*_name` / `*_parse` for the 26 enums without them; documentation debt 849 → 0 |
 | [v1.9.0](#v190--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
-| [v1.9.1 – v1.9.3](#documentation-debt-burn-down-v172-onward) | patch | Documentation debt, large modules, ending at 0 |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
 
 ---
 
-## v1.7.x — Documentation debt
+## v1.8.0 — Cyrius 6.7.9 pin, enum name/parse, documentation debt (minor)
 
-### Documentation-debt burn-down (v1.7.2 onward)
-
-`scripts/doc-debt.sh` has gated CI since v1.6.3. A new undocumented fn fails,
-and so does a grandfathered one that was documented without recording it. The
-849 fns in `docs/undocumented.baseline` are paid down one or more modules per
-patch, smallest first, so each release's review stays small:
-
-| Slot | Modules (undocumented fns) | Running total |
-|---|---|---|
-| v1.7.2 | `error` (18), `secrets` (21), `config` (22) | 849 → 788 |
-| v1.7.3 | `main` (23), `validation` (26), `types` (40) | 788 → 699 |
-| v1.8.1 | `audit` (44), `hardware` (55) | 699 → 600 |
-| v1.8.2 | `telemetry` (126) | 600 → 474 |
-| v1.9.1 | `llm` (148) | 474 → 326 |
-| v1.9.2 | `security` (152) | 326 → 174 |
-| v1.9.3 | `agent` (174) | 174 → 0 |
-
-At 0, the baseline file goes and the gate becomes "no undocumented fn in
-`src/`". `cyrius audit` will still exit non-zero on its docs phase, because
-that phase counts the test and bench files too. Whether to document test
-helpers or narrow the audit's scope is decided at v1.9.3.
-
----
-
-## v1.8.0 — Cyrius 6.7.9 pin and enum name/parse completion (minor)
+Three parts, in this order: the toolchain moves first, so the other two are built and
+measured on the new pin.
 
 ### Cyrius pin 6.6.20 → 6.7.9
+
+✅ **Done under `[Unreleased]`** (see the CHANGELOG). No source change was needed, and the
+bundle and API surface regenerate unchanged. The re-vendor needed `cyrius deps --relock`. The
+bench gate and A/B are re-taken at the cut, because the host was at load 14 when they ran.
 
 🔧 The toolchain refresh rides this minor rather than a patch of its own. It is
 the first move onto the 6.7.x line. Same checklist as the 1.6.5 refresh:
@@ -99,6 +77,29 @@ value. They get per-bit names, or an ADR that records "no string form" and
 amends the CLAUDE.md rule. Same rules as F-018: exact match, no case-folding,
 an unknown string is `Err`. `tests/tcyr/test_v140_enum_parse.tcyr`'s
 exhaustive `parse(name(v)) == v` check extends to every new member.
+
+### Documentation debt: 849 → 0
+
+Documentation does not get a release of its own; it rides this minor.
+`scripts/doc-debt.sh` has gated CI since v1.6.3. A new undocumented fn fails,
+and so does a grandfathered one that was documented without recording it. The
+849 fns in `docs/undocumented.baseline` are documented module by module,
+smallest first, recording each module with `scripts/doc-debt.sh update`:
+
+| Order | Modules (undocumented fns) | Running total |
+|---|---|---|
+| 1 | `error` (18), `secrets` (21), `config` (22) | 849 → 788 |
+| 2 | `main` (23), `validation` (26), `types` (40) | 788 → 699 |
+| 3 | `audit` (44), `hardware` (55) | 699 → 600 |
+| 4 | `telemetry` (126) | 600 → 474 |
+| 5 | `llm` (148) | 474 → 326 |
+| 6 | `security` (152) | 326 → 174 |
+| 7 | `agent` (174) | 174 → 0 |
+
+At 0, the baseline file goes and the gate becomes "no undocumented fn in
+`src/`". `cyrius audit` will still exit non-zero on its docs phase, because
+that phase counts the test and bench files too. Whether to document test
+helpers or narrow the audit's scope is decided at the end of this slot.
 
 ## v1.9.0 — OTLP wire-format completion (minor)
 
@@ -164,7 +165,8 @@ Context: [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
 ## Working agreement
 
 - **Default shape**: small fast-follows in patch slots, bundled minors, and
-  breaking changes batched at majors. Public API additions ride minors. Each
+  breaking changes batched at majors. Documentation-only work never gets a
+  release of its own; it rides the next minor. Public API additions ride minors. Each
   minor cut runs the security audit pass per CLAUDE.md.
 - **Adding items**: draft a proposal under `docs/proposals/`, citing the
   trigger and the slot. An item without a slot stays a proposal until it earns
