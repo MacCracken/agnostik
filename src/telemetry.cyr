@@ -485,7 +485,8 @@ fn span_kind(s)           { return load64(s + 40); }
 fn span_started_at(s)     { return load64(s + 48); }
 # Duration in milliseconds; 0 until span_set_duration_ms.
 fn span_duration_ms(s)    { return load64(s + 56); }
-# Span attributes: a cstr-keyed map, created empty by span_new.
+# Span attributes: a cstr-keyed map, created empty by span_new. Span_to_otlp_proto
+# reads its values as AnyValue boxes (any_string, any_int, ...).
 fn span_attributes(s)     { return load64(s + 64); }
 # vec of the span's events, created empty by span_new.
 fn span_events(s)         { return load64(s + 72); }
@@ -506,31 +507,231 @@ fn span_dropped_attrs(s)  { return load64(s + 88); }
 fn span_dropped_events(s) { return load64(s + 96); }
 # Number of links dropped from the span; span_new sets 0.
 fn span_dropped_links(s)  { return load64(s + 104); }
-# v1.2.0 — OTLP wire-format encoder for Span. Maps to
-# opentelemetry.proto.trace.v1.Span. Covers scalar fields:
-# trace_id, span_id, parent_span_id, name, kind, start/end times,
-# status, dropped-counts. Repeated nested-message fields
-# (attributes, events, links) are skipped in this slot — they
-# require nested KeyValue/Event/Link encoders pinned for v1.2.x
-# when a consumer surfaces the need.
-#
-# OTLP field-number reference (proto/trace/v1/trace.proto §Span):
-#   1: trace_id (bytes, 16)
-#   2: span_id (bytes, 8)
-#   3: trace_state (string)        — skipped (caller-set, often empty)
-#   4: parent_span_id (bytes, 8)   — only emitted if non-zero
-#   5: name (string)
-#   6: kind (varint, SpanKind enum)
-#   7: start_time_unix_nano (fixed64)
-#   8: end_time_unix_nano (fixed64) — start + duration_ms*1e6
-#   9: attributes (repeated KeyValue) — DEFERRED v1.2.x
-#  10: dropped_attributes_count (varint)
-#  11: events (repeated Event)        — DEFERRED v1.2.x
-#  12: dropped_events_count (varint)
-#  13: links (repeated Link)          — DEFERRED v1.2.x
-#  14: dropped_links_count (varint)
-#  15: status (Status sub-message: code, message)
-#  16: flags (fixed32)              — skipped (rarely set)
+# AnyValueType: what an AnyValue box holds. Each value is the field number of
+# the matching member of OTLP's AnyValue oneof
+# (opentelemetry/proto/common/v1/common.proto), so 0 is never a valid type.
+enum AnyValueType {
+    ANY_STRING = 1;
+    ANY_BOOL = 2;
+    ANY_INT = 3;
+    ANY_DOUBLE = 4;
+    ANY_ARRAY = 5;
+    ANY_KVLIST = 6;
+    ANY_BYTES = 7;
+}
+# AnyValueType name: the OTLP/JSON key of the matching AnyValue member,
+# "stringValue", "boolValue", "intValue", "doubleValue", "arrayValue",
+# "kvlistValue" or "bytesValue", and "Unknown" for a value outside the enum.
+# any_value_type_parse is the inverse.
+fn any_value_type_name(t) {
+    if (t == ANY_STRING)       { return "stringValue"; }
+    elif (t == ANY_BOOL)       { return "boolValue"; }
+    elif (t == ANY_INT)        { return "intValue"; }
+    elif (t == ANY_DOUBLE)     { return "doubleValue"; }
+    elif (t == ANY_ARRAY)      { return "arrayValue"; }
+    elif (t == ANY_KVLIST)     { return "kvlistValue"; }
+    elif (t == ANY_BYTES)      { return "bytesValue"; }
+    return "Unknown";
+}
+# Parse an AnyValueType name: exact, case-sensitive match on the OTLP/JSON
+# key. Returns Ok(member), or an invalid-argument Err for any other string.
+fn any_value_type_parse(s: Str) {
+    if (str_eq_cstr(s, "stringValue") == 1) { return Ok(ANY_STRING); }
+    elif (str_eq_cstr(s, "boolValue") == 1) { return Ok(ANY_BOOL); }
+    elif (str_eq_cstr(s, "intValue") == 1) { return Ok(ANY_INT); }
+    elif (str_eq_cstr(s, "doubleValue") == 1) { return Ok(ANY_DOUBLE); }
+    elif (str_eq_cstr(s, "arrayValue") == 1) { return Ok(ANY_ARRAY); }
+    elif (str_eq_cstr(s, "kvlistValue") == 1) { return Ok(ANY_KVLIST); }
+    elif (str_eq_cstr(s, "bytesValue") == 1) { return Ok(ANY_BYTES); }
+    return stik_err_invalid_argument(str_from("unknown AnyValueType name"));
+}
+# An AnyValue holding a string: a tagged box with tag ANY_STRING and the Str
+# `s` as payload, stored as given (0 encodes as the empty string). Attribute
+# maps exported to OTLP hold AnyValue boxes as their values.
+fn any_string(s: Str) { return tagged_new(ANY_STRING, s); }
+# An AnyValue holding a bool: tag ANY_BOOL, payload 1 when `b` is non-zero,
+# else 0.
+fn any_bool(b) {
+    if (b != 0) { return tagged_new(ANY_BOOL, 1); }
+    return tagged_new(ANY_BOOL, 0);
+}
+# An AnyValue holding a signed 64-bit integer: tag ANY_INT, payload `n`.
+fn any_int(n) { return tagged_new(ANY_INT, n); }
+# An AnyValue holding a double: tag ANY_DOUBLE, payload the raw 8-byte
+# IEEE-754 bits given (no conversion, as metric_float).
+fn any_double(bits) { return tagged_new(ANY_DOUBLE, bits); }
+# An AnyValue holding an array: tag ANY_ARRAY, payload a vec of AnyValue boxes,
+# stored as given (0 encodes as an empty array).
+fn any_array(values) { return tagged_new(ANY_ARRAY, values); }
+# An AnyValue holding a key/value list: tag ANY_KVLIST, payload a map (cstr- or
+# Str-keyed) whose values are AnyValue boxes, stored as given (0 encodes as an
+# empty list).
+fn any_kvlist(m) { return tagged_new(ANY_KVLIST, m); }
+# An AnyValue holding raw bytes: tag ANY_BYTES, payload a Str whose bytes are
+# the value, stored as given (0 encodes as no bytes).
+fn any_bytes(b: Str) { return tagged_new(ANY_BYTES, b); }
+# AnyValueType tag of an AnyValue box.
+fn any_value_type(v) { return boxed_tag(v); }
+# Payload of an AnyValue box: the Str, flag, integer, bits, vec or map it holds.
+fn any_value_val(v)  { return boxed_payload(v); }
+# Compare two NUL-terminated keys byte by byte as unsigned values; returns <0,
+# 0 or >0. vec_sort_by comparator for cstr-keyed attribute maps.
+fn _stik_cstr_cmp(a, b) {
+    var i = 0;
+    var r = 0;
+    var done = 0;
+    while (done == 0) {
+        var ca = load8(a + i);
+        var cb = load8(b + i);
+        if (ca != cb) {
+            r = ca - cb;
+            done = 1;
+        } elif (ca == 0) {
+            done = 1;
+        }
+        i = i + 1;
+    }
+    return r;
+}
+# Compare two Str keys byte by byte as unsigned values, a proper prefix first;
+# returns <0, 0 or >0. vec_sort_by comparator for Str-keyed attribute maps.
+fn _stik_str_key_cmp(a, b) {
+    var la = str_len(a);
+    var lb = str_len(b);
+    var da = str_data(a);
+    var db = str_data(b);
+    var n = la;
+    if (lb < n) { n = lb; }
+    var i = 0;
+    var r = 0;
+    while (i < n) {
+        if (r == 0) { r = load8(da + i) - load8(db + i); }
+        i = i + 1;
+    }
+    if (r == 0) { r = la - lb; }
+    return r;
+}
+# 1 when `m` is a Str-keyed map (map_new_str), 0 when cstr-keyed (map_new).
+# Reads the stdlib map header's key-type word at +24, which has no accessor;
+# test_v1100_otlp pins both key types, so a layout change fails a test.
+fn _stik_map_str_keys(m) {
+    if (load64(m + 24) == KeyTypeStr) { return 1; }
+    return 0;
+}
+# Append the AnyValue oneof member for box `v` to protobuf buffer `b`: the
+# body of an OTLP AnyValue message, without the message's own tag. A member is
+# written even when it holds its zero value, as oneof presence requires. A 0
+# box, an unknown type, a box nested 16 levels deep, or a box that already
+# encloses itself (a cycle) writes nothing, which decodes as an empty
+# AnyValue. `path` is a 128-byte buffer holding the enclosing boxes, `depth`
+# how many it holds.
+fn _stik_otlp_any_value(b, v, path, depth) {
+    if (v == 0) { return 0; }
+    if (depth >= 16) { return 0; }
+    var i = 0;
+    var cyc = 0;
+    while (i < depth) {
+        if (load64(path + i * 8) == v) { cyc = 1; }
+        i = i + 1;
+    }
+    if (cyc == 1) { return 0; }
+    store64(path + depth * 8, v);
+    var t = boxed_tag(v);
+    var x = boxed_payload(v);
+    if (t == ANY_STRING) {
+        if (x == 0) { _stik_pb_bytes(b, 1, 0, 0); }
+        else { _stik_pb_string(b, 1, x); }
+    } elif (t == ANY_BOOL) {
+        _stik_pb_int64(b, 2, x & 1);
+    } elif (t == ANY_INT) {
+        _stik_pb_int64(b, 3, x);
+    } elif (t == ANY_DOUBLE) {
+        _stik_pb_fixed64(b, 4, x);
+    } elif (t == ANY_ARRAY) {
+        var am = _stik_pb_open(b, 5);
+        if (x != 0) {
+            var n = vec_len(x);
+            var j = 0;
+            while (j < n) {
+                var em = _stik_pb_open(b, 1);
+                _stik_otlp_any_value(b, vec_get(x, j), path, depth + 1);
+                _stik_pb_close(b, em);
+                j = j + 1;
+            }
+        }
+        _stik_pb_close(b, am);
+    } elif (t == ANY_KVLIST) {
+        var km = _stik_pb_open(b, 6);
+        _stik_otlp_attributes(b, 1, x, path, depth + 1);
+        _stik_pb_close(b, km);
+    } elif (t == ANY_BYTES) {
+        if (x == 0) { _stik_pb_bytes(b, 7, 0, 0); }
+        else { _stik_pb_bytes(b, 7, str_data(x), str_len(x)); }
+    }
+    return 0;
+}
+# Append one KeyValue message per entry of map `m` as field `field_no` of the
+# message being written in buffer `b`. Keys are sorted bytewise, so equal
+# attributes always encode to equal bytes whatever the insertion order or hash
+# seed. The values must be AnyValue boxes. An empty key is omitted, as proto3
+# omits an empty string; the value message is always present. A 0 map writes
+# nothing.
+fn _stik_otlp_attributes(b, field_no, m, path, depth) {
+    if (m == 0) { return 0; }
+    var n = map_size(m);
+    if (n == 0) { return 0; }
+    var strk = _stik_map_str_keys(m);
+    var keys = map_keys(m);
+    if (strk == 1) { vec_sort_by(keys, &_stik_str_key_cmp); }
+    else { vec_sort_by(keys, &_stik_cstr_cmp); }
+    var i = 0;
+    while (i < n) {
+        var k = vec_get(keys, i);
+        var kp = k;
+        var kl = 0;
+        if (strk == 1) {
+            kp = str_data(k);
+            kl = str_len(k);
+        } else {
+            kl = strlen(k);
+        }
+        var km = _stik_pb_open(b, field_no);
+        if (kl > 0) { _stik_pb_bytes(b, 1, kp, kl); }
+        var vm = _stik_pb_open(b, 2);
+        _stik_otlp_any_value(b, map_get(m, k), path, depth);
+        _stik_pb_close(b, vm);
+        _stik_pb_close(b, km);
+        i = i + 1;
+    }
+    return 0;
+}
+# Append AnyValue box `v` to `sb` as the body of an OTLP AnyValue message
+# (common.proto): the one oneof member it holds, with arrays and key/value
+# lists nested to 16 levels and cycles cut (see _stik_otlp_any_value). The
+# caller wraps the bytes as a message field. Returns 0.
+fn AnyValue_to_otlp_proto(v, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_any_value(b, v, alloc(128), 0);
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# OTLP wire-format encoder for Span (v1.2.0; attributes, events and links and
+# the Status fix since v1.10.0). Writes one opentelemetry.proto.trace.v1.Span
+# (trace.proto, opentelemetry-proto v1.7.0), fields in ascending number order
+# as canonical encoders do:
+#   1 trace_id (16 bytes), 2 span_id (8 bytes)
+#   3 trace_state                       not stored, never written
+#   4 parent_span_id (8 bytes)          only when set
+#   5 name, 7 start_time_unix_nano      always written
+#   6 kind                              only when not SPAN_INTERNAL
+#   8 end_time_unix_nano                start + duration_ms × 1,000,000
+#   9 attributes (KeyValue)             the span's map, keys sorted
+#  10 / 12 / 14 dropped counts          only when non-zero
+#  11 events (Span.Event)              one per span_event_new in the vec
+#  13 links (Span.Link)                one per span_link_new in the vec
+#  15 status (Status)                  only for SPAN_OK / SPAN_ERROR
+#  16 flags                            not stored, never written
+# Attribute values must be AnyValue boxes (any_string, any_int, ...).
 #
 # SpanKind enum values map agnostik → OTLP:
 #   SPAN_INTERNAL=0 → SPAN_KIND_INTERNAL=1
@@ -546,8 +747,39 @@ fn _stik_span_kind_to_otlp(k) {
     if (k == SPAN_CONSUMER) { return 5; }
     return 0;
 }
-# SpanStatus.code: SPAN_UNSET=0 (default OTLP), SPAN_OK=1 → 1, SPAN_ERROR=2 → 2.
-# Maps directly since both enums use the same numeric values.
+# Append one Span.Event message (time 1, name 2, attributes 3) for span event
+# `e` as field 11 of the span in buffer `b`. A zero time and an empty name are
+# omitted, as proto3 omits default scalars. Returns 0.
+fn _stik_otlp_span_event(b, e, path) {
+    var em = _stik_pb_open(b, 11);
+    var ts = load64(e + 8);
+    if (ts != 0) { _stik_pb_fixed64(b, 1, ts); }
+    var nm = load64(e);
+    if (nm != 0) {
+        if (str_len(nm) > 0) { _stik_pb_string(b, 2, nm); }
+    }
+    _stik_otlp_attributes(b, 3, load64(e + 16), path, 0);
+    _stik_pb_close(b, em);
+    return 0;
+}
+# Append one Span.Link message (trace_id 1, span_id 2, attributes 4) for span
+# link `l` as field 13 of the span in buffer `b`. An unset id is omitted.
+# Returns 0.
+fn _stik_otlp_span_link(b, l, path) {
+    var lm = _stik_pb_open(b, 13);
+    var tid = load64(l);
+    if (tid != 0) { _stik_pb_bytes(b, 1, tid, 16); }
+    var sid = load64(l + 8);
+    if (sid != 0) { _stik_pb_bytes(b, 2, sid, 8); }
+    _stik_otlp_attributes(b, 4, load64(l + 16), path, 0);
+    _stik_pb_close(b, lm);
+    return 0;
+}
+# Append span `ptr` to `sb` as an OTLP Span message (field table above).
+# SpanStatus values equal OTLP's StatusCode values, and the code is
+# Status field 3: through v1.9.0 it was written as field 1, which the schema
+# reserves, so collectors read every status as UNSET. A status value outside
+# SpanStatus writes no status. Returns 0.
 fn Span_to_otlp_proto(ptr, sb) {
     var trace_id = load64(ptr + 8);
     var span_id  = load64(ptr + 16);
@@ -556,37 +788,67 @@ fn Span_to_otlp_proto(ptr, sb) {
     var kind     = load64(ptr + 40);
     var start_ns = load64(ptr + 48);
     var dur_ms   = load64(ptr + 56);
+    var b = _stik_pb_new();
+    var path = alloc(128);
     # field 1: trace_id (16 raw bytes — agent_id_new returns alloc(16))
-    _stik_proto_bytes(sb, 1, trace_id, 16);
+    _stik_pb_bytes(b, 1, trace_id, 16);
     # field 2: span_id (8 raw bytes — span_id_new returns alloc(8))
-    _stik_proto_bytes(sb, 2, span_id, 8);
+    _stik_pb_bytes(b, 2, span_id, 8);
     # field 4: parent_span_id (only if set)
-    if (parent != 0) { _stik_proto_bytes(sb, 4, parent, 8); }
+    if (parent != 0) { _stik_pb_bytes(b, 4, parent, 8); }
     # field 5: name
-    _stik_proto_string(sb, 5, name);
+    _stik_pb_string(b, 5, name);
     # field 6: kind (default SPAN_INTERNAL → 1; emit only if non-default
     # to match canonical OTLP encoders that elide default-value scalars).
-    if (kind != SPAN_INTERNAL) { _stik_proto_int64(sb, 6, _stik_span_kind_to_otlp(kind)); }
+    if (kind != SPAN_INTERNAL) { _stik_pb_int64(b, 6, _stik_span_kind_to_otlp(kind)); }
     # field 7: start_time_unix_nano
-    _stik_proto_fixed64(sb, 7, start_ns);
+    _stik_pb_fixed64(b, 7, start_ns);
     # field 8: end_time_unix_nano = start + duration_ms × 1_000_000
-    _stik_proto_fixed64(sb, 8, start_ns + dur_ms * 1000000);
+    _stik_pb_fixed64(b, 8, start_ns + dur_ms * 1000000);
+    # field 9: attributes
+    _stik_otlp_attributes(b, 9, load64(ptr + 64), path, 0);
     # field 10: dropped_attributes_count (only if non-zero)
     var da = load64(ptr + 88);
-    if (da != 0) { _stik_proto_int64(sb, 10, da); }
+    if (da != 0) { _stik_pb_int64(b, 10, da); }
+    # field 11: events
+    var evs = load64(ptr + 72);
+    if (evs != 0) {
+        var ne = vec_len(evs);
+        var i = 0;
+        while (i < ne) {
+            var e = vec_get(evs, i);
+            if (e != 0) { _stik_otlp_span_event(b, e, path); }
+            i = i + 1;
+        }
+    }
     # field 12: dropped_events_count
     var de = load64(ptr + 96);
-    if (de != 0) { _stik_proto_int64(sb, 12, de); }
+    if (de != 0) { _stik_pb_int64(b, 12, de); }
+    # field 13: links
+    var lks = load64(ptr + 80);
+    if (lks != 0) {
+        var nl = vec_len(lks);
+        var j = 0;
+        while (j < nl) {
+            var l = vec_get(lks, j);
+            if (l != 0) { _stik_otlp_span_link(b, l, path); }
+            j = j + 1;
+        }
+    }
     # field 14: dropped_links_count
     var dl = load64(ptr + 104);
-    if (dl != 0) { _stik_proto_int64(sb, 14, dl); }
-    # field 15: status — only emit if status code is set (non-UNSET)
+    if (dl != 0) { _stik_pb_int64(b, 14, dl); }
+    # field 15: status — Status.code is field 3 (field 1 is reserved)
     var status = load64(ptr + 32);
-    if (status != SPAN_UNSET) {
-        var status_sb = str_builder_new();
-        _stik_proto_int64(status_sb, 1, status);   # Status.code
-        _stik_proto_message(sb, 15, str_builder_build(status_sb));
+    var code = 0;
+    if (status == SPAN_OK) { code = 1; }
+    if (status == SPAN_ERROR) { code = 2; }
+    if (code != 0) {
+        var sm = _stik_pb_open(b, 15);
+        _stik_pb_int64(b, 3, code);
+        _stik_pb_close(b, sm);
     }
+    _stik_pb_flush(b, sb);
     return 0;
 }
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
@@ -664,7 +926,8 @@ fn logrec_timestamp(lr)  { return load64(lr); }
 fn logrec_severity(lr)   { return load64(lr + 16); }
 # Message body (Str).
 fn logrec_body(lr)       { return load64(lr + 24); }
-# Record attributes: a cstr-keyed map, created empty by log_record_new.
+# Record attributes: a cstr-keyed map, created empty by log_record_new; values are
+# AnyValue boxes for OTLP export.
 fn logrec_attributes(lr) { return load64(lr + 32); }
 # Id of the trace the record belongs to (pointer to 16 bytes), or 0 when unset.
 fn logrec_trace_id(lr)   { return load64(lr + 40); }
@@ -678,6 +941,53 @@ fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
 fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
 # Set the resource (a resource_new pointer, or 0). Returns 0.
 fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
+# Append log record `ptr` to `sb` as an OTLP LogRecord message
+# (opentelemetry.proto.logs.v1.LogRecord, logs.proto), fields in ascending
+# number order, defaults omitted as proto3 omits them:
+#   1 time_unix_nano       the record's timestamp, when non-zero
+#   2 severity_number      the LogSeverity value, when it is 1..24
+#                          (LogSeverity values are OTLP SeverityNumber values)
+#   3 severity_text        log_severity_name, for the six named severities
+#   5 body                 AnyValue string_value holding the body Str
+#   6 attributes           the record's map, keys sorted; AnyValue values
+#   9 / 10 trace_id / span_id   when set (16 / 8 bytes)
+# observed_time_unix_nano, dropped_attributes_count, flags and event_name are
+# not stored and not written. The resource belongs to the enclosing
+# ResourceLogs message, not to the record. Returns 0.
+fn LogRecord_to_otlp_proto(ptr, sb) {
+    var b = _stik_pb_new();
+    var ts = load64(ptr);
+    if (ts != 0) { _stik_pb_fixed64(b, 1, ts); }
+    var sev = load64(ptr + 16);
+    if (sev >= 1) {
+        if (sev <= 24) { _stik_pb_int64(b, 2, sev); }
+    }
+    var named = 0;
+    if (sev == LOG_TRACE) { named = 1; }
+    if (sev == LOG_DEBUG) { named = 1; }
+    if (sev == LOG_INFO) { named = 1; }
+    if (sev == LOG_WARN) { named = 1; }
+    if (sev == LOG_ERROR) { named = 1; }
+    if (sev == LOG_FATAL) { named = 1; }
+    if (named == 1) {
+        var sn = log_severity_name(sev);
+        _stik_pb_bytes(b, 3, sn, strlen(sn));
+    }
+    var body = load64(ptr + 24);
+    if (body != 0) {
+        # body: an AnyValue holding string_value (field 1), written directly
+        var bm = _stik_pb_open(b, 5);
+        _stik_pb_string(b, 1, body);
+        _stik_pb_close(b, bm);
+    }
+    _stik_otlp_attributes(b, 6, load64(ptr + 32), alloc(128), 0);
+    var tid = load64(ptr + 40);
+    if (tid != 0) { _stik_pb_bytes(b, 9, tid, 16); }
+    var sid = load64(ptr + 48);
+    if (sid != 0) { _stik_pb_bytes(b, 10, sid, 8); }
+    _stik_pb_flush(b, sb);
+    return 0;
+}
 # A CrashReport. 32 bytes, all 8-byte slots:
 #   +0 agent id (AgentId pointer, stored as given), +8 error message (Str),
 #   +16 backtrace (0), +24 timestamp (clock_epoch_ns at creation).
@@ -732,7 +1042,8 @@ fn span_event_new(evt_name: Str) {
 fn sevt_name(e)       { return load64(e); }
 # Event time, Unix ns from clock_epoch_ns.
 fn sevt_timestamp(e)  { return load64(e + 8); }
-# Event attributes: a cstr-keyed map, created empty on first access.
+# Event attributes: a cstr-keyed map, created empty on first access; values are
+# AnyValue boxes for OTLP export.
 fn sevt_attributes(e) { return _stik_lazy_map(e + 16); }
 # A SpanLink: a reference from a span to another span, which may be in another
 # trace. 24 bytes: +0 trace id, +8 span id (pointers, stored as given),
@@ -748,7 +1059,8 @@ fn span_link_new(link_trace_id, link_span_id) {
 fn slink_trace_id(l)   { return load64(l); }
 # Span id of the linked span (pointer to 8 bytes).
 fn slink_span_id(l)    { return load64(l + 8); }
-# Link attributes: a cstr-keyed map, created empty on first access.
+# Link attributes: a cstr-keyed map, created empty on first access; values are
+# AnyValue boxes for OTLP export.
 fn slink_attributes(l) { return _stik_lazy_map(l + 16); }
 # An Exemplar: a sample measurement tied to the trace and span it was recorded
 # in. 40 bytes, all 8-byte slots:
@@ -842,7 +1154,8 @@ fn metric_data_point_new(inst_name: Str, mv) {
 fn mdp_instrument(dp)   { return load64(dp); }
 # The recorded value: a metric value box (metric_int / metric_float).
 fn mdp_value(dp)         { return load64(dp + 8); }
-# Data-point attributes: a cstr-keyed map, created empty on first access.
+# Data-point attributes: a cstr-keyed map, created empty on first access; values
+# are AnyValue boxes for OTLP export.
 fn mdp_attributes(dp)   { return _stik_lazy_map(dp + 16); }
 # Time the point was created, Unix ns from clock_epoch_ns.
 fn mdp_timestamp(dp)    { return load64(dp + 24); }
@@ -851,6 +1164,136 @@ fn mdp_temporality(dp)  { return load64(dp + 32); }
 # Monotonic flag: 1 when the value never decreases, else 0. metric_data_point_new
 # sets 0 and this module has no setter for it.
 fn mdp_is_monotonic(dp) { return load64(dp + 40); }
+# Write the NumberDataPoint fields of data point `ptr` (field table below)
+# into buffer `b`, the body of the message without its own tag. Returns 0.
+fn _stik_otlp_number_point(b, ptr, path) {
+    var ts = load64(ptr + 24);
+    if (ts != 0) { _stik_pb_fixed64(b, 3, ts); }
+    var mv = load64(ptr + 8);
+    var recorded = 0;
+    if (mv != 0) {
+        var t = boxed_tag(mv);
+        if (t == MV_FLOAT) {
+            _stik_pb_fixed64(b, 4, boxed_payload(mv));
+            recorded = 1;
+        }
+        if (t == MV_INT) {
+            _stik_pb_fixed64(b, 6, boxed_payload(mv));
+            recorded = 1;
+        }
+    }
+    _stik_otlp_attributes(b, 7, load64(ptr + 16), path, 0);
+    if (recorded == 0) { _stik_pb_int64(b, 8, 1); }
+    return 0;
+}
+# Append data point `ptr` to `sb` as an OTLP NumberDataPoint message
+# (opentelemetry.proto.metrics.v1.NumberDataPoint, metrics.proto), fields in
+# ascending number order:
+#   3 time_unix_nano   the point's timestamp, when non-zero
+#   4 as_double        for a metric_float value: its raw IEEE-754 bits
+#   6 as_int           for a metric_int value (sfixed64)
+#   7 attributes       the point's map, keys sorted; AnyValue values
+#   8 flags            1 (FLAG_NO_RECORDED_VALUE) when the point holds no
+#                      int or float value, so no value field is written
+# start_time_unix_nano and exemplars are not stored and not written. The
+# instrument name, temporality and monotonic flag belong to the enclosing
+# Metric; metric_to_otlp_proto writes that. Returns 0.
+fn MetricDataPoint_to_otlp_proto(ptr, sb) {
+    var b = _stik_pb_new();
+    _stik_otlp_number_point(b, ptr, alloc(128));
+    _stik_pb_flush(b, sb);
+    return 0;
+}
+# OTLP AggregationTemporality for an agnostik one: TEMPORALITY_DELTA → 1,
+# TEMPORALITY_CUMULATIVE → 2, and 0 for any other value. The enums differ:
+# agnostik's are ordinals (CUMULATIVE = 0), OTLP's reserve 0 for UNSPECIFIED.
+fn _stik_temporality_to_otlp(t) {
+    if (t == TEMPORALITY_DELTA) { return 1; }
+    if (t == TEMPORALITY_CUMULATIVE) { return 2; }
+    return 0;
+}
+# Append an OTLP Metric message (metrics.proto) to `sb`: name 1, description 2
+# and unit 3 from InstrumentDescriptor `desc` (each omitted when 0 or empty),
+# then the data points in `points` (a vec of metric_data_point_new pointers; 0
+# entries are skipped) as NumberDataPoint messages inside the member its kind
+# selects:
+#   METRIC_GAUGE             gauge (5)
+#   METRIC_COUNTER           sum (7), is_monotonic true
+#   METRIC_UP_DOWN_COUNTER   sum (7), is_monotonic false (omitted)
+# A sum's aggregation_temporality is the points' temporality, mapped to OTLP's
+# numbering; with no points it is CUMULATIVE. A gauge ignores temporality.
+# Returns Ok(0). Returns an invalid-argument Err, having written nothing, for
+# METRIC_HISTOGRAM or any other kind (agnostik has no histogram data point),
+# or for a sum with a point whose temporality is not an AggregationTemporality
+# or whose points disagree on temporality (OTLP carries one per Sum).
+fn metric_to_otlp_proto(desc, points, sb) {
+    var kind = load64(desc + 24);
+    var member = 0;
+    if (kind == METRIC_GAUGE) { member = 5; }
+    if (kind == METRIC_COUNTER) { member = 7; }
+    if (kind == METRIC_UP_DOWN_COUNTER) { member = 7; }
+    if (member == 0) { return stik_err_invalid_argument(str_from("metric kind has no OTLP number data point")); }
+    var temporality = 2;
+    var np = 0;
+    if (points != 0) { np = vec_len(points); }
+    # A gauge has no temporality; a sum's points must all carry the same valid one.
+    var seen = 0;
+    var bad = 0;
+    var i = 0;
+    while (i < np) {
+        var p = vec_get(points, i);
+        if (member == 7) {
+            if (p != 0) {
+                var tt = _stik_temporality_to_otlp(load64(p + 32));
+                if (bad == 0) {
+                    if (tt == 0) { bad = 1; }
+                    elif (seen == 1) {
+                        if (tt != temporality) { bad = 2; }
+                    }
+                }
+                if (seen == 0) {
+                    temporality = tt;
+                    seen = 1;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    if (bad == 1) { return stik_err_invalid_argument(str_from("unknown data point temporality")); }
+    if (bad == 2) { return stik_err_invalid_argument(str_from("data points disagree on temporality")); }
+    var b = _stik_pb_new();
+    var path = alloc(128);
+    var nm = load64(desc);
+    if (nm != 0) {
+        if (str_len(nm) > 0) { _stik_pb_string(b, 1, nm); }
+    }
+    var ds = load64(desc + 8);
+    if (ds != 0) {
+        if (str_len(ds) > 0) { _stik_pb_string(b, 2, ds); }
+    }
+    var un = load64(desc + 16);
+    if (un != 0) {
+        if (str_len(un) > 0) { _stik_pb_string(b, 3, un); }
+    }
+    var dm = _stik_pb_open(b, member);
+    var j = 0;
+    while (j < np) {
+        var q = vec_get(points, j);
+        if (q != 0) {
+            var pm = _stik_pb_open(b, 1);
+            _stik_otlp_number_point(b, q, path);
+            _stik_pb_close(b, pm);
+        }
+        j = j + 1;
+    }
+    if (member == 7) {
+        _stik_pb_int64(b, 2, temporality);
+        if (kind == METRIC_COUNTER) { _stik_pb_int64(b, 3, 1); }
+    }
+    _stik_pb_close(b, dm);
+    _stik_pb_flush(b, sb);
+    return Ok(0);
+}
 var TEXTMAP_GET = 0;
 var TEXTMAP_SET = 1;
 # Vtable for a TextMap carrier: 16 bytes, slot 0 (TEXTMAP_GET) = get_fn, slot 1

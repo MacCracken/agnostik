@@ -2,7 +2,7 @@
 
 ## Status
 
-**v1.9.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+**v1.9.0** is the most recent stable release, on Cyrius `6.7.9`; v1.10.0 is in flight under `[Unreleased]`. It has 12
 modules plus `src/proto.cyr` (OTLP wire helpers), 979 public fns (every fn
 documented), and 2,045 test assertions across 21 `.tcyr` files, passing on x86_64-linux and on aarch64
 under `qemu-aarch64`. There are 25 benchmarks and no external dependencies.
@@ -23,30 +23,23 @@ longer here.
 |---|---|---|
 | [v1.10.0](#v1100--otlp-wire-format-completion-minor) | minor | OTLP `LogRecord`, `MetricDataPoint`, `Span` attributes / events / links |
 | [v1.11.0](#v1110--contract-gaps-from-the-documentation-pass-minor) | minor | Missing setters / getters, unset vtable slots, reentrancy, `agent_id_from_str` validation, newer Landlock rights, `RlimitType` → `RLIMIT_*` |
+| [v1.12.0](#v1120--otlp-export-envelopes-and-remaining-fields-minor) | minor | OTLP `Resource` / `InstrumentationScope` and the export envelopes; status message, exemplars, histogram points; UTF-8 in string fields |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
 
 ---
 
 ## v1.10.0 — OTLP wire-format completion (minor)
 
-✨ This extends the v1.2.0 `Span_to_otlp_proto` foundation to the rest of the
-OpenTelemetry data plane, using the existing `src/proto.cyr` primitives:
+✅ **Done under `[Unreleased]`** (see the CHANGELOG and
+[ADR-004](../adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md)):
+- typed `AnyValue` attribute values;
+- Span attributes, events and links;
+- `LogRecord_to_otlp_proto` and `MetricDataPoint_to_otlp_proto` (a `NumberDataPoint`);
+- `metric_to_otlp_proto`, a `Metric` with its gauge or sum and the temporality mapped to OTLP's numbering.
 
-- **`LogRecord_to_otlp_proto`** and **`MetricDataPoint_to_otlp_proto`**, the
-  same shape as the Span encoder.
-- **Span's repeated nested fields**, skipped in v1.2.0: field 9 `attributes`
-  (repeated `KeyValue`), field 11 `events` (repeated `Event`) and field 13
-  `links` (repeated `Link`). These need nested encoders for `KeyValue` (a string
-  key plus the `AnyValue` union), `Event` and `Link`. The `KeyValue` /
-  `AnyValue` cluster is about half the slot.
-
-Golden-byte tests against reference protobuf encodings, plus a fuzz target per
-encoder. Map enum values at the encoder, as `_stik_span_kind_to_otlp` does for
-`SpanKind`: `AggregationTemporality`'s values are agnostik ordinals
-(CUMULATIVE = 0, DELTA = 1), while OTLP has DELTA = 1 and CUMULATIVE = 2.
-Since v1.9.0 every stamp is Unix time (`clock_epoch_ns()`), so the new
-encoders can write `time_unix_nano` as stored. No consumer has asked for this
-yet, and it does not depend on v1.11.0: either order works.
+Every encoder is tested byte for byte against protoc's encoding of the official schema, and fuzzed through a schema
+walker. That check found v1.2.0's status code in a reserved field, which is fixed. The protobuf writer moved to a
+private in-place buffer: 2–4× faster than the first draft, and a minimal span costs less than in 1.9.0.
 
 ---
 
@@ -110,6 +103,31 @@ Append them to `LandlockFsAccess` / `LandlockNetAccess` at those values, with na
 is 0, which is `RLIMIT_CPU`). No repo passes them to `setrlimit(2)` today. Add a mapping fn that
 returns the `RLIMIT_*` resource number. Renumbering the enum itself would be a break, so it stays
 out of a minor.
+
+---
+
+## v1.12.0 — OTLP export envelopes and remaining fields (minor)
+
+✨ v1.10.0 encodes the data-plane messages. A collector receives them inside envelopes, and a few fields have no
+slot yet:
+
+- **`Resource_to_otlp_proto`** and **`InstrumentationScope_to_otlp_proto`**. agnostik's `Resource` stores service
+  name, version and instance id as fields; OTLP carries them as the `service.name`, `service.version` and
+  `service.instance.id` attributes, so the encoder maps them.
+- **Export envelopes:** `ResourceSpans` / `ScopeSpans`, `ResourceLogs` / `ScopeLogs` and `ResourceMetrics` /
+  `ScopeMetrics`. Either as encoders over vecs, or as an `Export*ServiceRequest` builder.
+- **Fields with no slot:**
+  - the span `Status.message` (`span_status_error` builds a box the span cannot hold);
+  - exemplars on number data points;
+  - `start_time_unix_nano` for cumulative sums;
+  - histogram data points (`metric_to_otlp_proto` returns `Err` for `METRIC_HISTOGRAM` today).
+
+  Adding a slot grows a struct's allocation. The accessors hide the layout, so that is not an API break.
+- **UTF-8 in string fields.** Protobuf requires `string` fields to be valid UTF-8, and a strict decoder may reject
+  a message that is not. The encoders write strings as given. Decide between validating (return `Err`) and
+  replacing invalid sequences with U+FFFD, as some OTel SDKs do, and record the choice in an ADR.
+
+The protoc golden-vector method from v1.10.0 applies unchanged. No consumer has asked for this yet.
 
 ---
 

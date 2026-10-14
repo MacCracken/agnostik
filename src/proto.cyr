@@ -1,10 +1,19 @@
-# proto.cyr — minimal protobuf wire-format helpers (OTLP encoder support)
+# proto.cyr — minimal protobuf wire-format writer (OTLP encoder support)
 #
-# Implements just the primitives agnostik's OTLP encoders need —
-# varint, tag, length-delimited string/bytes, fixed64, nested message.
-# Not a general-purpose protobuf library (no parsing, no field-set
-# tracking, no repeated-message machinery beyond byte concatenation
-# at the call site).
+# Implements just the primitives agnostik's OTLP encoders need — varint,
+# tag, length-delimited bytes, fixed64 and nested messages — written into
+# a private growable buffer, which the public encoders append to the
+# caller's str_builder in one copy. Not a general-purpose protobuf library
+# (no parsing, no field-set tracking).
+#
+# Why a buffer of its own (v1.10.0): str_builder_putc costs about 33 ns a
+# byte (a call and a capacity check per byte), and a nested message built in
+# a child str_builder pays for the builder, a build copy and an add copy,
+# about 200 ns plus its bytes. Here a field reserves its worst case once and
+# stores bytes directly. A nested message is written in place behind a
+# one-byte length that is patched when it closes; only a body of 128 bytes
+# or more is shifted to make room for a longer length. Lengths stay minimal
+# varints, so the output is byte-identical to protoc's.
 #
 # Wire-type constants per https://protobuf.dev/programming-guides/encoding/
 var PROTO_WT_VARINT  = 0;
@@ -12,76 +21,158 @@ var PROTO_WT_FIXED64 = 1;
 var PROTO_WT_LENGTH  = 2;
 var PROTO_WT_FIXED32 = 5;
 
+# A new protobuf output buffer: 24 bytes, +0 data, +8 length, +16 capacity,
+# starting with 256 bytes of capacity.
+fn _stik_pb_new() {
+    var b = alloc(24);
+    store64(b, alloc(256));
+    store64(b + 8, 0);
+    store64(b + 16, 256);
+    return b;
+}
+
+# Make room for `n` more bytes, at least doubling the capacity when it grows.
+# The data may move; callers re-read it after reserving. Returns 0.
+fn _stik_pb_reserve(b, n) {
+    var len = load64(b + 8);
+    var cap = load64(b + 16);
+    if (len + n <= cap) { return 0; }
+    var nc = cap * 2;
+    if (nc < len + n) { nc = len + n + 256; }
+    var nd = alloc(nc);
+    memcpy(nd, load64(b), len);
+    store64(b, nd);
+    store64(b + 16, nc);
+    return 0;
+}
+
+# Append the buffer's bytes to str_builder `sb`, in one copy. Returns 0.
+fn _stik_pb_flush(b, sb) {
+    var len = load64(b + 8);
+    if (len > 0) { str_builder_add(sb, str_new(load64(b), len)); }
+    return 0;
+}
+
 # Encode an unsigned int as a base-128 varint, low 7 bits per byte,
 # MSB set on continuation. 1 byte for n < 128, up to 10 bytes for
-# the full i64 range. Caller passes positive values; negatives would
-# sign-extend through the right-shift and emit 10 bytes.
-fn _stik_proto_varint(sb, n) {
+# the full i64 range. A negative value is written as its 64-bit two's
+# complement, 10 bytes, as protobuf encodes a negative int64.
+fn _stik_pb_varint(b, n) {
+    _stik_pb_reserve(b, 10);
+    var len = load64(b + 8);
+    var p = load64(b) + len;
+    var i = 0;
     while ((n & 0xFFFFFFFFFFFFFF80) != 0) {
-        str_builder_putc(sb, ((n & 0x7F) | 0x80) & 0xFF);
+        store8(p + i, ((n & 0x7F) | 0x80) & 0xFF);
         n = (n >> 7) & 0x01FFFFFFFFFFFFFF;
+        i = i + 1;
     }
-    str_builder_putc(sb, n & 0x7F);
+    store8(p + i, n & 0x7F);
+    store64(b + 8, len + i + 1);
     return 0;
 }
 
 # Field tag = (field_number << 3) | wire_type, encoded as varint.
-fn _stik_proto_tag(sb, field_no, wire_type) {
-    _stik_proto_varint(sb, (field_no << 3) | wire_type);
+fn _stik_pb_tag(b, field_no, wire_type) {
+    _stik_pb_varint(b, (field_no << 3) | wire_type);
     return 0;
 }
 
-# Encode 8 bytes little-endian (fixed64 wire type).
-fn _stik_proto_fixed64_raw(sb, n) {
-    str_builder_putc(sb, n & 0xFF);
-    str_builder_putc(sb, (n >> 8)  & 0xFF);
-    str_builder_putc(sb, (n >> 16) & 0xFF);
-    str_builder_putc(sb, (n >> 24) & 0xFF);
-    str_builder_putc(sb, (n >> 32) & 0xFF);
-    str_builder_putc(sb, (n >> 40) & 0xFF);
-    str_builder_putc(sb, (n >> 48) & 0xFF);
-    str_builder_putc(sb, (n >> 56) & 0xFF);
+# Encode 8 bytes little-endian (fixed64 wire type), byte by byte so the
+# order does not depend on the target.
+fn _stik_pb_fixed64_raw(b, n) {
+    _stik_pb_reserve(b, 8);
+    var len = load64(b + 8);
+    var p = load64(b) + len;
+    store8(p, n & 0xFF);
+    store8(p + 1, (n >> 8) & 0xFF);
+    store8(p + 2, (n >> 16) & 0xFF);
+    store8(p + 3, (n >> 24) & 0xFF);
+    store8(p + 4, (n >> 32) & 0xFF);
+    store8(p + 5, (n >> 40) & 0xFF);
+    store8(p + 6, (n >> 48) & 0xFF);
+    store8(p + 7, (n >> 56) & 0xFF);
+    store64(b + 8, len + 8);
     return 0;
 }
 
-# uint64 / int64 / sint64 (assumed-positive) field — tag + varint.
-fn _stik_proto_int64(sb, field_no, n) {
-    _stik_proto_tag(sb, field_no, PROTO_WT_VARINT);
-    _stik_proto_varint(sb, n);
+# uint64 / int64 / bool / enum field — tag + varint.
+fn _stik_pb_int64(b, field_no, n) {
+    _stik_pb_tag(b, field_no, PROTO_WT_VARINT);
+    _stik_pb_varint(b, n);
     return 0;
 }
 
-# fixed64 field — tag + 8 LE bytes. OTLP uses this for *_unix_nano.
-fn _stik_proto_fixed64(sb, field_no, n) {
-    _stik_proto_tag(sb, field_no, PROTO_WT_FIXED64);
-    _stik_proto_fixed64_raw(sb, n);
+# fixed64 / sfixed64 / double field — tag + 8 LE bytes. OTLP uses this for
+# *_unix_nano, as_int and double values.
+fn _stik_pb_fixed64(b, field_no, n) {
+    _stik_pb_tag(b, field_no, PROTO_WT_FIXED64);
+    _stik_pb_fixed64_raw(b, n);
     return 0;
 }
 
-# string field — tag + varint(len) + utf8 bytes.
-fn _stik_proto_string(sb, field_no, s: Str) {
-    _stik_proto_tag(sb, field_no, PROTO_WT_LENGTH);
-    _stik_proto_varint(sb, str_len(s));
-    str_builder_add(sb, s);
-    return 0;
-}
-
-# bytes field — tag + varint(len) + raw bytes from `ptr`.
+# bytes field — tag + varint(len) + `len` raw bytes from `ptr`.
 # Used by OTLP for trace_id (16 bytes), span_id (8 bytes), etc.
-fn _stik_proto_bytes(sb, field_no, ptr, len) {
-    _stik_proto_tag(sb, field_no, PROTO_WT_LENGTH);
-    _stik_proto_varint(sb, len);
-    str_builder_add(sb, str_new(ptr, len));
+fn _stik_pb_bytes(b, field_no, ptr, len) {
+    _stik_pb_tag(b, field_no, PROTO_WT_LENGTH);
+    _stik_pb_varint(b, len);
+    _stik_pb_reserve(b, len);
+    var at = load64(b + 8);
+    memcpy(load64(b) + at, ptr, len);
+    store64(b + 8, at + len);
     return 0;
 }
 
-# Nested message field — tag + varint(len) + raw bytes from a
-# pre-built sub-message buffer. Caller builds the sub-message in a
-# child str_builder, calls str_builder_build to get a Str, passes
-# it through this fn to wrap with field_no + length prefix.
-fn _stik_proto_message(sb, field_no, sub: Str) {
-    _stik_proto_tag(sb, field_no, PROTO_WT_LENGTH);
-    _stik_proto_varint(sb, str_len(sub));
-    str_builder_add(sb, sub);
+# string field — tag + varint(len) + the Str's bytes.
+fn _stik_pb_string(b, field_no, s: Str) {
+    _stik_pb_bytes(b, field_no, str_data(s), str_len(s));
+    return 0;
+}
+
+# Open a nested message field `field_no`: the tag and a one-byte length
+# placeholder. Returns the mark (the body's start) that _stik_pb_close takes.
+fn _stik_pb_open(b, field_no) {
+    _stik_pb_tag(b, field_no, PROTO_WT_LENGTH);
+    _stik_pb_reserve(b, 1);
+    var len = load64(b + 8);
+    store8(load64(b) + len, 0);
+    store64(b + 8, len + 1);
+    return len + 1;
+}
+
+# Close the nested message opened at `mark`: write its body length into the
+# placeholder. A body of 128 bytes or more needs a longer varint, so the body
+# is first shifted right by the extra bytes (copied from its end, since the
+# ranges overlap). Returns 0.
+fn _stik_pb_close(b, mark) {
+    var len = load64(b + 8);
+    var body = len - mark;
+    if (body < 128) {
+        store8(load64(b) + mark - 1, body);
+        return 0;
+    }
+    var k = 1;
+    var t = body;
+    while (t >= 128) {
+        t = t >> 7;
+        k = k + 1;
+    }
+    _stik_pb_reserve(b, k - 1);
+    var d = load64(b);
+    var i = body;
+    while (i > 0) {
+        i = i - 1;
+        store8(d + mark + k - 1 + i, load8(d + mark + i));
+    }
+    var p = d + mark - 1;
+    var v = body;
+    var j = 0;
+    while (v >= 128) {
+        store8(p + j, (v & 0x7F) | 0x80);
+        v = v >> 7;
+        j = j + 1;
+    }
+    store8(p + j, v);
+    store64(b + 8, len + k - 1);
     return 0;
 }

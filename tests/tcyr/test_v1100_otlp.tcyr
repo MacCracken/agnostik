@@ -1,0 +1,994 @@
+# tests/tcyr/test_v1100_otlp.tcyr
+#
+# v1.10.0 OTLP completion: AnyValue / KeyValue, Span attributes, events and
+# links, the Status code field, LogRecord, NumberDataPoint and Metric.
+#
+# Every golden vector here is protoc's encoding (libprotoc 35.0) of the same
+# message written in text format against the official schema,
+# opentelemetry-proto v1.7.0 (common, trace, logs and metrics .proto). The
+# encoders emit fields in ascending number order and omit proto3 defaults, as
+# protoc does, so the comparison is byte for byte. v1.2.0's vectors were
+# computed by hand, which is how the Status code shipped in reserved field 1.
+#
+# The fuzz targets build random spans, log records, data points and metrics,
+# with random attribute trees, and check each encoding with a schema walker:
+# every field is in the schema with its wire type, lengths stay in bounds,
+# fields ascend, an AnyValue holds at most one member, and every attribute
+# entry appears once. Encoding twice gives the same bytes.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# Lowercase hex digit for a nibble 0..15.
+fn hexc(n) {
+    if (n < 10) { return 48 + n; }
+    return 87 + n;
+}
+
+# The bytes of `s` as lowercase hex text.
+fn to_hex(s) {
+    var sb = str_builder_new();
+    var d = str_data(s);
+    var i = 0;
+    while (i < str_len(s)) {
+        var b = load8(d + i);
+        str_builder_putc(sb, hexc(b >> 4));
+        str_builder_putc(sb, hexc(b & 15));
+        i = i + 1;
+    }
+    return str_builder_build(sb);
+}
+
+# 1 if the bytes of `s` are the lowercase hex `hex` (a cstr).
+fn hex_is(s, hex) { return str_eq_cstr(to_hex(s), hex); }
+
+# AnyValue_to_otlp_proto of box `v`, as a Str.
+fn enc_av(v) {
+    var sb = str_builder_new();
+    AnyValue_to_otlp_proto(v, sb);
+    return str_builder_build(sb);
+}
+
+# A fresh `n`-byte id whose byte i is base + i.
+fn ids(base, n) {
+    var p = alloc(n);
+    var i = 0;
+    while (i < n) {
+        store8(p + i, base + i);
+        i = i + 1;
+    }
+    return p;
+}
+
+# AnyValueType names round-trip, and other strings are rejected.
+fn test_any_value_type_name_parse() {
+    var t = ANY_STRING;
+    while (t <= ANY_BYTES) {
+        var r_t, r = any_value_type_parse(str_from(any_value_type_name(t)));
+        assert(is_ok(r_t) == 1, "AnyValueType name parses");
+        assert_eq(r, t, "AnyValueType round-trips");
+        t = t + 1;
+    }
+    assert(str_eq_cstr(str_from(any_value_type_name(ANY_KVLIST)), "kvlistValue") == 1, "OTLP/JSON spelling");
+    assert(str_eq_cstr(str_from(any_value_type_name(0)), "Unknown") == 1, "0 is not a type");
+    var b_t, b = any_value_type_parse(str_from("string_value"));
+    assert(is_err_result(b_t) == 1, "proto field name is not the JSON key");
+    var c_t, c = any_value_type_parse(str_from("StringValue"));
+    assert(is_err_result(c_t) == 1, "parse is case-sensitive");
+    assert_eq(ANY_STRING, 1, "types are the oneof field numbers");
+    assert_eq(ANY_BYTES, 7, "bytes is field 7");
+    return 0;
+}
+
+# Constructors box their payloads; any_bool normalizes to 0 / 1.
+fn test_any_value_constructors() {
+    var s = str_from("v");
+    assert_eq(any_value_type(any_string(s)), ANY_STRING, "string tag");
+    assert_eq(any_value_val(any_string(s)), s, "string payload as given");
+    assert_eq(any_value_val(any_bool(9)), 1, "bool normalized");
+    assert_eq(any_value_val(any_bool(0)), 0, "false stays 0");
+    assert_eq(any_value_val(any_int(0 - 5)), 0 - 5, "int payload");
+    assert_eq(any_value_type(any_double(0x3FF0000000000000)), ANY_DOUBLE, "double tag");
+    var v = vec_new();
+    assert_eq(any_value_val(any_array(v)), v, "array payload");
+    var m = map_new();
+    assert_eq(any_value_type(any_kvlist(m)), ANY_KVLIST, "kvlist tag");
+    assert_eq(any_value_type(any_bytes(s)), ANY_BYTES, "bytes tag");
+    return 0;
+}
+
+# Each AnyValue member, including zero values, which a oneof still writes.
+fn test_any_value_golden() {
+    assert(hex_is(enc_av(any_string(str_from("hi"))), "0a026869") == 1, "any_str matches protoc");
+    assert(hex_is(enc_av(any_string(str_from(""))), "0a00") == 1, "any_str_empty matches protoc");
+    assert(hex_is(enc_av(any_string(0)), "0a00") == 1, "any_str_null matches protoc");
+    assert(hex_is(enc_av(any_bool(7)), "1001") == 1, "any_bool_t matches protoc");
+    assert(hex_is(enc_av(any_bool(0)), "1000") == 1, "any_bool_f matches protoc");
+    assert(hex_is(enc_av(any_int(0)), "1800") == 1, "any_int_0 matches protoc");
+    assert(hex_is(enc_av(any_int(0 - 1)), "18ffffffffffffffffff01") == 1, "any_int_neg matches protoc");
+    assert(hex_is(enc_av(any_int(300)), "18ac02") == 1, "any_int_300 matches protoc");
+    assert(hex_is(enc_av(any_int(0x8000000000000000)), "1880808080808080808001") == 1, "any_int_min matches protoc");
+    assert(hex_is(enc_av(any_double(0x3FF8000000000000)), "21000000000000f83f") == 1, "any_double matches protoc");
+    assert(hex_is(enc_av(any_array(0)), "2a00") == 1, "any_array_null matches protoc");
+    assert(hex_is(enc_av(tagged_new(99, 5)), "") == 1, "any_unknown matches protoc");
+    var bb = alloc(3);
+    store8(bb, 0);
+    store8(bb + 1, 255);
+    store8(bb + 2, 16);
+    assert(hex_is(enc_av(any_bytes(str_new(bb, 3))), "3a0300ff10") == 1, "any_bytes matches protoc");
+    var arr = vec_new();
+    vec_push(arr, any_int(1));
+    vec_push(arr, any_string(str_from("a")));
+    vec_push(arr, any_bool(0));
+    assert(hex_is(enc_av(any_array(arr)), "2a0d0a0218010a030a01610a021000") == 1, "any_array matches protoc");
+    var kv = map_new();
+    map_set(kv, "b", any_int(2));
+    map_set(kv, "a", any_string(str_from("x")));
+    var hv1 = enc_av(any_kvlist(kv));
+    assert(hex_is(hv1, "32130a080a016112030a01780a070a016212021802") == 1, "any_kvlist matches protoc");
+    var skv = map_new_str();
+    map_set(skv, str_from("zz"), any_int(1));
+    map_set(skv, str_from("z"), any_int(2));
+    map_set(skv, str_from("a"), any_int(3));
+    var out = enc_av(any_kvlist(skv));
+    var hv2 = out;
+    assert(hex_is(hv2, "321c0a070a0161120218030a070a017a120218020a080a027a7a12021801") == 1,
+      "any_kvlist_strkeys matches protoc");
+    var inner = vec_new();
+    vec_push(inner, any_double(0x4000000000000000));
+    var km = map_new();
+    map_set(km, "list", any_array(inner));
+    var outer = vec_new();
+    vec_push(outer, any_kvlist(km));
+    var hv3 = enc_av(any_array(outer));
+    assert(hex_is(hv3, "2a1b0a1932170a150a046c697374120d2a0b0a09210000000000000040") == 1, "any_nested matches protoc");
+    return 0;
+}
+
+# A fresh two-byte key "k" + one char: "0".."9" for 0..9, then "A".. for 10...
+fn key2(i) {
+    var k = alloc(3);
+    store8(k, 107);
+    if (i < 10) { store8(k + 1, 48 + i); }
+    else { store8(k + 1, 55 + i); }
+    store8(k + 2, 0);
+    return k;
+}
+
+# Equal attributes encode to equal bytes whatever the insertion order.
+fn test_attributes_deterministic() {
+    var a = map_new();
+    var b = map_new();
+    var i = 0;
+    while (i < 20) {
+        map_set(a, key2(i), any_int(i));
+        map_set(b, key2(19 - i), any_int(19 - i));
+        i = i + 1;
+    }
+    var ea = enc_av(any_kvlist(a));
+    var eb = enc_av(any_kvlist(b));
+    assert(str_eq(ea, eb) == 1, "insertion order does not change the bytes");
+    # First entry is the smallest key, "k0" (0x6b 0x30). Layout: 0x32, a
+    # two-byte length (200 bytes), then values tag 0x0a, length 8, key tag
+    # 0x0a, key length 2, and the key.
+    var d = str_data(ea);
+    assert_eq(str_len(ea), 203, "20 entries of 10 bytes behind a 3-byte header");
+    assert_eq(load8(d + 7), 0x6B, "first key starts with k");
+    assert_eq(load8(d + 8), 0x30, "first key is k0");
+    assert_eq(load8(d + 197), 0x6B, "last entry's key starts with k");
+    assert_eq(load8(d + 198), 0x4A, "last key is kJ");
+    # An empty key is omitted; its value message is still written.
+    var e = map_new();
+    map_set(e, "", any_int(1));
+    assert(hex_is(enc_av(any_kvlist(e)), "32060a0412021801") == 1, "empty key omitted");
+    return 0;
+}
+
+# A value that encloses itself is cut, and nesting stops at 16 levels.
+fn test_any_value_cycles_and_depth() {
+    var v = vec_new();
+    var self = any_array(v);
+    vec_push(v, self);
+    assert(hex_is(enc_av(self), "2a020a00") == 1, "self-containing array cut at the cycle");
+    var m = map_new();
+    var kself = any_kvlist(m);
+    map_set(m, "me", kself);
+    assert(hex_is(enc_av(kself), "32080a060a026d651200") == 1, "self-containing kvlist cut at the cycle");
+    # A shared, acyclic value is written in full each time it appears.
+    var leaf = any_int(5);
+    var two = vec_new();
+    vec_push(two, leaf);
+    vec_push(two, leaf);
+    assert(hex_is(enc_av(any_array(two)), "2a080a0218050a021805") == 1, "shared leaf written twice");
+    # 20 nested arrays: the 16 outermost are written, the rest is empty.
+    var cur = any_int(1);
+    var n = 0;
+    while (n < 20) {
+        var w = vec_new();
+        vec_push(w, cur);
+        cur = any_array(w);
+        n = n + 1;
+    }
+    var out = enc_av(cur);
+    var d = str_data(out);
+    var levels = 0;
+    var p = 0;
+    var going = 1;
+    while (going == 1) {
+        if (p >= str_len(out)) { going = 0; }
+        elif (load8(d + p) == 0x2A) {
+            levels = levels + 1;
+            p = p + 4;
+        } else { going = 0; }
+    }
+    assert_eq(levels, 16, "16 array levels written");
+    assert_eq(str_len(out), 16 * 4, "innermost value empty");
+    return 0;
+}
+
+# Appends `n` to `sb` as a minimal varint (the test's own reference encoder).
+fn ref_varint(sb, n) {
+    while (n >= 128) {
+        str_builder_putc(sb, (n & 0x7F) | 0x80);
+        n = n >> 7;
+    }
+    str_builder_putc(sb, n);
+    return 0;
+}
+
+# Bytes of a minimal varint for `n`.
+fn ref_varint_len(n) {
+    var k = 1;
+    while (n >= 128) {
+        n = n >> 7;
+        k = k + 1;
+    }
+    return k;
+}
+
+# A nested length that needs a longer varint shifts the body, at every level:
+# array { values { string_value: L bytes } } across the 1→2 and 2→3 byte
+# length boundaries, checked against a reference built independently.
+fn test_nested_length_widening() {
+    var sizes = vec_new();
+    var l = 120;
+    while (l <= 131) {
+        vec_push(sizes, l);
+        l = l + 1;
+    }
+    l = 16374;
+    while (l <= 16385) {
+        vec_push(sizes, l);
+        l = l + 1;
+    }
+    vec_push(sizes, 300000);
+    var good = 0;
+    var i = 0;
+    while (i < vec_len(sizes)) {
+        var n = vec_get(sizes, i);
+        var raw = alloc(n);
+        memset(raw, 120, n);
+        var arr = vec_new();
+        vec_push(arr, any_string(str_new(raw, n)));
+        var out = enc_av(any_array(arr));
+        var lv = 1 + ref_varint_len(n) + n;
+        var la = 1 + ref_varint_len(lv) + lv;
+        var ref = str_builder_new();
+        str_builder_putc(ref, 0x2A);
+        ref_varint(ref, la);
+        str_builder_putc(ref, 0x0A);
+        ref_varint(ref, lv);
+        str_builder_putc(ref, 0x0A);
+        ref_varint(ref, n);
+        str_builder_add(ref, str_new(raw, n));
+        if (str_eq(out, str_builder_build(ref)) == 1) { good = good + 1; }
+        i = i + 1;
+    }
+    assert_eq(good, vec_len(sizes), "every widened length matches the reference");
+    return 0;
+}
+
+# Builds the span_full fixture: kind, parent, attributes, events, a link and
+# an ERROR status.
+fn span_full() {
+    var sp = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
+    span_set_parent(sp, ids(0xB0, 8));
+    span_set_kind(sp, SPAN_CLIENT);
+    store64(sp + 48, 1234567890);
+    span_set_duration_ms(sp, 5);
+    map_set(span_attributes(sp), "http.status_code", any_int(200));
+    map_set(span_attributes(sp), "http.method", any_string(str_from("GET")));
+    map_set(span_attributes(sp), "error", any_bool(1));
+    store64(sp + 88, 1);
+    var e1 = span_event_new(str_from("start"));
+    store64(e1 + 8, 1000);
+    map_set(sevt_attributes(e1), "k", any_string(str_from("v")));
+    var e2 = span_event_new(str_from("end"));
+    store64(e2 + 8, 2000);
+    vec_push(span_events(sp), e1);
+    vec_push(span_events(sp), e2);
+    var l1 = span_link_new(ids(0xC0, 16), ids(0xD0, 8));
+    map_set(slink_attributes(l1), "rel", any_string(str_from("follows")));
+    vec_push(span_links(sp), l1);
+    span_set_status(sp, SPAN_ERROR);
+    return sp;
+}
+
+# Span_to_otlp_proto of `sp`, as a Str.
+fn enc_span(sp) {
+    var sb = str_builder_new();
+    Span_to_otlp_proto(sp, sb);
+    return str_builder_build(sb);
+}
+
+# A span with every new field, and a minimal OK span, match protoc.
+fn test_span_golden() {
+    var out = enc_span(span_full());
+    var xp1 = str_builder_new();
+    str_builder_add_cstr(xp1, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72208b0b1b2b3b4b5b6b72a02");
+    str_builder_add_cstr(xp1, "6f70300339d20296490000000041124ee249000000004a0b0a056572726f72120210014a140a0b68");
+    str_builder_add_cstr(xp1, "7474702e6d6574686f6412050a034745544a170a10687474702e7374617475735f636f6465120318");
+    str_builder_add_cstr(xp1, "c80150015a1a09e803000000000000120573746172741a080a016b12030a01765a0e09d007000000");
+    str_builder_add_cstr(xp1, "0000001203656e646a2e0a10c0c1c2c3c4c5c6c7c8c9cacbcccdcecf1208d0d1d2d3d4d5d6d72210");
+    str_builder_add_cstr(xp1, "0a0372656c12090a07666f6c6c6f77737a021802");
+    assert(str_eq(to_hex(out), str_builder_build(xp1)) == 1, "span_full matches protoc");
+    var s2 = span_new(str_from("x"), ids(0, 16), ids(0xA0, 8));
+    store64(s2 + 48, 77);
+    span_set_status(s2, SPAN_OK);
+    var out2 = enc_span(s2);
+    var xp2 = str_builder_new();
+    str_builder_add_cstr(xp2, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a0178394d00000000000000");
+    str_builder_add_cstr(xp2, "414d000000000000007a021801");
+    assert(str_eq(to_hex(out2), str_builder_build(xp2)) == 1, "span_ok matches protoc");
+    return 0;
+}
+
+# The status code is Status field 3; a value outside SpanStatus writes none.
+fn test_span_status_field() {
+    var s = span_new(str_from("x"), ids(0, 16), ids(0xA0, 8));
+    span_set_status(s, SPAN_ERROR);
+    var out = enc_span(s);
+    var d = str_data(out);
+    var n = str_len(out);
+    assert_eq(load8(d + n - 4), 0x7A, "field 15 status");
+    assert_eq(load8(d + n - 2), 0x18, "Status.code is field 3, not reserved field 1");
+    assert_eq(load8(d + n - 1), 2, "STATUS_CODE_ERROR");
+    span_set_status(s, 7);
+    var o2 = enc_span(s);
+    assert_eq(str_len(o2), n - 4, "no status for a value outside SpanStatus");
+    span_set_status(s, SPAN_UNSET);
+    assert_eq(str_len(enc_span(s)), n - 4, "no status for UNSET");
+    return 0;
+}
+
+# LogRecord_to_otlp_proto of `lr`, as a Str.
+fn enc_log(lr) {
+    var sb = str_builder_new();
+    LogRecord_to_otlp_proto(lr, sb);
+    return str_builder_build(sb);
+}
+
+# Log records: full, minimal, an unnamed severity and an out-of-range one.
+fn test_log_record_golden() {
+    var lr = log_record_new(LOG_WARN, str_from("disk full"));
+    store64(lr, 1700000000000000000);
+    map_set(logrec_attributes(lr), "path", any_string(str_from("/var")));
+    map_set(logrec_attributes(lr), "free", any_int(0));
+    logrec_set_trace_id(lr, ids(0, 16));
+    logrec_set_span_id(lr, ids(0xA0, 8));
+    var out = enc_log(lr);
+    var xp3 = str_builder_new();
+    str_builder_add_cstr(xp3, "0900002a36fe9c9717100d1a045741524e2a0b0a096469736b2066756c6c320a0a04667265651202");
+    str_builder_add_cstr(xp3, "1800320e0a047061746812060a042f7661724a10000102030405060708090a0b0c0d0e0f5208a0a1");
+    str_builder_add_cstr(xp3, "a2a3a4a5a6a7");
+    assert(str_eq(to_hex(out), str_builder_build(xp3)) == 1, "log_full matches protoc");
+    var l2 = log_record_new(0, str_from(""));
+    store64(l2, 0);
+    assert(hex_is(enc_log(l2), "2a020a00") == 1, "log_min matches protoc");
+    var l3 = log_record_new(10, str_from("b"));
+    store64(l3, 5);
+    assert(hex_is(enc_log(l3), "090500000000000000100a2a030a0162") == 1, "log_unnamed matches protoc");
+    var l4 = log_record_new(99, 0);
+    store64(l4, 5);
+    assert(hex_is(enc_log(l4), "090500000000000000") == 1, "log_badsev matches protoc");
+    var l5 = log_record_new(0 - 3, 0);
+    store64(l5, 5);
+    assert(hex_is(enc_log(l5), "090500000000000000") == 1, "negative severity written as none");
+    return 0;
+}
+
+# MetricDataPoint_to_otlp_proto of `dp`, as a Str.
+fn enc_mdp(dp) {
+    var sb = str_builder_new();
+    MetricDataPoint_to_otlp_proto(dp, sb);
+    return str_builder_build(sb);
+}
+
+# A data point named `nm` holding `mv`, stamped `ts`.
+fn point(nm, mv, ts) {
+    var p = metric_data_point_new(str_from(nm), mv);
+    store64(p + 24, ts);
+    return p;
+}
+
+# Number data points: int, float, negative, no value, and zero.
+fn test_number_data_point_golden() {
+    var p1 = point("req", metric_int(42), 99);
+    map_set(mdp_attributes(p1), "route", any_string(str_from("/a")));
+    var hv4 = enc_mdp(p1);
+    assert(hex_is(hv4, "196300000000000000312a000000000000003a0d0a05726f75746512040a022f61") == 1,
+      "mdp_int matches protoc");
+    var p2 = point("lat", metric_float(0x4004000000000000), 100);
+    assert(hex_is(enc_mdp(p2), "196400000000000000210000000000000440") == 1, "mdp_float matches protoc");
+    var hv5 = enc_mdp(point("x", metric_int(0 - 7), 101));
+    assert(hex_is(hv5, "19650000000000000031f9ffffffffffffff") == 1, "mdp_negint matches protoc");
+    assert(hex_is(enc_mdp(point("x", 0, 102)), "1966000000000000004001") == 1, "mdp_novalue matches protoc");
+    assert(hex_is(enc_mdp(point("x", metric_int(0), 0)), "310000000000000000") == 1, "mdp_zero matches protoc");
+    var h = tagged_new(MV_HISTOGRAM, 0);
+    var hv6 = enc_mdp(point("x", h, 102));
+    assert(hex_is(hv6, "1966000000000000004001") == 1, "histogram value flagged as not recorded");
+    return 0;
+}
+
+# metric_to_otlp_proto of `desc` and `pts`; Str on Ok, 0 on Err.
+fn enc_metric(desc, pts) {
+    var sb = str_builder_new();
+    var r_t, r = metric_to_otlp_proto(desc, pts, sb);
+    if (is_ok(r_t) == 1) { return str_builder_build(sb); }
+    return 0;
+}
+
+# Metrics: a gauge, a counter, an up-down counter and an empty counter.
+fn test_metric_golden() {
+    var p1 = point("req", metric_int(42), 99);
+    map_set(mdp_attributes(p1), "route", any_string(str_from("/a")));
+    var p2 = point("lat", metric_float(0x4004000000000000), 100);
+    var g = vec_new();
+    vec_push(g, p1);
+    vec_push(g, p2);
+    var gd = instrument_descriptor_new(str_from("cpu"), str_from("CPU load"), str_from("1"), METRIC_GAUGE);
+    var out = enc_metric(gd, g);
+    var xp4 = str_builder_new();
+    str_builder_add_cstr(xp4, "0a036370751208435055206c6f61641a01312a370a21196300000000000000312a00000000000000");
+    str_builder_add_cstr(xp4, "3a0d0a05726f75746512040a022f610a12196400000000000000210000000000000440");
+    assert(str_eq(to_hex(out), str_builder_build(xp4)) == 1, "metric_gauge matches protoc");
+    var c = vec_new();
+    vec_push(c, p1);
+    var cd = instrument_descriptor_new(str_from("req"), str_from(""), str_from("{request}"), METRIC_COUNTER);
+    var out2 = enc_metric(cd, c);
+    var xp5 = str_builder_new();
+    str_builder_add_cstr(xp5, "0a037265711a097b726571756573747d3a270a21196300000000000000312a000000000000003a0d");
+    str_builder_add_cstr(xp5, "0a05726f75746512040a022f6110021801");
+    assert(str_eq(to_hex(out2), str_builder_build(xp5)) == 1, "metric_counter matches protoc");
+    var p3 = point("x", metric_int(0 - 7), 101);
+    store64(p3 + 32, TEMPORALITY_DELTA);
+    var u = vec_new();
+    vec_push(u, p3);
+    vec_push(u, 0);
+    var ud = instrument_descriptor_new(str_from("q"), 0, 0, METRIC_UP_DOWN_COUNTER);
+    var hv7 = enc_metric(ud, u);
+    assert(hex_is(hv7, "0a01713a160a1219650000000000000031f9ffffffffffffff1001") == 1, "metric_updown matches protoc");
+    var ed = instrument_descriptor_new(str_from("e"), 0, 0, METRIC_COUNTER);
+    assert(hex_is(enc_metric(ed, vec_new()), "0a01653a0410021801") == 1, "metric_counter_empty matches protoc");
+    assert(hex_is(enc_metric(ed, 0), "0a01653a0410021801") == 1, "a 0 points vec is empty");
+    return 0;
+}
+
+# Unencodable metrics return Err and leave the builder empty.
+fn test_metric_errors() {
+    var p = point("x", metric_int(1), 1);
+    var pts = vec_new();
+    vec_push(pts, p);
+    var hd = instrument_descriptor_new(str_from("h"), 0, 0, METRIC_HISTOGRAM);
+    var sb = str_builder_new();
+    var h_t, h = metric_to_otlp_proto(hd, pts, sb);
+    assert(is_err_result(h_t) == 1, "histogram has no number data point");
+    assert_eq(str_len(str_builder_build(sb)), 0, "nothing written on Err");
+    var q = point("x", metric_int(2), 2);
+    store64(q + 32, TEMPORALITY_DELTA);
+    vec_push(pts, q);
+    var sd = instrument_descriptor_new(str_from("s"), 0, 0, METRIC_COUNTER);
+    var sb2 = str_builder_new();
+    var m_t, m = metric_to_otlp_proto(sd, pts, sb2);
+    assert(is_err_result(m_t) == 1, "sum points disagreeing on temporality");
+    assert_eq(str_len(str_builder_build(sb2)), 0, "nothing written on mixed temporality");
+    var gd = instrument_descriptor_new(str_from("g"), 0, 0, METRIC_GAUGE);
+    assert(enc_metric(gd, pts) != 0, "a gauge ignores temporality");
+    var b = point("x", metric_int(3), 3);
+    store64(b + 32, 9);
+    var bad = vec_new();
+    vec_push(bad, b);
+    var sb3 = str_builder_new();
+    var b_t, bv = metric_to_otlp_proto(sd, bad, sb3);
+    assert(is_err_result(b_t) == 1, "unknown temporality");
+    var kd = instrument_descriptor_new(str_from("k"), 0, 0, 77);
+    var sb4 = str_builder_new();
+    var k_t, kv = metric_to_otlp_proto(kd, pts, sb4);
+    assert(is_err_result(k_t) == 1, "unknown kind");
+    return 0;
+}
+
+# ─── schema walker ────
+
+# Walker state: +0 failed flag, +8 KeyValue messages seen.
+var _PB = 0;
+
+# Clears the walker state, allocating it on first use.
+fn pb_reset() {
+    if (_PB == 0) { _PB = alloc(16); }
+    store64(_PB, 0);
+    store64(_PB + 8, 0);
+    return 0;
+}
+
+# Marks the walk as failed.
+fn pb_fail() {
+    store64(_PB, 1);
+    return 0;
+}
+
+# Message ids for pb_spec.
+enum PbMsg {
+    PB_SPAN = 1; PB_EVENT = 2; PB_LINK = 3; PB_STATUS = 4; PB_KV = 5; PB_ANY = 6; PB_ARRAY = 7;
+    PB_KVLIST = 8; PB_LOG = 9; PB_NDP = 10; PB_METRIC = 11; PB_GAUGE = 12; PB_SUM = 13;
+}
+
+# Schema of field `f` in message `msg`: wire type * 100 + sub-message id
+# (0 for none), or -1 when the field is not in the schema (opentelemetry-proto
+# v1.7.0, the messages these encoders write).
+fn pb_spec(msg, f) {
+    if (msg == PB_SPAN) {
+        if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200; }
+        if (f == 4) { return 200; } if (f == 5) { return 200; } if (f == 6) { return 0; }
+        if (f == 7) { return 100; } if (f == 8) { return 100; } if (f == 9) { return 200 + PB_KV; }
+        if (f == 10) { return 0; } if (f == 11) { return 200 + PB_EVENT; } if (f == 12) { return 0; }
+        if (f == 13) { return 200 + PB_LINK; } if (f == 14) { return 0; }
+        if (f == 15) { return 200 + PB_STATUS; } if (f == 16) { return 500; }
+    }
+    if (msg == PB_EVENT) {
+        if (f == 1) { return 100; } if (f == 2) { return 200; } if (f == 3) { return 200 + PB_KV; }
+        if (f == 4) { return 0; }
+    }
+    if (msg == PB_LINK) {
+        if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200; }
+        if (f == 4) { return 200 + PB_KV; } if (f == 5) { return 0; } if (f == 6) { return 500; }
+    }
+    if (msg == PB_STATUS) {
+        if (f == 2) { return 200; } if (f == 3) { return 0; }
+    }
+    if (msg == PB_KV) {
+        if (f == 1) { return 200; } if (f == 2) { return 200 + PB_ANY; }
+    }
+    if (msg == PB_ANY) {
+        if (f == 1) { return 200; } if (f == 2) { return 0; } if (f == 3) { return 0; }
+        if (f == 4) { return 100; } if (f == 5) { return 200 + PB_ARRAY; }
+        if (f == 6) { return 200 + PB_KVLIST; } if (f == 7) { return 200; }
+    }
+    if (msg == PB_ARRAY) {
+        if (f == 1) { return 200 + PB_ANY; }
+    }
+    if (msg == PB_KVLIST) {
+        if (f == 1) { return 200 + PB_KV; }
+    }
+    if (msg == PB_LOG) {
+        if (f == 1) { return 100; } if (f == 2) { return 0; } if (f == 3) { return 200; }
+        if (f == 5) { return 200 + PB_ANY; } if (f == 6) { return 200 + PB_KV; } if (f == 7) { return 0; }
+        if (f == 8) { return 500; } if (f == 9) { return 200; } if (f == 10) { return 200; }
+        if (f == 11) { return 100; } if (f == 12) { return 200; }
+    }
+    if (msg == PB_NDP) {
+        if (f == 2) { return 100; } if (f == 3) { return 100; } if (f == 4) { return 100; }
+        if (f == 6) { return 100; } if (f == 7) { return 200 + PB_KV; } if (f == 8) { return 0; }
+    }
+    if (msg == PB_METRIC) {
+        if (f == 1) { return 200; } if (f == 2) { return 200; } if (f == 3) { return 200; }
+        if (f == 5) { return 200 + PB_GAUGE; } if (f == 7) { return 200 + PB_SUM; }
+    }
+    if (msg == PB_GAUGE) {
+        if (f == 1) { return 200 + PB_NDP; }
+    }
+    if (msg == PB_SUM) {
+        if (f == 1) { return 200 + PB_NDP; } if (f == 2) { return 0; } if (f == 3) { return 0; }
+    }
+    return 0 - 1;
+}
+
+# Reads a varint at the position held in `cur`, advancing it; fails the walk
+# on a truncated or over-long varint.
+fn pb_varint(buf, cur, end) {
+    var v = 0;
+    var shift = 0;
+    var done = 0;
+    while (done == 0) {
+        var p = load64(cur);
+        if (p >= end) {
+            pb_fail();
+            done = 1;
+        } else {
+            var b = load8(buf + p);
+            store64(cur, p + 1);
+            if (shift < 64) { v = v | ((b & 0x7F) << shift); }
+            shift = shift + 7;
+            if ((b & 0x80) == 0) { done = 1; }
+            elif (shift >= 70) {
+                pb_fail();
+                done = 1;
+            }
+        }
+    }
+    return v;
+}
+
+# Walks bytes [start, end) of `buf` as message `msg`, recursing into
+# sub-messages, failing the walk on anything the schema does not allow.
+fn pb_walk(buf, start, end, msg, depth) {
+    if (depth > 40) {
+        pb_fail();
+        return 0;
+    }
+    var cur = alloc(8);
+    store64(cur, start);
+    var last = 0;
+    var members = 0;
+    var going = 1;
+    while (going == 1) {
+        if (load64(cur) >= end) { going = 0; }
+        elif (load64(_PB) == 1) { going = 0; }
+        else {
+            var tag = pb_varint(buf, cur, end);
+            var f = tag >> 3;
+            var wt = tag & 7;
+            var sp = pb_spec(msg, f);
+            if (sp < 0) { pb_fail(); }
+            elif (sp / 100 != wt) { pb_fail(); }
+            elif (f < last) { pb_fail(); }
+            else {
+                last = f;
+                if (msg == PB_ANY) { members = members + 1; }
+                if (members > 1) { pb_fail(); }
+                var p = load64(cur);
+                if (wt == 0) { pb_varint(buf, cur, end); }
+                elif (wt == 1) {
+                    if (p + 8 > end) { pb_fail(); }
+                    else { store64(cur, p + 8); }
+                } elif (wt == 5) {
+                    if (p + 4 > end) { pb_fail(); }
+                    else { store64(cur, p + 4); }
+                } else {
+                    var len = pb_varint(buf, cur, end);
+                    var q = load64(cur);
+                    if (len < 0) { pb_fail(); }
+                    elif (q + len > end) { pb_fail(); }
+                    else {
+                        var sub = sp % 100;
+                        if (sub == PB_KV) { store64(_PB + 8, load64(_PB + 8) + 1); }
+                        if (sub != 0) { pb_walk(buf, q, q + len, sub, depth + 1); }
+                        store64(cur, q + len);
+                    }
+                }
+            }
+        }
+    }
+    if (load64(cur) != end) { pb_fail(); }
+    return 0;
+}
+
+# 1 if `out` is a valid `msg` holding exactly `kvs` KeyValue messages.
+fn pb_check(out, msg, kvs) {
+    pb_reset();
+    pb_walk(str_data(out), 0, str_len(out), msg, 0);
+    if (load64(_PB) == 1) { return 0; }
+    if (load64(_PB + 8) != kvs) { return 0; }
+    return 1;
+}
+
+# ─── fuzz ────
+
+# xorshift64 PRNG state — heap slot for mutability across helper fns.
+var _RNG = 0;
+
+# Seeds the xorshift64 PRNG (allocating its state slot on first use; seed 0 becomes 1).
+fn rng_init(seed) {
+    if (_RNG == 0) { _RNG = alloc(8); }
+    if (seed == 0) { seed = 1; }
+    store64(_RNG, seed);
+    return 0;
+}
+
+# Advances the xorshift64 state and returns the new 64-bit value.
+fn rng_next() {
+    var s = load64(_RNG);
+    s = s ^ (s << 13);
+    s = s ^ (s >> 7);
+    s = s ^ (s << 17);
+    store64(_RNG, s);
+    return s;
+}
+
+# A pseudo-random value in 0..n-1.
+fn rng_below(n) { return (rng_next() & 0x7FFFFFFF) % n; }
+
+# A random key of 0..3 letters from "abc", NUL-terminated.
+fn gen_key() {
+    var n = rng_below(4);
+    var k = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        store8(k + i, 97 + rng_below(3));
+        i = i + 1;
+    }
+    store8(k + n, 0);
+    return k;
+}
+
+# A Str of 0..max random bytes, any byte value.
+fn gen_bytes(max) {
+    var n = rng_below(max + 1);
+    var b = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        store8(b + i, rng_next() & 0xFF);
+        i = i + 1;
+    }
+    return str_new(b, n);
+}
+
+# A random AnyValue box (or 0, or an unknown tag), arrays and kvlists nested
+# below `depth` 3.
+fn gen_value(depth) {
+    var k = rng_below(9);
+    if (depth >= 3) {
+        if (k == 5) { k = 0; }
+        if (k == 6) { k = 0; }
+    }
+    if (k == 0) { return any_string(gen_bytes(8)); }
+    if (k == 1) { return any_bool(rng_next() & 1); }
+    if (k == 2) { return any_int(rng_next()); }
+    if (k == 3) { return any_double(rng_next()); }
+    if (k == 4) { return any_bytes(gen_bytes(8)); }
+    if (k == 5) {
+        var v = vec_new();
+        var n = rng_below(4);
+        var i = 0;
+        while (i < n) {
+            vec_push(v, gen_value(depth + 1));
+            i = i + 1;
+        }
+        return any_array(v);
+    }
+    if (k == 6) { return any_kvlist(gen_map(depth + 1)); }
+    if (k == 7) { return 0; }
+    return tagged_new(50 + rng_below(10), 0);
+}
+
+# A random attribute map of 0..4 entries (keys may repeat and overwrite).
+fn gen_map(depth) {
+    var m = map_new();
+    var n = rng_below(5);
+    var i = 0;
+    while (i < n) {
+        map_set(m, gen_key(), gen_value(depth));
+        i = i + 1;
+    }
+    return m;
+}
+
+# KeyValue messages an AnyValue box `v` holds, nested ones included.
+fn kv_in_value(v) {
+    if (v == 0) { return 0; }
+    var t = boxed_tag(v);
+    if (t == ANY_KVLIST) { return kv_in_map(boxed_payload(v)); }
+    if (t == ANY_ARRAY) {
+        var a = boxed_payload(v);
+        var total = 0;
+        var i = 0;
+        while (i < vec_len(a)) {
+            total = total + kv_in_value(vec_get(a, i));
+            i = i + 1;
+        }
+        return total;
+    }
+    return 0;
+}
+
+# KeyValue messages map `m` encodes to, nested ones included.
+fn kv_in_map(m) {
+    if (m == 0) { return 0; }
+    var vals = map_values(m);
+    var total = map_size(m);
+    var i = 0;
+    while (i < vec_len(vals)) {
+        total = total + kv_in_value(vec_get(vals, i));
+        i = i + 1;
+    }
+    return total;
+}
+
+var _FUZZ_ITERS = 200;
+
+# Random spans with attributes, events and links: valid, complete, stable.
+fn fuzz_span(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var sp = span_new(gen_bytes(6), ids(i, 16), ids(i + 1, 8));
+        if (rng_below(2) == 1) { span_set_parent(sp, ids(i + 2, 8)); }
+        span_set_kind(sp, rng_below(7));
+        span_set_status(sp, rng_below(5));
+        span_set_duration_ms(sp, rng_below(1000));
+        store64(sp + 64, gen_map(0));
+        var kvs = kv_in_map(load64(sp + 64));
+        var ne = rng_below(3);
+        var j = 0;
+        while (j < ne) {
+            var e = span_event_new(gen_bytes(4));
+            if (rng_below(2) == 1) { store64(e + 16, gen_map(0)); }
+            kvs = kvs + kv_in_map(load64(e + 16));
+            vec_push(span_events(sp), e);
+            j = j + 1;
+        }
+        var nl = rng_below(3);
+        j = 0;
+        while (j < nl) {
+            var l = span_link_new(ids(j, 16), ids(j + 3, 8));
+            if (rng_below(2) == 1) { store64(l + 16, gen_map(0)); }
+            kvs = kvs + kv_in_map(load64(l + 16));
+            vec_push(span_links(sp), l);
+            j = j + 1;
+        }
+        var a = enc_span(sp);
+        if (pb_check(a, PB_SPAN, kvs) == 1) {
+            if (str_eq(a, enc_span(sp)) == 1) { ok = ok + 1; }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz span: every encoding valid and stable");
+    return 0;
+}
+
+# Random log records: valid, complete, stable.
+fn fuzz_log(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var body = 0;
+        if (rng_below(4) != 0) { body = gen_bytes(12); }
+        var lr = log_record_new(rng_below(40) - 5, body);
+        store64(lr + 32, gen_map(0));
+        if (rng_below(2) == 1) { logrec_set_trace_id(lr, ids(i, 16)); }
+        if (rng_below(2) == 1) { logrec_set_span_id(lr, ids(i, 8)); }
+        var a = enc_log(lr);
+        if (pb_check(a, PB_LOG, kv_in_map(load64(lr + 32))) == 1) {
+            if (str_eq(a, enc_log(lr)) == 1) { ok = ok + 1; }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz log record: every encoding valid and stable");
+    return 0;
+}
+
+# A random metric value box: int, float, histogram, unknown tag, or 0.
+fn gen_metric_value() {
+    var k = rng_below(5);
+    if (k == 0) { return metric_int(rng_next()); }
+    if (k == 1) { return metric_float(rng_next()); }
+    if (k == 2) { return tagged_new(MV_HISTOGRAM, 0); }
+    if (k == 3) { return tagged_new(40, 1); }
+    return 0;
+}
+
+# Random data points and metrics: valid, complete, stable; Err only where the
+# contract says.
+fn fuzz_metric(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var i = 0;
+    while (i < _FUZZ_ITERS) {
+        var pts = vec_new();
+        var np = rng_below(4);
+        var kvs = 0;
+        var temp = rng_below(2);
+        var mixed = 0;
+        var j = 0;
+        while (j < np) {
+            var p = metric_data_point_new(gen_bytes(3), gen_metric_value());
+            store64(p + 16, gen_map(0));
+            var t = temp;
+            if (rng_below(8) == 0) { t = 1 - temp; }
+            if (j > 0) {
+                if (t != load64(vec_get(pts, 0) + 32)) { mixed = 1; }
+            }
+            store64(p + 32, t);
+            kvs = kvs + kv_in_map(load64(p + 16));
+            vec_push(pts, p);
+            j = j + 1;
+        }
+        var pv = 1;
+        j = 0;
+        while (j < np) {
+            var q = vec_get(pts, j);
+            if (pb_check(enc_mdp(q), PB_NDP, kv_in_map(load64(q + 16))) != 1) { pv = 0; }
+            j = j + 1;
+        }
+        var kind = rng_below(5);
+        var d = instrument_descriptor_new(gen_bytes(4), gen_bytes(4), gen_bytes(2), kind);
+        var sb = str_builder_new();
+        var r_t, r = metric_to_otlp_proto(d, pts, sb);
+        var out = str_builder_build(sb);
+        var want_err = 0;
+        if (kind == METRIC_HISTOGRAM) { want_err = 1; }
+        if (kind > METRIC_HISTOGRAM) { want_err = 1; }
+        if (kind == METRIC_COUNTER) { want_err = mixed; }
+        if (kind == METRIC_UP_DOWN_COUNTER) { want_err = mixed; }
+        if (want_err == 1) {
+            if (is_err_result(r_t) == 1) {
+                if (str_len(out) == 0) { ok = ok + pv; }
+            }
+        } elif (is_ok(r_t) == 1) {
+            if (pb_check(out, PB_METRIC, kvs) == 1) {
+                var sb2 = str_builder_new();
+                var s_t, s = metric_to_otlp_proto(d, pts, sb2);
+                if (str_eq(out, str_builder_build(sb2)) == 1) { ok = ok + pv; }
+            }
+        }
+        i = i + 1;
+    }
+    assert_eq(ok, _FUZZ_ITERS, "fuzz metric: valid encodings, Err exactly where documented");
+    return 0;
+}
+
+# The walker rejects what it should, so the fuzz checks are not vacuous.
+fn test_walker_rejects() {
+    var b = alloc(4);
+    store8(b, 0x7A);
+    store8(b + 1, 0x02);
+    store8(b + 2, 0x08);
+    store8(b + 3, 0x02);
+    assert_eq(pb_check(str_new(b, 4), PB_SPAN, 0), 0, "reserved Status field 1 rejected");
+    store8(b + 2, 0x18);
+    assert_eq(pb_check(str_new(b, 4), PB_SPAN, 0), 1, "Status field 3 accepted");
+    assert_eq(pb_check(str_new(b, 3), PB_SPAN, 0), 0, "truncated message rejected");
+    var two = alloc(4);
+    store8(two, 0x18);
+    store8(two + 1, 1);
+    store8(two + 2, 0x10);
+    store8(two + 3, 1);
+    assert_eq(pb_check(str_new(two, 4), PB_ANY, 0), 0, "two AnyValue members rejected");
+    assert_eq(pb_check(enc_span(span_full()), PB_SPAN, 5), 1, "span_full valid, 5 KeyValues");
+    assert_eq(pb_check(enc_span(span_full()), PB_SPAN, 4), 0, "KeyValue count is checked");
+    return 0;
+}
+
+# Test-file entry: runs every test and fuzz target, returns the assertion summary.
+fn main() {
+    println("--- v1.10.0 OTLP: AnyValue, Span attributes/events/links, LogRecord, metrics ---");
+    test_any_value_type_name_parse();
+    test_any_value_constructors();
+    test_any_value_golden();
+    test_attributes_deterministic();
+    test_any_value_cycles_and_depth();
+    test_nested_length_widening();
+    test_span_golden();
+    test_span_status_field();
+    test_log_record_golden();
+    test_number_data_point_golden();
+    test_metric_golden();
+    test_metric_errors();
+    test_walker_rejects();
+    fuzz_span(0x1100A);
+    fuzz_log(0x1100B);
+    fuzz_metric(0x1100C);
+    return assert_summary();
+}

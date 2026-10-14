@@ -2,6 +2,164 @@
 
 ## [Unreleased]
 
+v1.10.0 work: the OTLP wire format, completed. Spans gain attributes, events and links; log records, number data
+points and metrics get encoders; attribute values get a type, `AnyValue`. Every encoder is checked byte for byte
+against protoc's encoding of the official schema, which found that v1.2.0 wrote the span status code to a
+reserved field. Public API 979 → **994** (+15, no removals, no signature or layout change). 22 test files,
+**2,143 assertions, 0 failures**, on x86_64 and aarch64. All five `[deps.agnostik]` consumers build and pass
+their tests against it.
+
+### Fixed — `Span_to_otlp_proto` wrote the status code to a reserved field
+
+Since v1.2.0 the encoder wrote `Status.code` as field 1 (`7a 02 08 02` for ERROR). `trace.proto` reserves field 1
+(it was the deprecated code) and puts the code in **field 3**. protoc decodes the old bytes as `status { 1: 2 }`:
+an unknown field and no code, so a collector read every exported span as UNSET, and ERROR spans never showed as
+errors. The code is now field 3 (`7a 02 18 02`). A status slot holding a value outside `SpanStatus` (for example
+a `span_status_error` box stored there) now writes no status, instead of the box's address as a code.
+
+v1.2.0's test pinned the wrong bytes because its reference was computed by hand from the `.proto` files.
+`test_v120_otlp.tcyr` now expects field 3, and every vector in the new test is protoc's own encoding (see Tests).
+No consumer calls `Span_to_otlp_proto`.
+
+### Added — `AnyValue`: typed attribute values
+
+The attribute maps (`span_attributes`, `sevt_attributes`, `slink_attributes`, `logrec_attributes`,
+`mdp_attributes`) held untyped words, and an encoder cannot tell a `Str` pointer from an integer. Their values are
+now **AnyValue boxes**. No consumer or test stored anything in these maps, so the contract is new rather than
+changed ([ADR-004](docs/adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md)).
+- `enum AnyValueType`: `ANY_STRING` = 1, `ANY_BOOL`, `ANY_INT`, `ANY_DOUBLE`, `ANY_ARRAY`, `ANY_KVLIST`,
+  `ANY_BYTES` = 7. The values are the field numbers of OTLP's `AnyValue` oneof, so 0 is never a type.
+- `any_value_type_name` / `any_value_type_parse`, spelled as the OTLP/JSON keys (`"stringValue"` …
+  `"bytesValue"`).
+- Constructors `any_string`, `any_bool` (normalized to 0 / 1), `any_int`, `any_double` (raw IEEE-754 bits, as
+  `metric_float`), `any_array` (a vec of boxes), `any_kvlist` (a cstr- or Str-keyed map of boxes) and `any_bytes`.
+  Readers `any_value_type` / `any_value_val`.
+- `AnyValue_to_otlp_proto(v, sb)`: the body of an `AnyValue` message.
+
+### Added — OTLP encoders for spans, logs and metrics
+
+All follow opentelemetry-proto v1.7.0 and write **canonical** bytes, identical to protoc's:
+- fields in ascending number order;
+- proto3 defaults omitted, but oneof members always written, even a zero `int_value` or `as_int`;
+- minimal varints;
+- attribute keys sorted bytewise, so equal attributes give equal bytes whatever the insertion order or the
+  per-process hash seed.
+
+The encoders:
+- **`Span_to_otlp_proto`** gains `attributes` (9), `events` (11, `Span.Event`: time, name, attributes) and `links`
+  (13, `Span.Link`: trace and span ids, attributes).
+- **`LogRecord_to_otlp_proto(lr, sb)`** writes:
+  - `time_unix_nano`;
+  - `severity_number`, for 1..24, since `LogSeverity` values are OTLP's;
+  - `severity_text` for the six named severities;
+  - `body`, as a string `AnyValue`;
+  - `attributes`, `trace_id` and `span_id`.
+- **`MetricDataPoint_to_otlp_proto(dp, sb)`** writes a `NumberDataPoint`:
+  - `time_unix_nano`;
+  - `as_int` (sfixed64) for `metric_int`, or `as_double` for `metric_float`;
+  - `attributes`;
+  - `flags` = 1 (`NO_RECORDED_VALUE`) when the point holds neither.
+- **`metric_to_otlp_proto(desc, points, sb)`** writes a `Metric`: name, description and unit from an
+  `InstrumentDescriptor`, and the points inside the member its kind selects.
+  - `METRIC_GAUGE` → `gauge`.
+  - `METRIC_COUNTER` → `sum`, `is_monotonic` true.
+  - `METRIC_UP_DOWN_COUNTER` → `sum`, non-monotonic.
+  - A sum's temporality is mapped to OTLP's numbering: agnostik's `TEMPORALITY_CUMULATIVE` = 0 becomes OTLP's 2,
+    and `DELTA` 1 stays 1.
+  - It returns an invalid-argument `Err`, having written nothing, for:
+    - `METRIC_HISTOGRAM` or an unknown kind (agnostik has no histogram data point);
+    - a sum with an unknown temporality;
+    - a sum whose points disagree on temporality (OTLP carries one per `Sum`).
+
+**Bounds.** A 0 box or an unknown type encodes as an empty `AnyValue`. So do arrays and kvlists nested 16 levels
+deep, and a box that already encloses itself (a cycle): never a crash or unbounded recursion.
+
+**Not written** (no slot holds them):
+- trace state and flags;
+- `observed_time_unix_nano` and `start_time_unix_nano`;
+- exemplars;
+- the status message;
+- histogram points;
+- the `Resource` / `InstrumentationScope` envelopes.
+
+Strings are written as given, and protobuf requires UTF-8 in `string` fields. The roadmap carries both.
+
+### Changed — `src/proto.cyr` writes into a private buffer
+
+The first draft built each nested message in a child `str_builder`. Measured, `str_builder_putc` costs about 33 ns
+a byte, and each child builder about 200 ns plus two copies; a full span took 14.3 µs. The private `_stik_proto_*`
+helpers are replaced by `_stik_pb_*`. A field reserves its worst case once and stores bytes directly. A nested
+message is written in place behind a one-byte length that is patched when it closes, and only a body of 128 bytes
+or more is shifted to fit a longer length. The result reaches the caller's `str_builder` in one copy. These
+helpers were private, so the public signatures are unchanged.
+
+The shift is a hand-written backward copy, because the stdlib has no `memmove`. A cyrius proposal for one, with
+an ecosystem census of 14 hand-rolled copies and chunked-copy measurements, is filed at
+`cyrius/docs/development/proposals/2026-10-14-memmove.md`.
+
+### Tests — `tests/tcyr/test_v1100_otlp.tcyr` (98 assertions)
+
+- **32 golden vectors**, each the bytes protoc (libprotoc 35.0) encodes from the same message in text format
+  against the official `.proto` files. They cover:
+  - every AnyValue member, including zero values, null payloads and an unknown tag;
+  - nested arrays and kvlists, and Str-keyed maps;
+  - a span with every new field, and a minimal OK span;
+  - four log records, five data points and four metrics.
+- **Length widening:** 25 sizes across the 1→2 and 2→3 byte varint boundaries, at every nesting level, against
+  a reference encoder written in the test. Two sizes were also matched against protoc.
+- **Bounds:** self-containing arrays and kvlists are cut at the cycle, a shared leaf is written twice, and 20
+  nested arrays stop at 16.
+- **Determinism:** reversed insertion orders encode identically; an empty key is omitted.
+- **Errors:** histogram, unknown kind, mixed temporality and an unknown temporality each return `Err` and write
+  nothing. A gauge ignores temporality.
+- **Fuzz:** 200 random spans, 200 log records and 200 metric sets, with random attribute trees, unknown tags and
+  arbitrary bytes. A schema walker checks each encoding:
+  - every field exists in the schema with its wire type;
+  - lengths stay in bounds and fields ascend;
+  - an AnyValue holds at most one member;
+  - the KeyValue count equals the attribute entries.
+
+  Each encoding must also be stable when repeated, and `Err` must come back exactly where documented. The walker
+  is itself tested: it rejects the old field-1 status, truncation, two AnyValue members and a wrong KeyValue
+  count.
+
+Mutation-checked: each of 15 deliberate breaks fails the file. They include:
+- the status written to field 1;
+- unsorted keys, no cycle cut, an elided `int_value` zero;
+- an ordinal temporality, wrong event or link field numbers, `as_int` written as a double;
+- a dropped no-value flag, an unchecked severity range, mixed temporality accepted, an empty key written;
+- three in the buffer: no shift on close, a forward shift, a buffer that never grows.
+
+`test_v120_otlp.tcyr`'s primitive tests are ported to `_stik_pb_*`.
+
+### Performance
+
+New benchmark tier 5 (`tests/bcyr/agnostik.bcyr`), x86_64, cyrius 6.7.9:
+
+| Row | First draft (str_builder) | Buffer |
+|---|---:|---:|
+| `span_otlp_full` (3 attributes, 2 events, a link, a status) | 14.3 µs | **4.10 µs** |
+| `span_otlp_min` | 1.36 µs | **552 ns** |
+| `log_record_otlp` (2 attributes, ids) | 3.18 µs | **1.46 µs** |
+| `metric_otlp_sum` (a counter, 2 points) | 6.72 µs | **1.62 µs** |
+
+Against the released 1.9.0 encoder, a minimal span (OK status, 3 ms duration) went from a median **735 ns to
+477 ns** (−35%, 7 interleaved rounds, faster in all 7). It now carries an empty attribute map and still costs
+less. The `CYRIUS_DCE=1` x86_64 harness is 134,728 B (+272): `src/main.cyr` calls none of the new encoders, so DCE
+drops them.
+
+### Docs
+
+- [ADR-004](docs/adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md) records the three decisions:
+  AnyValue boxes, canonical bytes checked against protoc, and the private buffer.
+- **SECURITY.md:**
+  - Supported Versions names **1.9.x** as the current line. It still said 1.2.x.
+  - It states that there are no backport branches, and that 1.x upgrades are API-compatible.
+  - Scope item 3 describes the completed encoders and their bounds.
+- **CLAUDE.md:** the closeout doc sync now includes SECURITY.md's Supported Versions, so the table moves with each
+  minor.
+- **README and architecture overview:** the module rows and the OTLP example are updated.
+
 ## [1.9.0] - 2026-10-14
 
 **Minor:** the last enum gets its name/parse pair, every function is documented (`cyrius audit` now

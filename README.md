@@ -40,10 +40,10 @@ snapshot, [`CHANGELOG.md`](CHANGELOG.md) for release notes,
 |---|---|
 | `error.cyr` | `AgnostikError` (11 kinds) + numeric error codes (1001-1010) + `Result` helpers |
 | `types.cyr` | `AgentId` / `UserId` (UUID v4), `Version` (SemVer), `Capabilities`, `MessageType`, `SystemStatus`, `ComponentConfig`. Hosts the JSON parser primitives (`_stik_json_int`/`_stik_json_str`/`_stik_json_find_value`) with `\uXXXX` Unicode + UTF-8 surrogate-pair decoding (v1.0.7). |
-| `proto.cyr` | Protobuf wire-format helpers — varint, tag, length-delimited, fixed64, nested-message. Foundation for OTLP encoders (v1.2.0). |
+| `proto.cyr` | Protobuf wire-format writer — varint, tag, length-delimited, fixed64, and nested messages written in place behind a patched length (v1.10.0). Foundation for the OTLP encoders. |
 | `agent.cyr` | `AgentConfig`, `AgentManifest`, `AgentStatus`, `ResourceLimits`, `HealthCheck`, `LifecycleHooks`, `AgentPool`, `Topic`, `Subscription`, `AgentMessage`. |
 | `security.cyr` | `SandboxConfig`, RBAC (`Role`, `TokenPayload`, `AuthContext`), `CgroupLimits`, `NamespaceConfig`, `LandlockRuleset`, `LinuxCapability` (41), `CapabilitySet`, `SeccompProfile`. |
-| `telemetry.cyr` | `TraceContext` (W3C), `Span`, `MetricDataPoint`, `LogRecord`, `Resource`, `InstrumentationScope`, `Baggage`, `Exemplar`. Traits: `SpanCollector`, `MetricSink`, `TextMapPropagator`, `TextMapCarrier`. **OTLP wire encoder** for `Span` (v1.2.0). |
+| `telemetry.cyr` | `TraceContext` (W3C), `Span`, `MetricDataPoint`, `LogRecord`, `Resource`, `InstrumentationScope`, `Baggage`, `Exemplar`. Traits: `SpanCollector`, `MetricSink`, `TextMapPropagator`, `TextMapCarrier`. Typed `AnyValue` attribute values. **OTLP wire encoders** for `Span` (with attributes, events and links), `LogRecord`, `NumberDataPoint` and `Metric`, byte-identical to protoc (v1.10.0). |
 | `audit.cyr` | `AuditEntry` with HMAC-SHA256 integrity-chain shape, `AuditSeverity`, `AuditSink` trait. |
 | `llm.cyr` | `LlmProvider` (18 variants — major hosted providers + 5 added in v1.1.0), `Message`, `ContentBlock` (8 kinds), `ToolDefinition`/`ToolCall`/`ToolResult`, `SamplingParams`, `InferenceRequest`/`InferenceResponse`, `StreamEvent`, `ModelCapabilities` (15 flags incl. video / caching / parallel-tool-calls). |
 | `secrets.cyr` | `Secret` (zeroize-on-destroy), `SecretMetadata`, `SecretKind`, `SecretStore` trait. |
@@ -67,10 +67,12 @@ var ctx = trace_context_new();
 var child = tctx_child(ctx);                          # inherits trace_id, flags, state
 assert_eq(tctx_is_sampled(ctx), 1, "sampled");
 
-# OTLP wire-format encode (v1.2.0)
+# OTLP wire-format encode (v1.10.0: attributes, events, links, logs, metrics)
 var span = span_new(str_from("op"), trace_id_new(), span_id_new());
+map_set(span_attributes(span), "http.status_code", any_int(200));   # values are AnyValue boxes
+vec_push(span_events(span), span_event_new(str_from("retry")));
 var sb = str_builder_new();
-Span_to_otlp_proto(span, sb);                         # bytes ready for export
+Span_to_otlp_proto(span, sb);                         # opentelemetry.proto.trace.v1.Span bytes
 
 # JSON serde — derive-driven for the trivial structs (v1.1.0)
 var rl = resource_limits_new();

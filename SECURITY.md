@@ -4,13 +4,14 @@
 
 | Version  | Supported |
 |----------|-----------|
-| 1.2.x    | Yes (current) |
-| 1.1.x    | Yes |
-| 1.0.x    | Yes |
-| < 1.0.0  | No (pre-stable; upgrade to 1.x) |
+| 1.9.x    | Yes (current) |
+| < 1.9.0  | No (upgrade to the current 1.x release) |
 
-Backports for security fixes go to all supported lines. Feature work targets
-the current minor only.
+Security fixes ship in a new release on the current line. There are no
+backport branches: every 1.x release keeps the public API (additions only,
+no breaks before 2.0.0), so moving to the current release is the upgrade
+path for any 1.x consumer. Feature work targets the current minor only. The
+table moves to the new line at each minor cut.
 
 ## Scope
 
@@ -38,10 +39,15 @@ only). Primary attack surfaces:
    its raw syscall numbers were wrong on agnos. A Linux kernel older than
    3.17, or a sandbox that denies `getrandom`, therefore exits rather than
    generating IDs.
-3. **OTLP wire-format encoding** (v1.2.0) in `src/proto.cyr` and
-   `Span_to_otlp_proto`. Output is byte-exact-tested; helpers don't read
-   external input directly (callers pass `str_builder` and pre-validated
-   struct pointers).
+3. **OTLP wire-format encoding** (v1.2.0; completed in v1.10.0) in
+   `src/proto.cyr` and the `*_to_otlp_proto` encoders. Output is tested byte
+   for byte against protoc's encoding of the official schema, and fuzzed
+   through a schema walker. The encoders read caller-built structs, not
+   external bytes. Attribute values are typed `AnyValue` boxes; an unknown
+   type, nesting 16 levels deep or a cycle encodes as an empty value, not a
+   crash or unbounded recursion. Strings are written as given: a caller that
+   puts invalid UTF-8 in a string field produces a message a strict protobuf
+   decoder may reject.
 4. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
    install the pinned Cyrius toolchain through `scripts/ci-install-cyrius.sh`.
    It checks the release's `SHA256SUMS.sig` against the cyrius Ed25519

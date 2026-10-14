@@ -172,7 +172,7 @@ cites benchmark figures from this gate.
 6. **Cleanup sweep** — stale comments, dead branches, unused includes, orphaned files
 7. **Security re-scan** — quick grep for new `sys_system`, raw `syscall(` numbers, unchecked writes, unsanitized input, buffer size mismatches
 8. **Downstream check** — `bash scripts/consumer-sweep.sh`: every repo that declares `[deps.agnostik]` builds and passes its tests against the in-flight tree, on its own pin, with no new agnostik-involved duplicate definitions
-9. **Doc sync** — CHANGELOG, roadmap, `docs/development/state.md`, `docs/doc-health.md` (re-bucket any rows touched this cycle and refresh the at-a-glance counts), CLAUDE.md (if durable content changed)
+9. **Doc sync** — CHANGELOG, roadmap, `docs/development/state.md`, `docs/doc-health.md` (re-bucket any rows touched this cycle and refresh the at-a-glance counts), `SECURITY.md` (Supported Versions names the new line; audits table row), CLAUDE.md (if durable content changed)
 10. **Version verify** — `VERSION`, `cyrius.cyml`, CHANGELOG header, intended git tag all match (tags are bare: `1.6.2`, not `v1.6.2`)
 11. **Full build from clean** — `rm -rf build && cyrius lib sync && cyrius deps && CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik` passes clean
 

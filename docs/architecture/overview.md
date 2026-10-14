@@ -10,8 +10,10 @@ agnostik (Cyrius)
 │                        Hosts JSON parser primitives (_stik_json_int / _stik_json_str /
 │                        _stik_json_find_value) including \uXXXX Unicode + surrogate-pair
 │                        UTF-8 decoding (v1.0.7).
-├── src/proto.cyr      — Protobuf wire-format helpers (varint, tag, length-delim,
-│                        fixed64, nested message). Foundation for OTLP encoders (v1.2.0).
+├── src/proto.cyr      — Protobuf wire-format writer (varint, tag, length-delim,
+│                        fixed64, nested message): a private buffer that writes
+│                        nested messages in place and patches their length
+│                        (v1.10.0; ADR-004). Foundation for the OTLP encoders.
 ├── src/agent.cyr      — AgentConfig, AgentManifest, AgentStatus, AgentType, ResourceLimits,
 │                        ResourceUsage, AgentRateLimit, AgentEvent, AgentInfo, AgentStats,
 │                        RestartPolicy, HealthCheck, LifecycleHooks, StopReason,
@@ -34,7 +36,11 @@ agnostik (Cyrius)
 │                        LogSeverity, LogRecord,
 │                        SpanCollector trait, MetricSink trait,
 │                        TextMapCarrier trait, TextMapPropagator trait.
-│                        OTLP wire encoder: Span_to_otlp_proto (v1.2.0).
+│                        AnyValue (typed attribute values, v1.10.0).
+│                        OTLP wire encoders: Span_to_otlp_proto (v1.2.0; attributes,
+│                        events and links v1.10.0), LogRecord_to_otlp_proto,
+│                        MetricDataPoint_to_otlp_proto, metric_to_otlp_proto,
+│                        AnyValue_to_otlp_proto (v1.10.0).
 ├── src/audit.cyr      — AuditEntry, AuditSeverity, AuditResult, IntegrityFields,
 │                        RetentionPolicy, AuditSink trait
 ├── src/llm.cyr        — LlmProvider (18 variants — incl. v1.1.0 additions: Together,
@@ -121,9 +127,15 @@ Both camps emit the same compact byte format
 `<Struct>_from_json_str(str_data(j))`; hand-written structs as
 `<Struct>_from_json(s: Str)`.
 
-**Protobuf (OTLP)** — `Span_to_otlp_proto(ptr, sb)` ships in v1.2.0.
-`LogRecord_to_otlp_proto` and `MetricDataPoint_to_otlp_proto` are pinned for
-v1.2.2 along with Span repeated-field encoders (attributes / events / links).
+**Protobuf (OTLP)** — `Span_to_otlp_proto(ptr, sb)` shipped in v1.2.0; v1.10.0
+adds its attributes, events and links, `LogRecord_to_otlp_proto`,
+`MetricDataPoint_to_otlp_proto` (a `NumberDataPoint`), `metric_to_otlp_proto`
+(a `Metric` with its gauge or sum, from an `InstrumentDescriptor`) and
+`AnyValue_to_otlp_proto`. Attribute map values are `AnyValue` boxes
+(`any_string`, `any_int`, …). Output is canonical (ascending fields, proto3
+defaults omitted, keys sorted) and tested byte for byte against protoc's
+encoding of the official schema. See
+[ADR-004](../adr/004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md).
 
 ## Consumers
 

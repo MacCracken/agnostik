@@ -73,6 +73,59 @@ fn _ser(ptr, fn_ptr) {
     fncall2(fn_ptr, ptr, sb);
     return str_builder_build(sb);
 }
+# --- OTLP encoder fixtures (v1.10.0), built once in main ---
+var _bench_span_full = 0;
+var _bench_span_min = 0;
+var _bench_log = 0;
+var _bench_metric_desc = 0;
+var _bench_metric_points = 0;
+# Encodes the prebuilt full span (3 attributes, 2 events, 1 link, a status).
+fn _b_span_otlp_full() { _ser(_bench_span_full, &Span_to_otlp_proto); return 0; }
+# Encodes the prebuilt span with no attributes, events or links.
+fn _b_span_otlp_min() { _ser(_bench_span_min, &Span_to_otlp_proto); return 0; }
+# Encodes the prebuilt log record (2 attributes, trace and span ids).
+fn _b_log_otlp() { _ser(_bench_log, &LogRecord_to_otlp_proto); return 0; }
+# Encodes the prebuilt counter metric with two data points.
+fn _b_metric_otlp() {
+    var sb = str_builder_new();
+    var r_t, r = metric_to_otlp_proto(_bench_metric_desc, _bench_metric_points, sb);
+    return 0;
+}
+# Builds the OTLP fixtures the tier5 rows encode; returns 0.
+fn _bench_otlp_fixtures() {
+    var sp = span_new(str_from("GET /api/v1/agents"), trace_id_new(), span_id_new());
+    span_set_kind(sp, SPAN_SERVER);
+    span_set_duration_ms(sp, 12);
+    map_set(span_attributes(sp), "http.method", any_string(str_from("GET")));
+    map_set(span_attributes(sp), "http.status_code", any_int(200));
+    map_set(span_attributes(sp), "net.peer.name", any_string(str_from("agnos.local")));
+    var e1 = span_event_new(str_from("auth.checked"));
+    map_set(sevt_attributes(e1), "outcome", any_string(str_from("allow")));
+    vec_push(span_events(sp), e1);
+    vec_push(span_events(sp), span_event_new(str_from("db.query")));
+    var l1 = span_link_new(trace_id_new(), span_id_new());
+    map_set(slink_attributes(l1), "link.kind", any_string(str_from("follows_from")));
+    vec_push(span_links(sp), l1);
+    span_set_status(sp, SPAN_OK);
+    _bench_span_full = sp;
+    _bench_span_min = span_new(str_from("op"), trace_id_new(), span_id_new());
+    var lr = log_record_new(LOG_WARN, str_from("disk usage above 90%"));
+    map_set(logrec_attributes(lr), "mount", any_string(str_from("/var")));
+    map_set(logrec_attributes(lr), "used_pct", any_int(93));
+    logrec_set_trace_id(lr, trace_id_new());
+    logrec_set_span_id(lr, span_id_new());
+    _bench_log = lr;
+    _bench_metric_desc = instrument_descriptor_new(str_from("http.server.requests"), str_from("Requests served"),
+      str_from("{request}"), METRIC_COUNTER);
+    var p1 = metric_data_point_new(str_from("http.server.requests"), metric_int(1042));
+    map_set(mdp_attributes(p1), "route", any_string(str_from("/api/v1/agents")));
+    var p2 = metric_data_point_new(str_from("http.server.requests"), metric_int(17));
+    map_set(mdp_attributes(p2), "route", any_string(str_from("/health")));
+    _bench_metric_points = vec_new();
+    vec_push(_bench_metric_points, p1);
+    vec_push(_bench_metric_points, p2);
+    return 0;
+}
 var _bench_rl_json = 0;
 var _bench_tu_json = 0;
 var _bench_af_json = 0;
@@ -138,8 +191,9 @@ fn run(bname, fp, batch, rounds) {
     bench_report(b);
     return 0;
 }
-# Bench entry: runs the four tiers (core, format, integration, serde), pre-building
-# the JSON inputs the from_json rows parse; returns 0.
+# Bench entry: runs the five tiers (core, format, integration, serde, otlp),
+# pre-building the JSON inputs the from_json rows parse and the OTLP fixtures;
+# returns 0.
 fn main() {
     _bench_parent = trace_context_new();
     _bench_vs = str_from("0.90.0");
@@ -187,6 +241,12 @@ fn main() {
     run("injection_scores_from_json", &_b_is_from_json, 5000, 5);
     run("agent_stats_to_json", &_b_as_to_json, 2000, 5);
     run("agent_stats_from_json", &_b_as_from_json, 5000, 5);
+    _bench_otlp_fixtures();
+    tier("[tier5] otlp");
+    run("span_otlp_full", &_b_span_otlp_full, 500, 5);
+    run("span_otlp_min", &_b_span_otlp_min, 2000, 5);
+    run("log_record_otlp", &_b_log_otlp, 1000, 5);
+    run("metric_otlp_sum", &_b_metric_otlp, 1000, 5);
     println("\n=== done ===");
     return 0;
 }

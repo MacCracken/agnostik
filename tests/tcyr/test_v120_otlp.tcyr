@@ -5,7 +5,9 @@
 # Strategy: byte-exact assertions on protobuf output. Reference
 # bytes computed by hand from the OTLP proto definitions
 # (opentelemetry/proto/trace/v1/trace.proto) and the canonical
-# protobuf wire format spec.
+# protobuf wire format spec. Hand computation put Status.code in field 1,
+# which the schema reserves; v1.10.0 corrected it to field 3 here, and
+# test_v1100_otlp.tcyr checks every encoder against protoc's bytes.
 
 include "lib/syscalls.cyr"
 include "lib/string.cyr"
@@ -22,14 +24,22 @@ include "src/lib.cyr"
 
 # ─── proto primitive correctness ────
 
-# Test: _stik_proto_varint encodes 0, 1 and 127 as single bytes.
+# The bytes written to protobuf buffer `b`, as a Str (v1.10.0: the primitives
+# write into a private buffer, not a str_builder).
+fn pb_str(b) {
+    var sb = str_builder_new();
+    _stik_pb_flush(b, sb);
+    return str_builder_build(sb);
+}
+
+# Test: _stik_pb_varint encodes 0, 1 and 127 as single bytes.
 fn test_proto_varint_small() {
     # 0 → 0x00; 1 → 0x01; 127 → 0x7F (single byte, MSB clear).
-    var sb = str_builder_new();
-    _stik_proto_varint(sb, 0);
-    _stik_proto_varint(sb, 1);
-    _stik_proto_varint(sb, 127);
-    var s = str_builder_build(sb);
+    var b = _stik_pb_new();
+    _stik_pb_varint(b, 0);
+    _stik_pb_varint(b, 1);
+    _stik_pb_varint(b, 127);
+    var s = pb_str(b);
     var d = str_data(s);
     assert_eq(str_len(s), 3, "varint small length");
     assert_eq(load8(d + 0), 0,    "varint 0");
@@ -38,14 +48,14 @@ fn test_proto_varint_small() {
     return 0;
 }
 
-# Test: _stik_proto_varint encodes 128, 300 and 16383 as the expected two-byte varints.
+# Test: _stik_pb_varint encodes 128, 300 and 16383 as the expected two-byte varints.
 fn test_proto_varint_two_bytes() {
     # 128 → 0x80 0x01; 300 → 0xAC 0x02; 16383 → 0xFF 0x7F.
-    var sb = str_builder_new();
-    _stik_proto_varint(sb, 128);
-    _stik_proto_varint(sb, 300);
-    _stik_proto_varint(sb, 16383);
-    var s = str_builder_build(sb);
+    var b = _stik_pb_new();
+    _stik_pb_varint(b, 128);
+    _stik_pb_varint(b, 300);
+    _stik_pb_varint(b, 16383);
+    var s = pb_str(b);
     var d = str_data(s);
     assert_eq(str_len(s), 6, "varint 2-byte length");
     assert_eq(load8(d + 0), 0x80, "128 b0");
@@ -57,15 +67,15 @@ fn test_proto_varint_two_bytes() {
     return 0;
 }
 
-# Test: _stik_proto_tag packs (field << 3) | wire_type, incl. a two-byte tag for field 16.
+# Test: _stik_pb_tag packs (field << 3) | wire_type, incl. a two-byte tag for field 16.
 fn test_proto_tag() {
     # Tag = (field_no << 3) | wire_type. field 1 + varint(0) = 0x08.
     # field 5 + length(2) = 0x2A. field 16 + fixed64(1) = 0x81 0x01.
-    var sb = str_builder_new();
-    _stik_proto_tag(sb, 1, 0);
-    _stik_proto_tag(sb, 5, 2);
-    _stik_proto_tag(sb, 16, 1);
-    var s = str_builder_build(sb);
+    var b = _stik_pb_new();
+    _stik_pb_tag(b, 1, 0);
+    _stik_pb_tag(b, 5, 2);
+    _stik_pb_tag(b, 16, 1);
+    var s = pb_str(b);
     var d = str_data(s);
     assert_eq(str_len(s), 4, "tag bytes total");
     assert_eq(load8(d + 0), 0x08, "tag(1,0)");
@@ -75,13 +85,13 @@ fn test_proto_tag() {
     return 0;
 }
 
-# Test: _stik_proto_fixed64_raw writes 8 little-endian bytes per value.
+# Test: _stik_pb_fixed64_raw writes 8 little-endian bytes per value.
 fn test_proto_fixed64_le() {
     # 1 → 01 00 00 00 00 00 00 00; 0xFF → FF 00 00 00 00 00 00 00.
-    var sb = str_builder_new();
-    _stik_proto_fixed64_raw(sb, 1);
-    _stik_proto_fixed64_raw(sb, 0xFF);
-    var s = str_builder_build(sb);
+    var b = _stik_pb_new();
+    _stik_pb_fixed64_raw(b, 1);
+    _stik_pb_fixed64_raw(b, 0xFF);
+    var s = pb_str(b);
     var d = str_data(s);
     assert_eq(str_len(s), 16, "fixed64 raw 2x8 bytes");
     assert_eq(load8(d + 0), 0x01, "1 LE b0");
@@ -91,12 +101,12 @@ fn test_proto_fixed64_le() {
     return 0;
 }
 
-# Test: _stik_proto_string writes tag, length and the raw bytes of "ab".
+# Test: _stik_pb_string writes tag, length and the raw bytes of "ab".
 fn test_proto_string() {
     # field 1 + length-delim "ab" → 0x0A 0x02 'a' 'b'.
-    var sb = str_builder_new();
-    _stik_proto_string(sb, 1, str_from("ab"));
-    var s = str_builder_build(sb);
+    var b = _stik_pb_new();
+    _stik_pb_string(b, 1, str_from("ab"));
+    var s = pb_str(b);
     var d = str_data(s);
     assert_eq(str_len(s), 4, "string total");
     assert_eq(load8(d + 0), 0x0A, "string tag");
@@ -183,7 +193,7 @@ fn test_span_otlp_kind_and_status() {
     var s = span_new(str_from("x"), trace_id, span_id);
     store64(s + 48, 0);                  # start_time = 0
     span_set_kind(s, SPAN_SERVER);       # field 6 = varint(2)
-    span_set_status(s, SPAN_OK);         # field 15 = sub-message{ code:1 }
+    span_set_status(s, SPAN_OK);         # field 15 = sub-message{ code (field 3): 1 }
 
     var sb = str_builder_new();
     Span_to_otlp_proto(s, sb);
@@ -196,14 +206,14 @@ fn test_span_otlp_kind_and_status() {
     # f6 kind: 0x30 0x02 = 2B at offset 31
     # f7 start: 0x39 + 8 zeros = 9B at offset 33
     # f8 end:   0x41 + 8 zeros = 9B at offset 42
-    # f15 status: 0x7A 0x02 0x08 0x01 = 4B at offset 51
+    # f15 status: 0x7A 0x02 0x18 0x01 = 4B at offset 51
     # Total: 31 + 2 + 9 + 9 + 4 = 55
     assert_eq(str_len(out), 55, "kind+status span total");
     assert_eq(load8(d + 31), 0x30, "f6 kind tag");
     assert_eq(load8(d + 32), 0x02, "f6 kind=SERVER(2)");
     assert_eq(load8(d + 51), 0x7A, "f15 status tag");
     assert_eq(load8(d + 52), 0x02, "f15 status len=2");
-    assert_eq(load8(d + 53), 0x08, "status.code tag");
+    assert_eq(load8(d + 53), 0x18, "status.code tag (field 3)");
     assert_eq(load8(d + 54), 0x01, "status.code = OK(1)");
     return 0;
 }
