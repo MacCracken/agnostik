@@ -2,9 +2,9 @@
 
 ## Status
 
-**v1.10.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
+**v1.11.0** is the most recent stable release, on Cyrius `6.7.9`. It has 12
 modules plus `src/proto.cyr` (the protobuf writer behind the OTLP encoders),
-994 public fns (every fn documented), and 2,148 test assertions across 22
+1,093 public fns (every fn documented), and 2,249 test assertions across 23
 `.tcyr` files, passing on x86_64-linux and on aarch64 under `qemu-aarch64`.
 There are 29 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
@@ -14,7 +14,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5, v1.7.0, v1.7.1, v1.8.0, v1.9.0 and v1.10.0 passes).
+[`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md) (the 1.6.5 and v1.7.0 through v1.11.0 passes).
 
 Every item below is pinned to a release. Shipped work leaves this file for the
 CHANGELOG: if work is worth doing, it has a slot, and once it ships it is no
@@ -22,72 +22,8 @@ longer here.
 
 | Slot | Kind | Theme |
 |---|---|---|
-| [v1.11.0](#v1110--contract-gaps-from-the-documentation-pass-minor) | minor | Missing setters / getters, unset vtable slots, reentrancy, `agent_id_from_str` validation, newer Landlock rights, `RlimitType` → `RLIMIT_*` |
 | [v1.12.0](#v1120--otlp-export-envelopes-and-remaining-fields-minor) | minor | OTLP `Resource` / `InstrumentationScope` and the export envelopes; status message, exemplars, histogram points; UTF-8 in string fields |
 | [v2.0.0](#v200--breaking-changes-next-major) | major | Accessor rename, dead-helper removal (`_stik_json_int` Result may move earlier) |
-
----
-
-## v1.11.0 — Contract gaps from the documentation pass (minor)
-
-The v1.9.0 documentation pass read every fn. It fixed the three defects it found, and recorded
-these gaps, which are additive or local fixes. None breaks the public API.
-
-### Missing accessors (the F-021 class)
-
-🔧 Fields with a getter and no setter:
-- **llm:** `samp_freq_penalty`, `samp_pres_penalty`, `ireq_prompt`, the `RateLimitInfo` fields.
-- **security:** the UTS / IPC / cgroup / time namespace flags, `sandbox_isolate_net`, the
-  device-rule major / minor numbers.
-- **config, validation, audit, telemetry:** several fields, including `telcfg_endpoint` and the
-  audit-retention fields.
-
-Some structs (`SecurityContext`, `SandboxCapabilities`, `TokenPayload`) have no setters at all,
-and the AppArmor and SELinux setters have no getters. Take the census from the source before
-starting: list every field offset, its getter and its setter. Each new setter gets a round-trip
-test, as v1.7.0's `ClassificationResult` setters did.
-
-### Unset optional vtable slots
-
-🔧 `audit_sink_vtable` and `secret_store_vtable` leave their optional slots at 0. `as_verify_entry`
-and `as_seal` dispatch through theirs without checking, so a sink built without
-`audit_sink_set_verify_entry` / `_set_seal` crashes on a call to address 0. The audit sink's
-`query` slot and the secret store's `rotate` / `search_by_tag` slots have no dispatcher at all:
-callers use `trait_call*` directly, with the same hazard. Check the slot in the two dispatchers,
-returning an unsupported-operation `Err` (or the fn's documented "none" value), and add checked
-dispatchers for the other three.
-
-### Global hand-offs
-
-🔧 `textmap_set`, `propagator_inject` and `ss_put` dispatch with `trait_call1`, which passes one
-argument after the data pointer, so each hands its second argument (`value`, `carrier`, `value`)
-to the callback through a module global. A nested or concurrent call overwrites it. The stdlib
-has no `trait_call2`, so dispatch through the slot with `fncall3(fp, data, a, b)` instead, and the
-callback receives the argument directly. That changes the callback
-signature consumers implement, so check every consumer's implementations first. If any exist,
-keep the global path working alongside, or move the change to v2.0.0.
-
-### `agent_id_from_str` validation
-
-🔧 It skips positions 8, 13, 18 and 23 without checking that they hold a `-`, so any byte is
-accepted there. Check them. Whether to also require the v4 version and
-variant bits is a decision: a consumer may parse ids from elsewhere, so check every consumer's
-calls first, and record the choice in an ADR.
-
-### Newer Landlock rights
-
-✨ The kernel uapi header (`linux/landlock.h`) defines four rights the enums lack:
-`LANDLOCK_ACCESS_FS_IOCTL_DEV` (bit 15), `LANDLOCK_ACCESS_FS_RESOLVE_UNIX` (bit 16),
-`LANDLOCK_ACCESS_NET_BIND_UDP` (bit 2) and `LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP` (bit 3).
-Append them to `LandlockFsAccess` / `LandlockNetAccess` at those values, with names in the
-`landlock` crate's spelling. Appending keeps every existing value.
-
-### `RlimitType` → `RLIMIT_*`
-
-✨ `RlimitType`'s values are agnostik ordinals, not the kernel's `RLIMIT_*` numbers (`RLIM_NOFILE`
-is 0, which is `RLIMIT_CPU`). No repo passes them to `setrlimit(2)` today. Add a mapping fn that
-returns the `RLIMIT_*` resource number. Renumbering the enum itself would be a break, so it stays
-out of a minor.
 
 ---
 

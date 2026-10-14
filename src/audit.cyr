@@ -171,7 +171,8 @@ fn aentry_set_duration_ms(e, v)    { store64(e + 88, v); return 0; }
 fn aentry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
 # A RetentionPolicy: how long audit records are kept, in days. 24 bytes:
 #   +0 min_days (from the argument), +8 max_days (0), +16 archive (0).
-# This module has no setters, so max_days and archive keep their 0 defaults.
+# max_days and archive are set with retpol_set_max_days / retpol_set_archive
+# (v1.11.0).
 fn retention_policy_new(min_days) {
     var p = alloc(24);
     store64(p, min_days);
@@ -181,10 +182,14 @@ fn retention_policy_new(min_days) {
 }
 # Minimum retention period in days, as passed to retention_policy_new.
 fn retpol_min_days(p)    { return load64(p); }
-# Maximum retention period in days; 0 at construction and never set here.
+# Maximum retention period in days; 0 until retpol_set_max_days.
 fn retpol_max_days(p)    { return load64(p + 8); }
-# Archive setting; 0 at construction and never set here.
+# Set the value retpol_max_days reads, stored as given (not validated). Returns 0.
+fn retpol_set_max_days(p, v) { store64(p + 8, v); return 0; }
+# Archive setting; 0 until retpol_set_archive.
 fn retpol_archive(p)     { return load64(p + 16); }
+# Set the value retpol_archive reads, stored as given (not validated). Returns 0.
+fn retpol_set_archive(p, v) { store64(p + 16, v); return 0; }
 var AS_APPEND = 0;
 var AS_VERIFY_CHAIN = 1;
 var AS_VERIFY_ENTRY = 2;
@@ -211,22 +216,40 @@ fn audit_sink_vtable(append_fn, verify_chain_fn) {
 # Call it through the as_* dispatchers.
 fn audit_sink_new(vtable, data) { return trait_obj_new(vtable, data); }
 # Dispatch to the sink's append fn as fn(data, entry) and return its result
-# unchanged.
-fn as_append(sink, entry)       { return trait_call1(sink, AS_APPEND, entry); }
+# unchanged, or 0 when the slot is unset (every as_* checks its slot since
+# v1.11.0; through v1.10.0 an unset slot was called at address 0).
+fn as_append(sink, entry)       { return _stik_dispatch1(sink, AS_APPEND, entry); }
 # Dispatch to the sink's verify_chain fn as fn(data) and return its result
-# unchanged.
-fn as_verify_chain(sink)        { return trait_call0(sink, AS_VERIFY_CHAIN); }
+# unchanged, or 0 when the slot is unset.
+fn as_verify_chain(sink)        { return _stik_dispatch0(sink, AS_VERIFY_CHAIN); }
 # Dispatch to the sink's verify_entry fn as fn(data, entry) and return its
-# result. The slot must have been set with audit_sink_set_verify_entry.
-fn as_verify_entry(sink, entry) { return trait_call1(sink, AS_VERIFY_ENTRY, entry); }
-# Dispatch to the sink's seal fn as fn(data) and return its result. The slot
-# must have been set with audit_sink_set_seal.
-fn as_seal(sink)                { return trait_call0(sink, AS_SEAL); }
+# result. A sink built without audit_sink_set_verify_entry returns 0, so an
+# entry it cannot verify is not reported as verified (fails closed);
+# audit_sink_has tells the two cases apart.
+fn as_verify_entry(sink, entry) { return _stik_dispatch1(sink, AS_VERIFY_ENTRY, entry); }
+# Dispatch to the sink's seal fn as fn(data) and return its result, or 0 for a
+# sink built without audit_sink_set_seal.
+fn as_seal(sink)                { return _stik_dispatch0(sink, AS_SEAL); }
+# Dispatch to the sink's query fn as fn(data, filter). Returns Ok(its result),
+# or a not-supported Err for a sink built without audit_sink_set_query. The
+# filter is passed as given; its form is the sink's contract.
+fn as_query(sink, filter) {
+    if (_stik_slot_fn(sink, AS_QUERY) == 0) { return stik_err_not_supported(str_from("audit sink has no query")); }
+    return Ok(_stik_dispatch1(sink, AS_QUERY, filter));
+}
+# 1 when `sink` implements `slot` (AS_APPEND … AS_SEAL), else 0. A slot number
+# outside that range is 0.
+fn audit_sink_has(sink, slot) {
+    if (slot < AS_APPEND) { return 0; }
+    if (slot > AS_SEAL) { return 0; }
+    if (_stik_slot_fn(sink, slot) == 0) { return 0; }
+    return 1;
+}
 # Fill the verify_entry slot (AS_VERIFY_ENTRY) of an audit-sink vtable.
 # Returns 0.
 fn audit_sink_set_verify_entry(vt, fn_ptr) { store64(vt + 16, fn_ptr); return 0; }
-# Fill the query slot (AS_QUERY) of an audit-sink vtable. Returns 0. This
-# module has no dispatcher for it; call it with trait_call0/1 and AS_QUERY.
+# Fill the query slot (AS_QUERY) of an audit-sink vtable; as_query dispatches
+# to it. Returns 0.
 fn audit_sink_set_query(vt, fn_ptr) { store64(vt + 24, fn_ptr); return 0; }
 # Fill the seal slot (AS_SEAL) of an audit-sink vtable. Returns 0.
 fn audit_sink_set_seal(vt, fn_ptr)  { store64(vt + 32, fn_ptr); return 0; }

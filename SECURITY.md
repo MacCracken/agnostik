@@ -4,8 +4,8 @@
 
 | Version  | Supported |
 |----------|-----------|
-| 1.10.x   | Yes (current) |
-| < 1.10.0 | No (upgrade to the current 1.x release) |
+| 1.11.x   | Yes (current) |
+| < 1.11.0 | No (upgrade to the current 1.x release) |
 
 Security fixes ship in a new release on the current line. There are no
 backport branches: every 1.x release keeps the public API (additions only,
@@ -76,6 +76,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.8.0 minor-cut pass (same report, fourth section): cyrius 6.6.20 → 6.7.9, 50 enum name/parse fns, cross-library symbol scan | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.9.0 minor-cut pass (same report, fifth section): `RestartPolicy` pair, every fn documented, Unix-time stamps, span-id byte order | F-026 (LOW): two JSON string fields (`export_endpoint`, `AgentInfo` `name`) serialized unescaped; fixed in 1.9.0 | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.10.0 minor-cut pass (same report, sixth section): OTLP completion, the in-place protobuf buffer, the Status field fix | F-027 (LOW, defense in depth): the OTLP encoders could write out of bounds on a negative-length `Str` or read address 0 on null span fields; fixed in 1.10.0 | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
+| 2026-10-14 | v1.11.0 minor-cut pass (same report, seventh section): checked trait dispatch, argument-passing hand-offs, the UUID separator check, 91 setters, newer Landlock rights | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

@@ -129,8 +129,10 @@ enum LandlockFsAccess {
     LL_MAKE_SYM;
     LL_REFER;
     LL_TRUNCATE;
+    LL_IOCTL_DEV;
+    LL_RESOLVE_UNIX;
 }
-enum LandlockNetAccess { LL_BIND_TCP; LL_CONNECT_TCP; }
+enum LandlockNetAccess { LL_BIND_TCP; LL_CONNECT_TCP; LL_BIND_UDP; LL_CONNECT_SEND_UDP; }
 enum LandlockScope { LL_SCOPE_ABSTRACT_UNIX; LL_SCOPE_SIGNAL; }
 enum DeviceType { DEV_CHAR; DEV_BLOCK; DEV_ALL; }
 enum RlimitType {
@@ -212,14 +214,22 @@ fn ns_net(n)    { return load64(n + 8); }
 fn ns_mount(n)  { return load64(n + 16); }
 # User namespace flag; 0 in a fresh config.
 fn ns_user(n)   { return load64(n + 24); }
-# UTS namespace flag; 0 from namespace_config_new, and no setter exists.
+# UTS namespace flag; 0 from namespace_config_new until ns_set_uts.
 fn ns_uts(n)    { return load64(n + 32); }
-# IPC namespace flag; 0 from namespace_config_new, and no setter exists.
+# Set the value ns_uts reads, stored as given (not validated). Returns 0.
+fn ns_set_uts(n, v) { store64(n + 32, v); return 0; }
+# IPC namespace flag; 0 from namespace_config_new until ns_set_ipc.
 fn ns_ipc(n)    { return load64(n + 40); }
-# cgroup namespace flag; 0 from namespace_config_new, and no setter exists.
+# Set the value ns_ipc reads, stored as given (not validated). Returns 0.
+fn ns_set_ipc(n, v) { store64(n + 40, v); return 0; }
+# cgroup namespace flag; 0 from namespace_config_new until ns_set_cgroup.
 fn ns_cgroup(n) { return load64(n + 48); }
-# Time namespace flag; 0 from namespace_config_new, and no setter exists.
+# Set the value ns_cgroup reads, stored as given (not validated). Returns 0.
+fn ns_set_cgroup(n, v) { store64(n + 48, v); return 0; }
+# Time namespace flag; 0 from namespace_config_new until ns_set_time.
 fn ns_time(n)   { return load64(n + 56); }
+# Set the value ns_time reads, stored as given (not validated). Returns 0.
+fn ns_set_time(n, v) { store64(n + 56, v); return 0; }
 # Set the PID namespace flag; returns 0.
 fn ns_set_pid(n, v)    { store64(n, v); return 0; }
 # Set the network namespace flag; returns 0.
@@ -233,8 +243,8 @@ fn ns_set_user(n, v)   { store64(n + 24, v); return 0; }
 # NET_LOCALHOST_ONLY), +16 seccomp (0 = none), +24 isolate_net (default 1),
 # +40 AppArmor profile (Str), +48 SELinux label (Str), +64 masked_paths (vec,
 # lazy), +72 readonly_paths (vec, lazy), +80 sysctl (map, lazy). Every other
-# slot starts 0; +32 and +56 have no accessor. The AppArmor and SELinux slots
-# have setters but no getters, and isolate_net has a getter but no setter.
+# slot starts 0; +32 and +56 have no accessor. Since v1.11.0 the AppArmor and
+# SELinux slots have getters and isolate_net has a setter.
 fn sandbox_config_new() {
     # 88 bytes = 11 u64 slots. Unrolled: store the two live fields with
     # their values and zero the other nine directly — no loop counter /
@@ -279,8 +289,10 @@ fn sandbox_net_access(s)    { return load64(s + 8); }
 # Seccomp slot: 0 (the default) means none. Meant to hold a SeccompProfile
 # (seccomp_profile_new); nothing here checks what is stored.
 fn sandbox_seccomp(s)       { return load64(s + 16); }
-# Network-isolation flag; 1 by default, and no setter exists.
+# Network-isolation flag; 1 by default, set with sandbox_set_isolate_net.
 fn sandbox_isolate_net(s)   { return load64(s + 24); }
+# Set the value sandbox_isolate_net reads, stored as given (not validated). Returns 0.
+fn sandbox_set_isolate_net(s, v) { store64(s + 24, v); return 0; }
 # vec of paths to mask in the sandbox; created empty on first access.
 fn sandbox_masked_paths(s)  { return _stik_lazy_vec(s + 64); }
 # vec of paths to make read-only in the sandbox; created empty on first access.
@@ -291,14 +303,21 @@ fn sandbox_sysctl(s)        { return _stik_lazy_map(s + 80); }
 fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
 # Set the seccomp slot (see sandbox_seccomp); returns 0.
 fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
-# Set the AppArmor profile name (Str, slot +40); returns 0. There is no getter.
+# Set the AppArmor profile name (Str, slot +40); returns 0. sandbox_apparmor reads it.
 fn sandbox_set_apparmor(s, v: Str) { store64(s + 40, v); return 0; }
-# Set the SELinux label (Str, slot +48); returns 0. There is no getter.
+# Set the SELinux label (Str, slot +48); returns 0. sandbox_selinux reads it.
 fn sandbox_set_selinux(s, v: Str)  { store64(s + 48, v); return 0; }
+# AppArmor profile name (Str) set with sandbox_set_apparmor, or 0 when unset
+# (added in v1.11.0; there was no getter).
+fn sandbox_apparmor(s) { return load64(s + 40); }
+# SELinux label (Str) set with sandbox_set_selinux, or 0 when unset (added in
+# v1.11.0).
+fn sandbox_selinux(s) { return load64(s + 48); }
 # A SecurityContext: an agent's permissions, sandbox and process identity.
 # 56 bytes: +0 agent_id (as given), +8 permissions (empty vec), +16 sandbox
 # (a fresh sandbox_config_new), +24 run_as_user 0, +32 run_as_group 0,
-# +40 readonly_root 0, +48 no_new_privs 1. There are no setters.
+# +40 readonly_root 0, +48 no_new_privs 1. The four scalars have secctx_set_*
+# setters since v1.11.0.
 fn security_context_new(agent_id) {
     var ctx = alloc(56);
     store64(ctx, agent_id);
@@ -318,12 +337,20 @@ fn secctx_permissions(c)     { return load64(c + 8); }
 fn secctx_sandbox(c)         { return load64(c + 16); }
 # User ID to run the agent's process as; 0 in a fresh context.
 fn secctx_run_as_user(c)     { return load64(c + 24); }
+# Set the value secctx_run_as_user reads, stored as given (not validated). Returns 0.
+fn secctx_set_run_as_user(c, v) { store64(c + 24, v); return 0; }
 # Group ID to run the agent's process as; 0 in a fresh context.
 fn secctx_run_as_group(c)    { return load64(c + 32); }
+# Set the value secctx_run_as_group reads, stored as given (not validated). Returns 0.
+fn secctx_set_run_as_group(c, v) { store64(c + 32, v); return 0; }
 # Read-only root filesystem flag; 0 in a fresh context.
 fn secctx_readonly_root(c)   { return load64(c + 40); }
+# Set the value secctx_readonly_root reads, stored as given (not validated). Returns 0.
+fn secctx_set_readonly_root(c, v) { store64(c + 40, v); return 0; }
 # no_new_privs flag; 1 (on) in a fresh context.
 fn secctx_no_new_privs(c)    { return load64(c + 48); }
+# Set the value secctx_no_new_privs reads, stored as given (not validated). Returns 0.
+fn secctx_set_no_new_privs(c, v) { store64(c + 48, v); return 0; }
 # A SecurityPolicy: a named rule applying `effect` to a set of permissions.
 # 24 bytes: +0 name (Str), +8 effect (PolicyEffect), +16 permissions (empty vec).
 fn security_policy_new(name: Str, effect) {
@@ -363,7 +390,8 @@ fn capset_bounding(c)    { return load64(c + 24); }
 fn capset_ambient(c)     { return load64(c + 32); }
 # A SandboxCapabilities: which sandboxing features the host supports. 48 bytes,
 # zeroed: +0 seccomp, +8 seccomp_mode (SeccompMode), +16 landlock, +24 Landlock
-# ABI version, +32 cgroup v2, +40 namespaces. No setters exist.
+# ABI version, +32 cgroup v2, +40 namespaces, each set with its sbcap_set_*
+# setter (v1.11.0).
 fn sandbox_capabilities_new() {
     var c = alloc(48);
     var i = 0;
@@ -372,16 +400,28 @@ fn sandbox_capabilities_new() {
 }
 # Seccomp-available flag; 0 in a fresh struct.
 fn sbcap_seccomp(c)      { return load64(c); }
+# Set the value sbcap_seccomp reads, stored as given (not validated). Returns 0.
+fn sbcap_set_seccomp(c, v) { store64(c, v); return 0; }
 # Seccomp mode, a SeccompMode; 0 (SECCOMP_DISABLED) in a fresh struct.
 fn sbcap_seccomp_mode(c) { return load64(c + 8); }
+# Set the value sbcap_seccomp_mode reads, stored as given (not validated). Returns 0.
+fn sbcap_set_seccomp_mode(c, v) { store64(c + 8, v); return 0; }
 # Landlock-available flag; 0 in a fresh struct.
 fn sbcap_landlock(c)     { return load64(c + 16); }
+# Set the value sbcap_landlock reads, stored as given (not validated). Returns 0.
+fn sbcap_set_landlock(c, v) { store64(c + 16, v); return 0; }
 # Landlock ABI version; 0 in a fresh struct.
 fn sbcap_ll_abi(c)       { return load64(c + 24); }
+# Set the value sbcap_ll_abi reads, stored as given (not validated). Returns 0.
+fn sbcap_set_ll_abi(c, v) { store64(c + 24, v); return 0; }
 # cgroup v2 available flag; 0 in a fresh struct.
 fn sbcap_cgroup_v2(c)    { return load64(c + 32); }
+# Set the value sbcap_cgroup_v2 reads, stored as given (not validated). Returns 0.
+fn sbcap_set_cgroup_v2(c, v) { store64(c + 32, v); return 0; }
 # Namespaces-available flag; 0 in a fresh struct.
 fn sbcap_namespaces(c)   { return load64(c + 40); }
+# Set the value sbcap_namespaces reads, stored as given (not validated). Returns 0.
+fn sbcap_set_namespaces(c, v) { store64(c + 40, v); return 0; }
 # A SeccompArg: a condition on one syscall argument, used in a SeccompRule's
 # args. 32 bytes: +0 index (which argument), +8 value, +16 value_two, +24 op
 # (SeccompArgOp), all as given.
@@ -425,6 +465,8 @@ fn fsrule_readonly(r)    { return load64(r + 16); }
 fn fsrule_noexec(r)      { return load64(r + 24); }
 # Mount propagation, a MountPropagation; MOUNT_PRIVATE in a fresh rule.
 fn fsrule_propagation(r) { return load64(r + 40); }
+# Set the value fsrule_propagation reads, stored as given (not validated). Returns 0.
+fn fsrule_set_propagation(r, v) { store64(r + 40, v); return 0; }
 # Set the read-only flag; returns 0.
 fn fsrule_set_readonly(r, v) { store64(r + 16, v); return 0; }
 # Set the noexec flag; returns 0.
@@ -481,8 +523,10 @@ fn encrypted_storage_new() {
 fn encst_enabled(e)    { return load64(e); }
 # Size in megabytes; 256 in a fresh struct.
 fn encst_size_mb(e)    { return load64(e + 8); }
-# Filesystem type (Str); "ext4" in a fresh struct, and no setter exists.
+# Filesystem type (Str); "ext4" in a fresh struct until encst_set_filesystem.
 fn encst_filesystem(e) { return load64(e + 16); }
+# Set the value encst_filesystem reads, stored as given (not validated). Returns 0.
+fn encst_set_filesystem(e, v) { store64(e + 16, v); return 0; }
 # Set the enabled flag; returns 0.
 fn encst_set_enabled(e, v)  { store64(e, v); return 0; }
 # Set the size in megabytes; returns 0.
@@ -505,7 +549,8 @@ fn rlimit_soft(r) { return load64(r + 8); }
 fn rlimit_hard(r) { return load64(r + 16); }
 # A DeviceRule: allows or denies access to devices. 40 bytes: +0 allow flag,
 # +8 type (DeviceType), +16 major 0, +24 minor 0, +32 access (Str). allow, type
-# and access come from the arguments; major and minor have no setter.
+# and access come from the arguments; major and minor are set with
+# devrule_set_major / devrule_set_minor.
 fn device_rule_new(allow, dtype, access_str: Str) {
     var r = alloc(40);
     store64(r, allow);
@@ -519,10 +564,14 @@ fn device_rule_new(allow, dtype, access_str: Str) {
 fn devrule_allow(r)  { return load64(r); }
 # Device type, a DeviceType.
 fn devrule_type(r)   { return load64(r + 8); }
-# Device major number; 0 from device_rule_new, and no setter exists.
+# Device major number; 0 from device_rule_new until devrule_set_major.
 fn devrule_major(r)  { return load64(r + 16); }
-# Device minor number; 0 from device_rule_new, and no setter exists.
+# Set the value devrule_major reads, stored as given (not validated). Returns 0.
+fn devrule_set_major(r, v) { store64(r + 16, v); return 0; }
+# Device minor number; 0 from device_rule_new until devrule_set_minor.
 fn devrule_minor(r)  { return load64(r + 24); }
+# Set the value devrule_minor reads, stored as given (not validated). Returns 0.
+fn devrule_set_minor(r, v) { store64(r + 24, v); return 0; }
 # Access string (Str), as given to device_rule_new.
 fn devrule_access(r) { return load64(r + 32); }
 # A NamespaceEntry: one namespace and an optional path. 16 bytes: +0 type (as
@@ -631,7 +680,7 @@ fn rperm_conditions(p) { return _stik_lazy_vec(p + 16); }
 # A TokenPayload: the claims of a JWT-style auth token. 64 bytes: +0 sub (Str),
 # +8 role (Role), +16 permissions (empty vec), +24 iat 0, +32 exp 0, +40 jti
 # (empty Str), +48 email 0, +56 display_name 0. Only sub and role are set at
-# construction, and there are no setters.
+# construction; the token_set_* setters (v1.11.0) set the rest.
 fn token_payload_new(sub: Str, role) {
     var t = alloc(64);
     store64(t, sub);
@@ -652,14 +701,24 @@ fn token_role(t)         { return load64(t + 8); }
 fn token_permissions(t)  { return load64(t + 16); }
 # Issued-at time (the iat claim); 0 in a fresh payload. No unit is enforced here.
 fn token_iat(t)          { return load64(t + 24); }
+# Set the value token_iat reads, stored as given (not validated). Returns 0.
+fn token_set_iat(t, v) { store64(t + 24, v); return 0; }
 # Expiry time (the exp claim); 0 in a fresh payload. No unit is enforced here.
 fn token_exp(t)          { return load64(t + 32); }
+# Set the value token_exp reads, stored as given (not validated). Returns 0.
+fn token_set_exp(t, v) { store64(t + 32, v); return 0; }
 # Token ID (the jti claim), a Str; empty in a fresh payload.
 fn token_jti(t)          { return load64(t + 40); }
+# Set the value token_jti reads, stored as given (not validated). Returns 0.
+fn token_set_jti(t, v) { store64(t + 40, v); return 0; }
 # Email address (Str), or 0 (no Str at all) in a fresh payload.
 fn token_email(t)        { return load64(t + 48); }
+# Set the value token_email reads, stored as given (not validated). Returns 0.
+fn token_set_email(t, v) { store64(t + 48, v); return 0; }
 # Display name (Str), or 0 (no Str at all) in a fresh payload.
 fn token_display_name(t) { return load64(t + 56); }
+# Set the value token_display_name reads, stored as given (not validated). Returns 0.
+fn token_set_display_name(t, v) { store64(t + 56, v); return 0; }
 # An AuthContext: an authenticated agent's role and permissions. 24 bytes:
 # +0 agent_id (as given), +8 role (Role), +16 permissions (empty vec).
 fn auth_context_new(agent_id, role) {
@@ -1059,10 +1118,11 @@ fn system_feature_parse(s: Str) {
     return stik_err_invalid_argument(str_from("unknown SystemFeature name"));
 }
 # LandlockFsAccess display name: "Execute", "WriteFile", "ReadFile" …
-# "Truncate", and "Unknown" for a value outside the enum.
-# landlock_fs_access_parse is the inverse. Spelling: the Rust `landlock`
+# "Truncate", "IoctlDev", "ResolveUnix", and "Unknown" for a value outside the
+# enum. landlock_fs_access_parse is the inverse. Spelling: the Rust `landlock`
 # crate's AccessFs names; each value is the kernel's LANDLOCK_ACCESS_FS_* bit
-# index, so `1 << v` is the kernel flag.
+# index, so `1 << v` is the kernel flag. IoctlDev (bit 15) needs Landlock ABI 5
+# and ResolveUnix (bit 16) ABI 9; both were added in v1.11.0.
 fn landlock_fs_access_name(a) {
     if (a == LL_EXECUTE)       { return "Execute"; }
     elif (a == LL_WRITE_FILE)  { return "WriteFile"; }
@@ -1079,6 +1139,8 @@ fn landlock_fs_access_name(a) {
     elif (a == LL_MAKE_SYM)    { return "MakeSym"; }
     elif (a == LL_REFER)       { return "Refer"; }
     elif (a == LL_TRUNCATE)    { return "Truncate"; }
+    elif (a == LL_IOCTL_DEV)   { return "IoctlDev"; }
+    elif (a == LL_RESOLVE_UNIX) { return "ResolveUnix"; }
     return "Unknown";
 }
 # Parse a LandlockFsAccess display name: exact, case-sensitive match. Returns
@@ -1099,15 +1161,22 @@ fn landlock_fs_access_parse(s: Str) {
     elif (str_eq_cstr(s, "MakeSym") == 1) { return Ok(LL_MAKE_SYM); }
     elif (str_eq_cstr(s, "Refer") == 1) { return Ok(LL_REFER); }
     elif (str_eq_cstr(s, "Truncate") == 1) { return Ok(LL_TRUNCATE); }
+    elif (str_eq_cstr(s, "IoctlDev") == 1) { return Ok(LL_IOCTL_DEV); }
+    elif (str_eq_cstr(s, "ResolveUnix") == 1) { return Ok(LL_RESOLVE_UNIX); }
     return stik_err_invalid_argument(str_from("unknown LandlockFsAccess name"));
 }
-# LandlockNetAccess display name: "BindTcp" or "ConnectTcp", and "Unknown" for
-# a value outside the enum. landlock_net_access_parse is the inverse.
-# Spelling: the Rust `landlock` crate's AccessNet names; each value is the
-# kernel's LANDLOCK_ACCESS_NET_* bit index.
+# LandlockNetAccess display name: "BindTcp", "ConnectTcp", "BindUdp" or
+# "ConnectSendUdp", and "Unknown" for a value outside the enum.
+# landlock_net_access_parse is the inverse. Spelling: the Rust `landlock`
+# crate's AccessNet names; each value is the kernel's LANDLOCK_ACCESS_NET_* bit
+# index. The UDP rights (bits 2 and 3, Landlock ABI 10, added in v1.11.0) are
+# not in the crate yet, so their names follow its rule: the kernel suffix in
+# CamelCase.
 fn landlock_net_access_name(a) {
     if (a == LL_BIND_TCP)      { return "BindTcp"; }
     elif (a == LL_CONNECT_TCP) { return "ConnectTcp"; }
+    elif (a == LL_BIND_UDP)    { return "BindUdp"; }
+    elif (a == LL_CONNECT_SEND_UDP) { return "ConnectSendUdp"; }
     return "Unknown";
 }
 # Parse a LandlockNetAccess display name: exact, case-sensitive match. Returns
@@ -1115,6 +1184,8 @@ fn landlock_net_access_name(a) {
 fn landlock_net_access_parse(s: Str) {
     if (str_eq_cstr(s, "BindTcp") == 1) { return Ok(LL_BIND_TCP); }
     elif (str_eq_cstr(s, "ConnectTcp") == 1) { return Ok(LL_CONNECT_TCP); }
+    elif (str_eq_cstr(s, "BindUdp") == 1) { return Ok(LL_BIND_UDP); }
+    elif (str_eq_cstr(s, "ConnectSendUdp") == 1) { return Ok(LL_CONNECT_SEND_UDP); }
     return stik_err_invalid_argument(str_from("unknown LandlockNetAccess name"));
 }
 # LandlockScope display name: "AbstractUnixSocket" or "Signal", and "Unknown"
@@ -1154,7 +1225,8 @@ fn device_type_parse(s: Str) {
 # for a value outside the enum. rlimit_type_parse is the inverse. Spelling:
 # the limits.conf(5) item names, so a limits config parses as-is. The values
 # are agnostik ordinals, NOT the kernel's RLIMIT_* numbers (RLIM_NOFILE is 0,
-# which is RLIMIT_CPU): do not pass one to setrlimit(2) unmapped.
+# which is RLIMIT_CPU): map one with rlimit_type_resource before passing it to
+# setrlimit(2).
 fn rlimit_type_name(t) {
     if (t == RLIM_NOFILE)          { return "nofile"; }
     elif (t == RLIM_NPROC)         { return "nproc"; }
@@ -1182,4 +1254,22 @@ fn rlimit_type_parse(s: Str) {
     elif (str_eq_cstr(s, "sigpending") == 1) { return Ok(RLIM_SIGPENDING); }
     elif (str_eq_cstr(s, "msgqueue") == 1) { return Ok(RLIM_MSGQUEUE); }
     return stik_err_invalid_argument(str_from("unknown RlimitType name"));
+}
+# The Linux RLIMIT_* resource number for a RlimitType, the value setrlimit(2)
+# and prlimit(2) take, or -1 for a value outside the enum. The numbers are
+# asm-generic/resource.h's, which x86_64 and aarch64 use (alpha, mips and sparc
+# renumber some, and other kernels have their own): NOFILE 7, NPROC 6, AS 9,
+# FSIZE 1, CORE 4, DATA 2, STACK 3, MEMLOCK 8, SIGPENDING 11, MSGQUEUE 12.
+fn rlimit_type_resource(t) {
+    if (t == RLIM_NOFILE)          { return 7; }
+    elif (t == RLIM_NPROC)         { return 6; }
+    elif (t == RLIM_ADDRESS_SPACE) { return 9; }
+    elif (t == RLIM_FILE_SIZE)     { return 1; }
+    elif (t == RLIM_CORE)          { return 4; }
+    elif (t == RLIM_DATA)          { return 2; }
+    elif (t == RLIM_STACK)         { return 3; }
+    elif (t == RLIM_MEMLOCK)       { return 8; }
+    elif (t == RLIM_SIGPENDING)    { return 11; }
+    elif (t == RLIM_MSGQUEUE)      { return 12; }
+    return 0 - 1;
 }

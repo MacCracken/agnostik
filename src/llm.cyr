@@ -458,10 +458,14 @@ fn samp_temperature(s)  { return load64(s); }
 fn samp_top_p(s)        { return load64(s + 8); }
 # top_k sampling cutoff (a token count); 0 by default.
 fn samp_top_k(s)        { return load64(s + 16); }
-# Frequency penalty, an integer; 0 by default. This module has no setter for it.
+# Frequency penalty, an integer; 0 by default (samp_set_freq_penalty).
 fn samp_freq_penalty(s) { return load64(s + 24); }
-# Presence penalty, an integer; 0 by default. This module has no setter for it.
+# Set the value samp_freq_penalty reads, stored as given (not validated). Returns 0.
+fn samp_set_freq_penalty(s, v) { store64(s + 24, v); return 0; }
+# Presence penalty, an integer; 0 by default (samp_set_pres_penalty).
 fn samp_pres_penalty(s) { return load64(s + 32); }
+# Set the value samp_pres_penalty reads, stored as given (not validated). Returns 0.
+fn samp_set_pres_penalty(s, v) { store64(s + 32, v); return 0; }
 # vec of stop sequences (Str), empty by default; push onto it to add one.
 fn samp_stop_seqs(s)    { return load64(s + 40); }
 # Sampling seed; 0 by default.
@@ -540,8 +544,10 @@ fn inference_request_new(model: Str) {
 }
 # Model identifier (Str) the request targets.
 fn ireq_model(r)         { return load64(r); }
-# Plain prompt (Str): "" from inference_request_new; this module has no setter.
+# Plain prompt (Str): "" from inference_request_new until ireq_set_prompt.
 fn ireq_prompt(r)        { return load64(r + 8); }
+# Set the value ireq_prompt reads, stored as given (not validated). Returns 0.
+fn ireq_set_prompt(r, v) { store64(r + 8, v); return 0; }
 # Top-level system prompt (Str), or 0 when none is set.
 fn ireq_system(r)        { return load64(r + 16); }
 # vec of the conversation's Message pointers, empty at construction; push to add
@@ -713,14 +719,24 @@ fn rate_limit_info_new() {
 }
 # Request limit.
 fn rli_limit_requests(r)     { return load64(r); }
+# Set the value rli_limit_requests reads, stored as given (not validated). Returns 0.
+fn rli_set_limit_requests(r, v) { store64(r, v); return 0; }
 # Requests remaining under the limit.
 fn rli_remaining_requests(r) { return load64(r + 8); }
+# Set the value rli_remaining_requests reads, stored as given (not validated). Returns 0.
+fn rli_set_remaining_requests(r, v) { store64(r + 8, v); return 0; }
 # Token limit.
 fn rli_limit_tokens(r)       { return load64(r + 16); }
+# Set the value rli_limit_tokens reads, stored as given (not validated). Returns 0.
+fn rli_set_limit_tokens(r, v) { store64(r + 16, v); return 0; }
 # Tokens remaining under the limit.
 fn rli_remaining_tokens(r)   { return load64(r + 24); }
+# Set the value rli_remaining_tokens reads, stored as given (not validated). Returns 0.
+fn rli_set_remaining_tokens(r, v) { store64(r + 24, v); return 0; }
 # Seconds until the rate limit resets.
 fn rli_reset_seconds(r)      { return load64(r + 32); }
+# Set the value rli_reset_seconds reads, stored as given (not validated). Returns 0.
+fn rli_set_reset_seconds(r, v) { store64(r + 32, v); return 0; }
 # A ToolResult: the outcome of a tool call, returned to the model. 24 bytes,
 # all 8-byte slots: +0 tool_use_id (Str, the tool use it answers), +8 content
 # (Str), +16 is-error flag. content_tool_result boxes the same record.

@@ -297,6 +297,8 @@ fn res_instance_id(r)     { return load64(r + 16); }
 fn res_attributes(r)      { return load64(r + 24); }
 # Schema URL; resource_new leaves it 0 (unset).
 fn res_schema_url(r)      { return load64(r + 32); }
+# Set the value res_schema_url reads, stored as given (not validated). Returns 0.
+fn res_set_schema_url(r, v) { store64(r + 32, v); return 0; }
 # A TraceContext for a new root span: the identity a W3C traceparent carries.
 # 40 bytes, all 8-byte slots:
 #   +0 trace id (fresh 16-byte id), +8 span id (fresh 8-byte id),
@@ -321,9 +323,13 @@ fn tctx_parent_span_id(c) { return load64(c + 16); }
 # Trace flags as an integer; bit 0 is TRACE_FLAG_SAMPLED. tctx_to_traceparent
 # writes only the low byte.
 fn tctx_trace_flags(c)    { return load64(c + 24); }
+# Set the value tctx_trace_flags reads, stored as given (not validated). Returns 0.
+fn tctx_set_trace_flags(c, v) { store64(c + 24, v); return 0; }
 # Trace state (Str). The constructors set it empty and tctx_child copies the
 # parent's; the traceparent functions do not carry it.
 fn tctx_trace_state(c)    { return load64(c + 32); }
+# Set the value tctx_trace_state reads, stored as given (not validated). Returns 0.
+fn tctx_set_trace_state(c, v) { store64(c + 32, v); return 0; }
 # 1 when the TRACE_FLAG_SAMPLED bit of the trace flags is set, else 0.
 fn tctx_is_sampled(c) {
     if ((load64(c + 24) & TRACE_FLAG_SAMPLED) != 0) { return 1; }
@@ -503,10 +509,16 @@ fn span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
 fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
 # Number of attributes dropped from the span; span_new sets 0.
 fn span_dropped_attrs(s)  { return load64(s + 88); }
+# Set the value span_dropped_attrs reads, stored as given (not validated). Returns 0.
+fn span_set_dropped_attrs(s, v) { store64(s + 88, v); return 0; }
 # Number of events dropped from the span; span_new sets 0.
 fn span_dropped_events(s) { return load64(s + 96); }
+# Set the value span_dropped_events reads, stored as given (not validated). Returns 0.
+fn span_set_dropped_events(s, v) { store64(s + 96, v); return 0; }
 # Number of links dropped from the span; span_new sets 0.
 fn span_dropped_links(s)  { return load64(s + 104); }
+# Set the value span_dropped_links reads, stored as given (not validated). Returns 0.
+fn span_set_dropped_links(s, v) { store64(s + 104, v); return 0; }
 # AnyValueType: what an AnyValue box holds. Each value is the field number of
 # the matching member of OTLP's AnyValue oneof
 # (opentelemetry/proto/common/v1/common.proto), so 0 is never a valid type.
@@ -900,10 +912,16 @@ fn telemetry_config_new() {
 }
 # Enabled flag: 1 when telemetry is enabled, 0 when disabled.
 fn telcfg_enabled(c)    { return load64(c); }
+# Set the value telcfg_enabled reads, stored as given (not validated). Returns 0.
+fn telcfg_set_enabled(c, v) { store64(c, v); return 0; }
 # Sampling rate in thousandths: 1000 is a rate of 1.0, the default.
 fn telcfg_sample_rate(c){ return load64(c + 8); }
+# Set the value telcfg_sample_rate reads, stored as given (not validated). Returns 0.
+fn telcfg_set_sample_rate(c, v) { store64(c + 8, v); return 0; }
 # Export endpoint (Str), or 0 when none is configured.
 fn telcfg_endpoint(c)   { return load64(c + 16); }
+# Set the value telcfg_endpoint reads, stored as given (not validated). Returns 0.
+fn telcfg_set_endpoint(c, v) { store64(c + 16, v); return 0; }
 # A LogRecord. 64 bytes, all 8-byte slots:
 #   +0 timestamp (clock_epoch_ns at creation), +8 0 (no accessor reads it),
 #   +16 severity (LogSeverity, stored as given), +24 body (Str),
@@ -1007,6 +1025,8 @@ fn crash_error(cr)     { return load64(cr + 8); }
 # Backtrace slot. crash_report_new sets it to 0 and no fn in this module sets
 # it, so the code does not fix its form.
 fn crash_backtrace(cr) { return load64(cr + 16); }
+# Set the value crash_backtrace reads, stored as given (not validated). Returns 0.
+fn crash_set_backtrace(cr, v) { store64(cr + 16, v); return 0; }
 # Time the report was created, Unix ns from clock_epoch_ns.
 fn crash_timestamp(cr) { return load64(cr + 24); }
 # An InstrumentationScope: the instrumenting library or component that emits
@@ -1027,6 +1047,8 @@ fn iscope_name(s)       { return load64(s); }
 fn iscope_version(s)    { return load64(s + 8); }
 # Schema URL; instrumentation_scope_new leaves it 0 (unset).
 fn iscope_schema_url(s) { return load64(s + 16); }
+# Set the value iscope_schema_url reads, stored as given (not validated). Returns 0.
+fn iscope_set_schema_url(s, v) { store64(s + 16, v); return 0; }
 # Scope attributes: a cstr-keyed map, created empty on first access.
 fn iscope_attributes(s) { return _stik_lazy_map(s + 24); }
 # A SpanEvent: a named, timestamped event within a span. 24 bytes:
@@ -1162,9 +1184,13 @@ fn mdp_attributes(dp)   { return _stik_lazy_map(dp + 16); }
 fn mdp_timestamp(dp)    { return load64(dp + 24); }
 # AggregationTemporality of the value; metric_data_point_new sets TEMPORALITY_CUMULATIVE.
 fn mdp_temporality(dp)  { return load64(dp + 32); }
+# Set the value mdp_temporality reads, stored as given (not validated). Returns 0.
+fn mdp_set_temporality(dp, v) { store64(dp + 32, v); return 0; }
 # Monotonic flag: 1 when the value never decreases, else 0. metric_data_point_new
-# sets 0 and this module has no setter for it.
+# sets 0; mdp_set_monotonic (v1.11.0) changes it.
 fn mdp_is_monotonic(dp) { return load64(dp + 40); }
+# Set the value mdp_is_monotonic reads, stored as given (not validated). Returns 0.
+fn mdp_set_monotonic(dp, v) { store64(dp + 40, v); return 0; }
 # Write the NumberDataPoint fields of data point `ptr` (field table below)
 # into buffer `b`, the body of the message without its own tag. Returns 0.
 fn _stik_otlp_number_point(b, ptr, path) {
@@ -1298,9 +1324,10 @@ fn metric_to_otlp_proto(desc, points, sb) {
 var TEXTMAP_GET = 0;
 var TEXTMAP_SET = 1;
 # Vtable for a TextMap carrier: 16 bytes, slot 0 (TEXTMAP_GET) = get_fn, slot 1
-# (TEXTMAP_SET) = set_fn. Both are called as fn(data, key), `data` being the
-# carrier's data pointer; set_fn gets the value from the global _textmap_extra,
-# which textmap_set fills just before the call.
+# (TEXTMAP_SET) = set_fn, `data` being the carrier's data pointer. get_fn is
+# called as fn(data, key) and set_fn as fn(data, key, value) (since v1.11.0; a
+# set_fn written as fn(data, key) reads the value from the global
+# _textmap_extra, which textmap_set still fills).
 fn textmap_carrier_vtable(get_fn, set_fn) {
     var vt = alloc(16);
     store64(vt, get_fn);
@@ -1310,22 +1337,25 @@ fn textmap_carrier_vtable(get_fn, set_fn) {
 # A TextMap carrier: a trait object pairing a textmap_carrier_vtable with the
 # caller's data pointer.
 fn textmap_carrier_new(vtable, data) { return trait_obj_new(vtable, data); }
-# Call the carrier's get_fn(data, key) and return its result.
-fn textmap_get(carrier, key) { return trait_call1(carrier, TEXTMAP_GET, key); }
+# Call the carrier's get_fn(data, key) and return its result, or 0 when the
+# slot is unset.
+fn textmap_get(carrier, key) { return _stik_dispatch1(carrier, TEXTMAP_GET, key); }
 var _textmap_extra = 0;
-# Call the carrier's set_fn(data, key) and return its result. `value` travels
-# in the global _textmap_extra, set just before the call, so concurrent calls
-# are unsafe and set_fn must read it before making another textmap_set.
+# Call the carrier's set_fn(data, key, value) and return its result, or 0 when
+# the slot is unset. The value is an argument since v1.11.0, so nested calls do
+# not clobber it. It is also parked in the global _textmap_extra for a set_fn
+# written as fn(data, key) before then; that path stays non-reentrant.
 fn textmap_set(carrier, key, value) {
     _textmap_extra = value;
-    return trait_call1(carrier, TEXTMAP_SET, key);
+    return _stik_dispatch2(carrier, TEXTMAP_SET, key, value);
 }
 var PROPAGATOR_INJECT = 0;
 var PROPAGATOR_EXTRACT = 1;
 # Vtable for a TextMap propagator: 16 bytes, slot 0 (PROPAGATOR_INJECT) =
 # inject_fn, slot 1 (PROPAGATOR_EXTRACT) = extract_fn, each called with the
-# propagator's data pointer first. inject_fn gets its carrier from the global
-# _propagator_extra, which propagator_inject fills just before the call.
+# propagator's data pointer first: inject_fn(data, context, carrier) and
+# extract_fn(data, carrier). An inject_fn written as fn(data, context) before
+# v1.11.0 reads the carrier from the global _propagator_extra, still filled.
 fn textmap_propagator_vtable(inject_fn, extract_fn) {
     var vt = alloc(16);
     store64(vt, inject_fn);
@@ -1336,16 +1366,18 @@ fn textmap_propagator_vtable(inject_fn, extract_fn) {
 # the caller's data pointer.
 fn propagator_new(vtable, data) { return trait_obj_new(vtable, data); }
 var _propagator_extra = 0;
-# Call the propagator's inject_fn(data, context) and return its result. The
-# carrier travels in the global _propagator_extra, set just before the call, so
-# concurrent calls are unsafe.
+# Call the propagator's inject_fn(data, context, carrier) and return its
+# result, or 0 when the slot is unset. The carrier is an argument since
+# v1.11.0; it is also parked in the global _propagator_extra for an inject_fn
+# written as fn(data, context), and that path stays non-reentrant.
 fn propagator_inject(prop, context, carrier) {
     _propagator_extra = carrier;
-    return trait_call1(prop, PROPAGATOR_INJECT, context);
+    return _stik_dispatch2(prop, PROPAGATOR_INJECT, context, carrier);
 }
-# Call the propagator's extract_fn(data, carrier) and return its result.
+# Call the propagator's extract_fn(data, carrier) and return its result, or 0
+# when the slot is unset.
 fn propagator_extract(prop, carrier) {
-    return trait_call1(prop, PROPAGATOR_EXTRACT, carrier);
+    return _stik_dispatch1(prop, PROPAGATOR_EXTRACT, carrier);
 }
 var SC_EXPORT = 0;
 var SC_FLUSH = 1;
@@ -1364,12 +1396,12 @@ fn span_collector_vtable(export_fn, flush_fn, shutdown_fn) {
 # caller's data pointer.
 fn span_collector_new(vtable, data) { return trait_obj_new(vtable, data); }
 # Call the collector's export_fn(data, spans) and return its result; `spans` is
-# passed through as given.
-fn sc_export(collector, spans)  { return trait_call1(collector, SC_EXPORT, spans); }
+# passed through as given. 0 when the slot is unset, as for every sc_*.
+fn sc_export(collector, spans)  { return _stik_dispatch1(collector, SC_EXPORT, spans); }
 # Call the collector's flush_fn(data) and return its result.
-fn sc_flush(collector)          { return trait_call0(collector, SC_FLUSH); }
+fn sc_flush(collector)          { return _stik_dispatch0(collector, SC_FLUSH); }
 # Call the collector's shutdown_fn(data) and return its result.
-fn sc_shutdown(collector)       { return trait_call0(collector, SC_SHUTDOWN); }
+fn sc_shutdown(collector)       { return _stik_dispatch0(collector, SC_SHUTDOWN); }
 var MS_EXPORT = 0;
 var MS_FLUSH = 1;
 # Vtable for a metric sink: 16 bytes, slot 0 (MS_EXPORT) = export_fn, slot 1
@@ -1384,7 +1416,7 @@ fn metric_sink_vtable(export_fn, flush_fn) {
 # data pointer.
 fn metric_sink_new(vtable, data) { return trait_obj_new(vtable, data); }
 # Call the sink's export_fn(data, metrics) and return its result; `metrics` is
-# passed through as given.
-fn ms_export(sink, metrics) { return trait_call1(sink, MS_EXPORT, metrics); }
+# passed through as given. 0 when the slot is unset, as for ms_flush.
+fn ms_export(sink, metrics) { return _stik_dispatch1(sink, MS_EXPORT, metrics); }
 # Call the sink's flush_fn(data) and return its result.
-fn ms_flush(sink)           { return trait_call0(sink, MS_FLUSH); }
+fn ms_flush(sink)           { return _stik_dispatch0(sink, MS_FLUSH); }

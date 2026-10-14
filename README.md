@@ -11,12 +11,12 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.10.0
+- **Current**: 1.11.0
 - **Toolchain**: Cyrius `6.7.9` (pinned in `cyrius.cyml`)
-- **Tests**: 2,148 assertions across 22 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 2,249 assertions across 23 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
   encoders byte-identical to protoc's encoding of the official schema;
-  api-surface gate locked at 994 public fns, every one documented;
+  api-surface gate locked at 1,093 public fns, every one documented;
   `cyrius audit` clean; all five consumers swept green
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
@@ -27,7 +27,8 @@ against successive Cyrius type-system slots.
   pass — F-025 helper namespacing, fixed in v1.7.0; v1.7.1 release pass —
   no findings; v1.8.0 minor-cut pass — no findings; v1.9.0 minor-cut pass —
   F-026 JSON string escaping, fixed in v1.9.0; v1.10.0 minor-cut pass —
-  F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0).
+  F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
+  minor-cut pass — no findings).
   Cadence: every minor cut, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.

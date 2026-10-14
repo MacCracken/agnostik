@@ -97,7 +97,7 @@ struct ResourceUsage {
 }
 # A ResourceUsage: what an agent is currently consuming, the counterpart of
 # ResourceLimits. 32 bytes, all 0: +0 mem_used, +8 cpu_used, +16 fds_used,
-# +24 procs_used. This file has no setters for it.
+# +24 procs_used, set with the rusage_set_* setters (v1.11.0).
 fn resource_usage_new() {
     var u = alloc(32);
     store64(u, 0);
@@ -108,12 +108,20 @@ fn resource_usage_new() {
 }
 # Memory in use, the mem_used field.
 fn rusage_memory(u)  { return load64(u); }
+# Set the value rusage_memory reads, stored as given (not validated). Returns 0.
+fn rusage_set_memory(u, v) { store64(u, v); return 0; }
 # CPU time used, the cpu_used field.
 fn rusage_cpu(u)     { return load64(u + 8); }
+# Set the value rusage_cpu reads, stored as given (not validated). Returns 0.
+fn rusage_set_cpu(u, v) { store64(u + 8, v); return 0; }
 # File descriptors in use, the fds_used field.
 fn rusage_fds(u)     { return load64(u + 16); }
+# Set the value rusage_fds reads, stored as given (not validated). Returns 0.
+fn rusage_set_fds(u, v) { store64(u + 16, v); return 0; }
 # Processes in use, the procs_used field.
 fn rusage_procs(u)   { return load64(u + 24); }
+# Set the value rusage_procs reads, stored as given (not validated). Returns 0.
+fn rusage_set_procs(u, v) { store64(u + 24, v); return 0; }
 # A HealthCheck: probe settings for an agent. 40 bytes, all 8-byte slots:
 #   +0 probe_type (ProbeType, default PROBE_LIVENESS_READINESS),
 #   +8 interval (30 s), +16 timeout (5 s), +24 retries (3), +32 initial_delay (0).
@@ -136,14 +144,24 @@ fn agnostik_health_check_new() {
 }
 # ProbeType member (default PROBE_LIVENESS_READINESS).
 fn hc_probe_type(h)      { return load64(h); }
+# Set the value hc_probe_type reads, stored as given (not validated). Returns 0.
+fn hc_set_probe_type(h, v) { store64(h, v); return 0; }
 # Seconds between checks (default 30).
 fn hc_interval(h)        { return load64(h + 8); }
+# Set the value hc_interval reads, stored as given (not validated). Returns 0.
+fn hc_set_interval(h, v) { store64(h + 8, v); return 0; }
 # Per-check timeout in seconds (default 5).
 fn hc_timeout(h)         { return load64(h + 16); }
+# Set the value hc_timeout reads, stored as given (not validated). Returns 0.
+fn hc_set_timeout(h, v) { store64(h + 16, v); return 0; }
 # Retry count (default 3).
 fn hc_retries(h)         { return load64(h + 24); }
+# Set the value hc_retries reads, stored as given (not validated). Returns 0.
+fn hc_set_retries(h, v) { store64(h + 24, v); return 0; }
 # Delay before the first check (default 0, none).
 fn hc_initial_delay(h)   { return load64(h + 32); }
+# Set the value hc_initial_delay reads, stored as given (not validated). Returns 0.
+fn hc_set_initial_delay(h, v) { store64(h + 32, v); return 0; }
 # A LifecycleHook: one command to run at a point in an agent's lifecycle.
 # 16 bytes, each stored as given: +0 command (a vec), +8 timeout.
 # Attach it to a LifecycleHooks slot.
@@ -226,18 +244,26 @@ fn aconf_restart_policy(c)   { return load64(c + 48); }
 fn aconf_max_restarts(c)     { return load64(c + 56); }
 # HealthCheck pointer (agnostik_health_check_new), or 0 when none is set.
 fn aconf_health_check(c)     { return load64(c + 64); }
-# Metadata slot at +40: 0 by default, with no setter in this file. agnostik
-# does not interpret it.
+# Metadata slot at +40: 0 until aconf_set_metadata. agnostik does not
+# interpret it.
 fn aconf_metadata(c)         { return load64(c + 40); }
-# Startup timeout at +72: 0 by default, with no setter in this file.
+# Set the value aconf_metadata reads, stored as given (not validated). Returns 0.
+fn aconf_set_metadata(c, v) { store64(c + 40, v); return 0; }
+# Startup timeout at +72: 0 until aconf_set_startup_timeout.
 fn aconf_startup_timeout(c)  { return load64(c + 72); }
-# Shutdown timeout at +80: 0 by default, with no setter in this file.
+# Set the value aconf_startup_timeout reads, stored as given (not validated). Returns 0.
+fn aconf_set_startup_timeout(c, v) { store64(c + 72, v); return 0; }
+# Shutdown timeout at +80: 0 until aconf_set_shutdown_timeout.
 fn aconf_shutdown_timeout(c) { return load64(c + 80); }
+# Set the value aconf_shutdown_timeout reads, stored as given (not validated). Returns 0.
+fn aconf_set_shutdown_timeout(c, v) { store64(c + 80, v); return 0; }
 # LifecycleHooks pointer (lifecycle_hooks_new), or 0 when none is set.
 fn aconf_lifecycle_hooks(c)  { return load64(c + 88); }
-# RestartBackoff pointer (restart_backoff_new), or 0, the default. This file
-# has no setter for it.
+# RestartBackoff pointer (restart_backoff_new), or 0, the default, until
+# aconf_set_restart_backoff.
 fn aconf_restart_backoff(c)  { return load64(c + 96); }
+# Set the value aconf_restart_backoff reads, stored as given (not validated). Returns 0.
+fn aconf_set_restart_backoff(c, v) { store64(c + 96, v); return 0; }
 # Set the AgentType member. Returns 0.
 fn aconf_set_type(c, v)             { store64(c + 8, v); return 0; }
 # Set the SandboxConfig pointer. Returns 0.
@@ -252,7 +278,7 @@ fn aconf_set_health_check(c, v)     { store64(c + 64, v); return 0; }
 fn aconf_set_lifecycle_hooks(c, v)  { store64(c + 88, v); return 0; }
 # An AgentRateLimit: per-agent LLM usage limits. 24 bytes, all 0:
 #   +0 tokens_per_hour, +8 requests_per_min, +16 concurrent.
-# This file has no setters for it.
+# Set with the arl_set_* setters (v1.11.0).
 fn agent_rate_limit_new() {
     var r = alloc(24);
     store64(r, 0);
@@ -262,10 +288,16 @@ fn agent_rate_limit_new() {
 }
 # Token budget per hour (default 0).
 fn arl_tokens_per_hour(r) { return load64(r); }
+# Set the value arl_tokens_per_hour reads, stored as given (not validated). Returns 0.
+fn arl_set_tokens_per_hour(r, v) { store64(r, v); return 0; }
 # Request budget per minute (default 0).
 fn arl_requests_per_min(r) { return load64(r + 8); }
+# Set the value arl_requests_per_min reads, stored as given (not validated). Returns 0.
+fn arl_set_requests_per_min(r, v) { store64(r + 8, v); return 0; }
 # Concurrent-request limit (default 0).
 fn arl_concurrent(r)       { return load64(r + 16); }
+# Set the value arl_concurrent reads, stored as given (not validated). Returns 0.
+fn arl_set_concurrent(r, v) { store64(r + 16, v); return 0; }
 # An AgentEvent: an event about an agent, for pub/sub. 24 bytes, each stored
 # as given: +0 agent_id, +8 event_type, +16 payload. agnostik defines no
 # encoding for event_type or payload.
@@ -380,7 +412,7 @@ struct AgentStats {
 }
 # An AgentStats: cumulative counters for one agent. 24 bytes, all 0:
 #   +0 total_requests, +8 total_tokens, +16 uptime_seconds.
-# This file has no setters for it.
+# Set with the astats_set_* setters (v1.11.0).
 fn agent_stats_new() {
     var s = alloc(24);
     store64(s, 0);
@@ -390,10 +422,16 @@ fn agent_stats_new() {
 }
 # Total request count, the total_requests field.
 fn astats_requests(s)  { return load64(s); }
+# Set the value astats_requests reads, stored as given (not validated). Returns 0.
+fn astats_set_requests(s, v) { store64(s, v); return 0; }
 # Total token count, the total_tokens field.
 fn astats_tokens(s)    { return load64(s + 8); }
+# Set the value astats_tokens reads, stored as given (not validated). Returns 0.
+fn astats_set_tokens(s, v) { store64(s + 8, v); return 0; }
 # Uptime in seconds, the uptime_seconds field.
 fn astats_uptime(s)    { return load64(s + 16); }
+# Set the value astats_uptime reads, stored as given (not validated). Returns 0.
+fn astats_set_uptime(s, v) { store64(s + 16, v); return 0; }
 # An AgentManifest: the declarative description of an agent. 80 bytes:
 #   +0 name (Str), +8 description, +16 author (Strs, default ""),
 #   +24 version (Version, default 0.0.0), +32 homepage (Str, default ""),
@@ -419,12 +457,18 @@ fn agent_manifest_new(name: Str) {
 fn amanifest_name(m)        { return load64(m); }
 # Description Str (default "").
 fn amanifest_description(m) { return load64(m + 8); }
+# Set the value amanifest_description reads, stored as given (not validated). Returns 0.
+fn amanifest_set_description(m, v) { store64(m + 8, v); return 0; }
 # Author Str (default "").
 fn amanifest_author(m)      { return load64(m + 16); }
+# Set the value amanifest_author reads, stored as given (not validated). Returns 0.
+fn amanifest_set_author(m, v) { store64(m + 16, v); return 0; }
 # Version pointer (default 0.0.0, from version_default).
 fn amanifest_version(m)     { return load64(m + 24); }
 # Homepage Str (default "").
 fn amanifest_homepage(m)    { return load64(m + 32); }
+# Set the value amanifest_homepage reads, stored as given (not validated). Returns 0.
+fn amanifest_set_homepage(m, v) { store64(m + 32, v); return 0; }
 # vec of the Permission members the agent requests; starts empty.
 fn amanifest_permissions(m) { return load64(m + 40); }
 # ResourceLimits pointer, allocated with the resource_limits_new defaults.
@@ -674,7 +718,8 @@ fn rgrant_set_reason(g, v: Str) { store64(g + 24, v); return 0; }
 # A RetryPolicy: exponential-backoff settings for retrying a failed operation.
 # 40 bytes: +0 max_retries (3), +8 initial_delay (1000 ms), +16 backoff_mult
 # (2000), +24 max_delay (30000 ms), +32 jitter (1). agnostik only stores the
-# policy; the retrying code applies it. This file has no setters for it.
+# policy; the retrying code applies it. The rpol_set_* setters (v1.11.0)
+# change the defaults.
 fn retry_policy_new() {
     var p = alloc(40);
     store64(p, 3);
@@ -686,15 +731,25 @@ fn retry_policy_new() {
 }
 # Maximum retry attempts (default 3).
 fn rpol_max_retries(p)     { return load64(p); }
+# Set the value rpol_max_retries reads, stored as given (not validated). Returns 0.
+fn rpol_set_max_retries(p, v) { store64(p, v); return 0; }
 # Delay before the first retry, in ms (default 1000).
 fn rpol_initial_delay(p)   { return load64(p + 8); }
+# Set the value rpol_initial_delay reads, stored as given (not validated). Returns 0.
+fn rpol_set_initial_delay(p, v) { store64(p + 8, v); return 0; }
 # Delay multiplier applied after each retry, in thousandths: the default 2000
 # is 2.0x, the fixed-point form of the Rust original's float.
 fn rpol_backoff_mult(p)    { return load64(p + 16); }
+# Set the value rpol_backoff_mult reads, stored as given (not validated). Returns 0.
+fn rpol_set_backoff_mult(p, v) { store64(p + 16, v); return 0; }
 # Upper bound on the delay, in ms (default 30000).
 fn rpol_max_delay(p)       { return load64(p + 24); }
+# Set the value rpol_max_delay reads, stored as given (not validated). Returns 0.
+fn rpol_set_max_delay(p, v) { store64(p + 24, v); return 0; }
 # Jitter flag: 1 to add random jitter to each delay (default 1).
 fn rpol_jitter(p)          { return load64(p + 32); }
+# Set the value rpol_jitter reads, stored as given (not validated). Returns 0.
+fn rpol_set_jitter(p, v) { store64(p + 32, v); return 0; }
 # A RestartBackoff: delay settings between restarts of an agent, the struct
 # AgentConfig's restart_backoff slot points to. 32 bytes: +0 initial_delay
 # (1000 ms), +8 multiplier (2000), +16 max_delay (60000 ms), +24 jitter (1).
@@ -708,13 +763,21 @@ fn restart_backoff_new() {
 }
 # Delay before the first restart, in ms (default 1000).
 fn rback_initial_delay(b) { return load64(b); }
+# Set the value rback_initial_delay reads, stored as given (not validated). Returns 0.
+fn rback_set_initial_delay(b, v) { store64(b, v); return 0; }
 # Delay multiplier applied after each restart, in thousandths: the default
 # 2000 is 2.0x, the fixed-point form of the Rust original's float.
 fn rback_multiplier(b)    { return load64(b + 8); }
+# Set the value rback_multiplier reads, stored as given (not validated). Returns 0.
+fn rback_set_multiplier(b, v) { store64(b + 8, v); return 0; }
 # Upper bound on the delay, in ms (default 60000).
 fn rback_max_delay(b)     { return load64(b + 16); }
+# Set the value rback_max_delay reads, stored as given (not validated). Returns 0.
+fn rback_set_max_delay(b, v) { store64(b + 16, v); return 0; }
 # Jitter flag: 1 to add random jitter to each delay (default 1).
 fn rback_jitter(b)        { return load64(b + 24); }
+# Set the value rback_jitter reads, stored as given (not validated). Returns 0.
+fn rback_set_jitter(b, v) { store64(b + 24, v); return 0; }
 # An AgentPool: a set of identical agents run from one AgentConfig template.
 # 40 bytes: +0 name (Str), +8 config (AgentConfig), +16 replicas (1),
 # +24 min_replicas (1), +32 max_replicas (10).
@@ -785,8 +848,10 @@ fn sched_pod_affinity(s)       { return _stik_lazy_vec(s + 16); }
 fn sched_pod_anti_affinity(s)  { return _stik_lazy_vec(s + 24); }
 # Scheduling priority (default 0).
 fn sched_priority(s)           { return load64(s + 32); }
-# Preemptible flag at +40 (default 0). This file has no setter for it.
+# Preemptible flag at +40 (default 0), set with sched_set_preemptible.
 fn sched_preemptible(s)        { return load64(s + 40); }
+# Set the value sched_preemptible reads, stored as given (not validated). Returns 0.
+fn sched_set_preemptible(s, v) { store64(s + 40, v); return 0; }
 # Set the scheduling priority. Returns 0.
 fn sched_set_priority(s, v)    { store64(s + 32, v); return 0; }
 # A LabelSelector: matches node labels by key. 24 bytes: +0 key (Str),

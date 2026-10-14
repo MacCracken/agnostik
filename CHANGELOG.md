@@ -2,6 +2,227 @@
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-10-14
+
+**Minor:** the contract gaps the v1.9.0 documentation pass recorded. Every trait dispatcher checks its slot, the
+three global hand-offs pass their argument directly, `agent_id_from_str` checks its separators, and 91 setters and
+2 getters close the F-021 class. The newer Landlock rights and an `RLIMIT_*` mapping are added. None of it breaks
+the public API: 994 → **1,093** public fns (+99, no removals, no signature or layout change).
+
+23 test files, **2,249 assertions, 0 failures**, on x86_64 and aarch64. All five `[deps.agnostik]` consumers build
+and pass their tests against it.
+
+### Fixed — optional trait slots were called at address 0
+
+`audit_sink_vtable` and `secret_store_vtable` leave their optional slots at 0, and `as_verify_entry` / `as_seal`
+called through them without checking. A sink built without `audit_sink_set_verify_entry` or `_set_seal` crashed
+on the call. Every agnostik trait dispatcher now checks its slot through the private `_stik_dispatch*` helpers in
+`types.cyr`: the audit, secret-store, TextMap, propagator, span-collector and metric-sink dispatchers, 17 in all. An
+unset slot, a 0 vtable or a 0 trait object is not called. These dispatchers return a plain value, which does not
+change:
+- An unset slot returns **0**.
+- For `as_verify_entry` that fails closed: an entry the sink cannot verify is not reported as verified.
+
+The three optional slots that had no dispatcher at all get one, each returning a `Result`:
+- `as_query(sink, filter)`;
+- `ss_rotate(store, sname)`;
+- `ss_search_by_tag(store, tag)`.
+
+Each returns `Ok(the callback's result)`, or a not-supported `Err` (`STIK_ERR_NOT_SUPPORTED`, code 1007) when the
+slot is unset. `audit_sink_has(sink, slot)` and `secret_store_has(store, slot)` say whether a slot is implemented;
+a slot number outside the vtable answers 0.
+
+### Fixed — `textmap_set`, `propagator_inject` and `ss_put` were not reentrant
+
+Each passed its second argument (`value`, `carrier`, `value`) to the callback through a module global. A nested
+call, a set_fn that itself calls `textmap_set` for example, overwrote it, so the outer callback read the inner
+value. The argument is now passed directly: the callbacks are called as `set_fn(data, key, value)`,
+`inject_fn(data, context, carrier)` and `put_fn(data, sname, value)`. The globals are still filled, so a callback
+written in the old two-parameter shape keeps working. Arguments travel in registers on every target, and a
+two-parameter fn ignores the third. That old path stays non-reentrant. A census of every local repo found no
+consumer implementing these callbacks.
+
+### Fixed — `agent_id_from_str` accepted any byte at the separators
+
+It skipped positions 8, 13, 18 and 23 without reading them, so `0af76519x16cd-…` parsed. They must now hold `-`.
+Every UUID version and variant is still accepted, the nil and max UUIDs included:
+[ADR-005](docs/adr/005-agent-id-parse-checks-form-not-version.md) records why the version bits are not checked.
+`user_id_from_str` shares the check. `AgentInfo_from_json` reads a malformed id as 0, as it does any invalid
+field. No consumer calls either parser.
+
+### Added — 91 setters and 2 getters (the F-021 class)
+
+A census of every one-line getter and setter in `src/`, classified by how the constructor initializes each field,
+found 91 fields that start at a default value (a literal, a constant or a 0 pointer) with no setter. A caller
+could change them only by `store64` at a known offset. The census excluded fields that are:
+- set from a constructor argument;
+- generated (ids, timestamps);
+- collections mutated in place;
+- fresh sub-structs;
+- computed (`asum_total_vram`).
+
+Each field gets `<prefix>_set_<field>(p, v)`, which stores as given (not validated), like the existing setters:
+
+| Module | Setters |
+|---|---|
+| agent | `rusage_*` (4), `hc_*` (HealthCheck, 5), `aconf_*` (metadata, startup / shutdown timeout, restart backoff), `arl_*` (3), `astats_*` (3), `amanifest_*` (description, author, homepage), `rpol_*` (5), `rback_*` (4), `sched_set_preemptible` |
+| audit | `retpol_set_max_days`, `retpol_set_archive` |
+| config | `acfg_*` (generation, content hash), `eovr_*` (3), `profdef_*` (inherits_from, edge_overrides), `fleet_set_default` |
+| llm | `samp_set_freq_penalty`, `samp_set_pres_penalty`, `ireq_set_prompt`, `rli_*` (5) |
+| security | `ns_*` (UTS, IPC, cgroup, time), `sandbox_set_isolate_net`, `secctx_*` (4), `sbcap_*` (6), `fsrule_set_propagation`, `encst_set_filesystem`, `devrule_*` (major, minor), `token_*` (5) |
+| telemetry | `res_set_schema_url`, `tctx_set_trace_flags`, `tctx_set_trace_state`, `span_set_dropped_*` (3), `telcfg_*` (enabled, sample rate, endpoint), `crash_set_backtrace`, `iscope_set_schema_url`, `mdp_set_temporality`, `mdp_set_monotonic` |
+| validation | `vwarn_set_position`, `vwarn_set_pattern`, `vresult_set_injection_score`, `vresult_set_injection_scores` |
+
+`sandbox_apparmor` and `sandbox_selinux` read the slots `sandbox_set_apparmor` / `sandbox_set_selinux` already
+wrote, which had no getter. The doc comments that said "no setter exists" now name the setter. A scan of every
+local repo found no collision with the new names.
+
+### Added — newer Landlock rights and `RlimitType` → `RLIMIT_*`
+
+- `LandlockFsAccess` gains `LL_IOCTL_DEV` (bit 15, Landlock ABI 5) and `LL_RESOLVE_UNIX` (bit 16, ABI 9).
+  `LandlockNetAccess` gains `LL_BIND_UDP` (bit 2, ABI 10) and `LL_CONNECT_SEND_UDP` (bit 3, ABI 10).
+  - The values come from linux-api-headers 7.2 (`linux/landlock.h`). They are appended, so every existing value is
+    unchanged.
+  - `IoctlDev` and `ResolveUnix` are the Rust `landlock` crate's names (checked against its `main` branch). The
+    crate does not name the UDP rights yet, so `BindUdp` and `ConnectSendUdp` follow its rule: the kernel suffix in
+    CamelCase.
+- `rlimit_type_resource(t)` gives the Linux `RLIMIT_*` number for a `RlimitType`, from `asm-generic/resource.h`,
+  the numbering x86_64 and aarch64 use: `RLIM_NOFILE` → 7, and so on. It returns −1 outside the enum.
+  `RlimitType`'s own values stay agnostik ordinals, since renumbering them would be a break.
+
+### Tests — `tests/tcyr/test_v1110_contract_gaps.tcyr` (101 assertions)
+
+- **Landlock and rlimit:** the four new rights' values, flags, names and round-trips; every `RLIMIT_*` mapping.
+- **UUIDs:** each separator position rejecting a non-dash; v1, v4, v7, nil and max UUIDs parsing.
+- **Optional slots:** for the audit sink and the secret store, the unset slots return 0 or a not-supported `Err`,
+  and the set slots dispatch with the data pointer first. A 0 required slot, a 0 vtable and a 0 sink are not
+  called.
+- **Reentrancy:** a nested `textmap_set`, `propagator_inject` and `ss_put`, each keeping the outer value, and an
+  old two-parameter set_fn still working.
+- **Setters:** all 91 setters, each given a distinct value in its struct and read back through its getter, plus
+  the two new getters. A setter-set endpoint reaches `TelemetryConfig_to_json`.
+
+Mutation-checked: each of 12 deliberate breaks fails the file. Three of them crash the binary; those are an
+unchecked slot, and `as_query` / `ss_rotate` returning `Ok` for an unset slot. The others:
+- the Landlock order swapped;
+- a wrong `RLIMIT_NOFILE`;
+- the dash check removed;
+- each hand-off back to the global only;
+- a setter writing the wrong offset (two cases);
+- `audit_sink_has` without its range check.
+
+### Security
+
+The minor-cut pass is recorded in [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md)
+§"v1.11.0 minor-cut pass". **No findings.** The slot and reentrancy fixes are robustness fixes. The v1.9.0 pass
+recorded them as such, because a sink that crashes on an unset slot is the implementer's own misconfiguration.
+
+The pass checked the paths the new setters make reachable:
+- No serializer writes a field that gained a setter unescaped. The derive structs involved (`ResourceUsage`,
+  `AgentStats`, `EdgeResourceOverrides`) hold integers only, and `TelemetryConfig_to_json` escapes the endpoint
+  (F-026).
+- `tctx_to_traceparent` masks a set trace-flags value to one byte before formatting it.
+
+The re-scan of `src/` is clean (no raw `syscall(`, no `sys_system`, no system-path literal, no 64 KB stack
+buffer), and the private-helper gate passes. F-001..F-027 remain closed.
+
+### Closeout pass (CLAUDE.md, minor cut)
+
+- **Tests:** 23 files, 2,249 assertions, 0 failures, on x86_64 and on aarch64. `cyrius audit` exits 0.
+- **Dead code:** no private fn in a shipped module is unreferenced. **Floor:** of 1,086 fn definitions, 999 public
+  fns are not called by library code (901 at 1.10.0, by the same method); the 99 new entry points account for
+  it. The untested count falls 288 → **230**: the new tests reach 58 public fns no test called before, mostly the
+  getters the setter test reads back and the constructors it calls.
+- **Refactor:**
+  - The 17 dispatchers now share `_stik_slot_fn` / `_stik_dispatch0..2` instead of calling `trait_call*` each.
+  - The 91 setters were generated from the census, one per getter-only defaulted field, so they cannot drift from
+    their getters' offsets. The round-trip test checks every one.
+- **Code review:**
+  - Every setter stores at its getter's offset and width (all 64-bit).
+  - The rewritten doc comments name each new setter. The five "no setter" comments that remain are still true
+    (`ComponentConfig`, the audit entry's timestamp and severity, and two history notes).
+- **Cleanup:** no `trait_call*` site remains in `src/`.
+- **Downstream:** `scripts/consumer-sweep.sh` on the release tree. 5 of 5 green, 0 regressed, 0 agnostik-involved
+  duplicate definitions. aegis vendors `types.cyr` alone and builds with the new dispatch helpers on cyrius 6.6.2.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.11.0.
+
+### Performance
+
+`scripts/bench-regression.sh` against the 1.10.0 baseline, at load 1.36: **29 checked, 0 new, 0 regressions**. The
+A/B column is 15 interleaved rounds of the 1.10.0 tag tree against this tree, both on cyrius 6.7.9. Each row is the
+median of per-round paired ratios.
+
+| benchmark | 1.10.0 baseline | 1.11.0 gate | Δ gate | 1.10.0 → 1.11.0, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| message_build_3turn | 355 | 362 | +2.0% | -1.1% | 1/15 |
+| metric_otlp_sum | 1616 | 1684 | +4.2% | -0.8% | 3/15 |
+| inference_request_full | 346 | 367 | +6.1% | -0.8% | 1/15 |
+| agent_stats_to_json | 638 | 668 | +4.7% | -0.6% | 1/15 |
+| accel_flags_from_json | 667 | 682 | +2.2% | -0.6% | 4/15 |
+| security_context_full | 630 | 646 | +2.5% | -0.3% | 5/15 |
+| agent_id_to_str | 684 | 720 | +5.3% | -0.3% | 5/15 |
+| injection_scores_to_json | 740 | 758 | +2.4% | -0.3% | 6/15 |
+| span_otlp_full | 4104 | 4275 | +4.2% | -0.2% | 7/15 |
+| audit_entry_full | 2185 | 2257 | +3.3% | -0.2% | 4/15 |
+| span_otlp_min | 540 | 573 | +6.1% | -0.2% | 6/15 |
+| log_record_otlp | 1431 | 1490 | +4.1% | -0.1% | 6/15 |
+| accel_flags_to_json | 1536 | 1563 | +1.8% | -0.1% | 6/15 |
+| accelerator_device_full | 96 | 99 | +3.1% | +0.0% | 1/15 |
+| sandbox_config_default | 22 | 22 | +0.0% | +0.0% | 3/15 |
+| token_usage_update | 31 | 32 | +3.2% | +0.0% | 1/15 |
+| traceparent_format | 1678 | 1793 | +6.9% | +0.0% | 7/15 |
+| version_to_str | 100 | 112 | +12.0% | +0.0% | 6/15 |
+| agent_id_new | 552 | 560 | +1.4% | +0.2% | 9/15 |
+| resource_limits_from_json | 412 | 436 | +5.8% | +0.2% | 8/15 |
+| token_usage_from_json | 380 | 403 | +6.1% | +0.2% | 10/15 |
+| version_roundtrip | 239 | 257 | +7.5% | +0.4% | 9/15 |
+| agent_id_roundtrip | 939 | 981 | +4.5% | +0.4% | 11/15 |
+| trace_context_new | 1096 | 1120 | +2.2% | +0.4% | 11/15 |
+| token_usage_to_json | 803 | 868 | +8.1% | +0.6% | 13/15 |
+| trace_context_child | 552 | 562 | +1.8% | +0.9% | 12/15 |
+| injection_scores_from_json | 282 | 302 | +7.1% | +1.0% | 12/15 |
+| resource_limits_to_json | 901 | 966 | +7.2% | +1.0% | 14/15 |
+| agent_stats_from_json | 258 | 279 | +8.1% | +1.8% | 13/15 |
+
+**Neutral.** The gate read every row 2–12% slower against a baseline taken at load 1.23. That was the host: the
+paired A/B puts the median row at **+0.0%**, every row within ±5%, the largest +1.8% (`agent_stats_from_json`).
+`agent_id_roundtrip`, which now runs the separator check, is +0.4%. No benchmark calls a dispatcher or a setter.
+
+The release run is appended to `docs/benchmarks/history.csv` (29 rows, commit column `63e2625`, HEAD at the
+time), taken at load 1.46.
+
+Binaries (`CYRIUS_DCE=1`):
+- x86_64: 134,728 → **134,920 B**;
+- aarch64: 896,464 → **896,656 B**;
+- agnos: 135,080 → **135,272 B**;
+- Windows: 889,344 → **904,192 B**. Windows has grown more than the other targets in two releases running; it
+  was not investigated;
+- plain x86_64: 753,224 → 765,704 B.
+
+`dist/agnostik.cyr` grows 300,423 → **320,484 B**.
+
+### Build
+
+`dist/agnostik.deps` now lists `fnptr`: `types.cyr`'s dispatch helpers call `fncallN` directly, so the bundle
+needs it in scope, where before it arrived through `trait`. The `CYRIUS_DCE=1` x86_64 harness is 134,920 B
+(+192).
+
+### Verification
+
+- **Clean-room CI replay.** A fresh copy of the release tree, starting from an empty `lib/`, was committed into a
+  throwaway repo:
+  - every `ci.yml` step except the bench passed, 17 of 17;
+  - `deps --verify` reported 32 verified, 0 failed;
+  - the aarch64 step's script passed: 23 files, 2,249 assertions under `qemu-aarch64`;
+  - `cyrius audit` exits 0.
+- **Gates:**
+  - api-surface 1,093 = snapshot (99 added, 0 removed);
+  - `scripts/doc-debt.sh check`: every fn in `src/` is documented;
+  - `cyrius distlib --check` fresh;
+  - lint, fmt, vet and type-check clean;
+  - DCE builds warning-free on x86_64, aarch64, agnos and Windows.
+- **Downstream:** 5 of 5 green.
+
 ## [1.10.0] - 2026-10-14
 
 **Minor:** the OTLP wire format, completed. Spans gain attributes, events and links; log records, number data

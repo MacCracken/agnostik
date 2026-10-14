@@ -26,7 +26,7 @@ fn validation_severity_parse(s: Str) {
 #   +0 code, +8 message (a Str), +16 severity (a ValidationSeverity),
 #   +24 position, +32 pattern.
 # code, message and severity are stored as passed; position and pattern start
-# at 0 and this module has no setter for them.
+# at 0 (vwarn_set_position / vwarn_set_pattern since v1.11.0).
 fn validation_warning_new(code, message: Str, severity) {
     var w = alloc(40);
     store64(w, code);
@@ -42,10 +42,14 @@ fn vwarn_code(w)     { return load64(w); }
 fn vwarn_message(w)  { return load64(w + 8); }
 # ValidationSeverity of the warning.
 fn vwarn_severity(w) { return load64(w + 16); }
-# Position field; 0 at construction and never set by this module.
+# Position field; 0 at construction until vwarn_set_position.
 fn vwarn_position(w) { return load64(w + 24); }
-# Pattern field; 0 at construction and never set by this module.
+# Set the value vwarn_position reads, stored as given (not validated). Returns 0.
+fn vwarn_set_position(w, v) { store64(w + 24, v); return 0; }
+# Pattern field; 0 at construction until vwarn_set_pattern.
 fn vwarn_pattern(w)  { return load64(w + 32); }
+# Set the value vwarn_pattern reads, stored as given (not validated). Returns 0.
+fn vwarn_set_pattern(w, v) { store64(w + 32, v); return 0; }
 # v1.1.1: widened to i8 (range 0..100 fits comfortably in i7).
 # 40 B → 5 B per instance. Comments must live OUTSIDE the struct
 # body: cyrius < 6.6.7 derive codegen reads a `#` inside the body
@@ -121,11 +125,15 @@ fn vresult_blocked(r)          { return load64(r + 24); }
 # Reason Str given to vresult_set_blocked; 0 until then.
 fn vresult_block_reason(r)     { return load64(r + 32); }
 # Scalar injection score, separate from the per-class injection_scores; 0 at
-# construction and never set by this module.
+# construction until vresult_set_injection_score.
 fn vresult_injection_score(r)  { return load64(r + 40); }
-# InjectionScores pointer; 0 (none) at construction and never set by this
-# module.
+# Set the value vresult_injection_score reads, stored as given (not validated). Returns 0.
+fn vresult_set_injection_score(r, v) { store64(r + 40, v); return 0; }
+# InjectionScores pointer; 0 (none) at construction until
+# vresult_set_injection_scores.
 fn vresult_injection_scores(r) { return load64(r + 48); }
+# Set the value vresult_injection_scores reads, stored as given (not validated). Returns 0.
+fn vresult_set_injection_scores(r, v) { store64(r + 48, v); return 0; }
 # Mark the input blocked: set blocked to 1 and store `reason`. valid is left
 # unchanged. Returns 0.
 fn vresult_set_blocked(r, reason: Str) {

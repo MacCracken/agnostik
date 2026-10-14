@@ -142,8 +142,9 @@ fn agent_id_to_str(id): Str {
 }
 # Parse a 36-character UUID string into a new 16-byte AgentId. Hex digits may
 # be either case. Returns Ok(id), or an invalid-argument Err when the length is
-# not 36 or a digit is not hex. The four separator positions are skipped, not
-# checked for '-', and the version and variant bits are not checked.
+# not 36, a digit is not hex, or positions 8, 13, 18 and 23 do not hold '-'
+# (checked since v1.11.0; they were skipped). Any UUID version and variant is
+# accepted, the nil and max UUIDs included (ADR-005).
 fn agent_id_from_str(s: Str) {
     var data = s.data;
     var slen = s.len;
@@ -152,11 +153,18 @@ fn agent_id_from_str(s: Str) {
     var si = 0;
     var bi = 0;
     while (bi < 16) {
-        # Skip dashes
-        if (si == 8) { si = si + 1; }
-        if (si == 13) { si = si + 1; }
-        if (si == 18) { si = si + 1; }
-        if (si == 23) { si = si + 1; }
+        # The 8-4-4-4-12 group separators must be '-' (45).
+        var sep = 0;
+        if (si == 8) { sep = 1; }
+        if (si == 13) { sep = 1; }
+        if (si == 18) { sep = 1; }
+        if (si == 23) { sep = 1; }
+        if (sep == 1) {
+            if (load8(data + si) != 45) {
+                return stik_err_invalid_argument(str_from("invalid agent id: expected '-'"));
+            }
+            si = si + 1;
+        }
         var hi = _stik_hex_nibble(load8(data + si));
         var lo = _stik_hex_nibble(load8(data + si + 1));
         if (hi < 0) { return stik_err_invalid_argument(str_from("invalid hex in agent id")); }
@@ -653,4 +661,36 @@ fn system_status_parse(s: Str) {
     elif (str_eq_cstr(s, "Critical") == 1) { return Ok(STATUS_CRITICAL); }
     elif (str_eq_cstr(s, "Unknown") == 1) { return Ok(STATUS_UNKNOWN); }
     return stik_err_invalid_argument(str_from("unknown SystemStatus name"));
+}
+# Checked trait-object dispatch (v1.11.0), shared by the audit, secret-store and
+# telemetry traits. A trait object is lib/trait.cyr's 16-byte { vtable, data }
+# pair; these read that layout directly, so this module needs only fnptr.cyr.
+# The fn pointer in `slot` of trait object `obj`'s vtable, or 0 when the object,
+# its vtable or the slot is unset. `slot` must be within the vtable.
+fn _stik_slot_fn(obj, slot) {
+    if (obj == 0) { return 0; }
+    var vt = load64(obj);
+    if (vt == 0) { return 0; }
+    return load64(vt + slot * 8);
+}
+# Call slot `slot` of trait object `obj` as fn(data) and return its result, or
+# return 0 without calling anything when the slot is unset.
+fn _stik_dispatch0(obj, slot) {
+    var fp = _stik_slot_fn(obj, slot);
+    if (fp == 0) { return 0; }
+    return fncall1(fp, load64(obj + 8));
+}
+# Call slot `slot` of `obj` as fn(data, a); 0 when the slot is unset.
+fn _stik_dispatch1(obj, slot, a) {
+    var fp = _stik_slot_fn(obj, slot);
+    if (fp == 0) { return 0; }
+    return fncall2(fp, load64(obj + 8), a);
+}
+# Call slot `slot` of `obj` as fn(data, a, b); 0 when the slot is unset. A
+# callback written as fn(data, a) still works: the arguments travel in
+# registers on every target, and a two-parameter fn ignores the third.
+fn _stik_dispatch2(obj, slot, a, b) {
+    var fp = _stik_slot_fn(obj, slot);
+    if (fp == 0) { return 0; }
+    return fncall3(fp, load64(obj + 8), a, b);
 }
