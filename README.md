@@ -75,8 +75,8 @@ assert_eq(tctx_is_sampled(ctx), 1, "sampled");
 
 # OTLP wire-format encode (v1.10.0: attributes, events, links, logs, metrics)
 var span = span_new(str_from("op"), trace_id_new(), span_id_new());
-map_set(span_attributes(span), "http.status_code", any_int(200));   # values are AnyValue boxes
-vec_push(span_events(span), span_event_new(str_from("retry")));
+map_set(Span_attributes(span), "http.status_code", any_int(200));   # values are AnyValue boxes
+vec_push(Span_events(span), span_event_new(str_from("retry")));
 var sb = str_builder_new();
 Span_to_otlp_proto(span, sb);                         # opentelemetry.proto.trace.v1.Span bytes
 

@@ -73,6 +73,9 @@
   contract: no crash on any byte sequence).
 - Performance claims must include benchmark numbers (before/after) — see
   `docs/benchmarks/history.csv`.
+- Name accessors `<Struct>_<field>` / `<Struct>_set_<field>`
+  ([ADR-009](docs/adr/009-accessors-take-struct-names.md)); constructors, codecs and operations keep snake_case
+  names. A new accessor's field name is the struct's field name (for a serialized struct, its JSON key).
 - Struct fields default to 8 bytes (`i64`), accessed via `load64` / `store64`
   with offset. **Sub-byte widths** (`i8`/`i16`/`i32`) are allowed when the
   value range fits — see `InjectionScores` and `AcceleratorFlags` for the

@@ -70,7 +70,7 @@ fn _stik_genesis_hash_cached() {
     return _stik_genesis_hash_str;
 }
 # IntegrityFields for the first entry of a hash chain. 24 bytes, all 8-byte
-# slots, read through the integrity_* accessors:
+# slots, read through the IntegrityFields_* accessors:
 #   +0 version (a Version), +8 signature (a Str), +16 prev_hash (a Str).
 # version is a fresh 0.0.0 and prev_hash is the genesis hash, GENESIS_HASH's 64
 # '0' characters. That Str is one cached instance shared by every genesis
@@ -94,11 +94,11 @@ fn integrity_fields_new(version, signature: Str, prev_hash: Str) {
     return f;
 }
 # The Version stored in the fields (0.0.0 for genesis fields).
-fn integrity_version(f)   { return load64(f); }
+fn IntegrityFields_version(f)   { return load64(f); }
 # Signature Str, as passed in; this module does not verify it.
-fn integrity_signature(f) { return load64(f + 8); }
+fn IntegrityFields_signature(f) { return load64(f + 8); }
 # Hash Str of the previous chain entry; GENESIS_HASH (64 '0's) for the first.
-fn integrity_prev_hash(f) { return load64(f + 16); }
+fn IntegrityFields_prev_hash(f) { return load64(f + 16); }
 # 1 when prev_hash is byte-for-byte the genesis hash (64 '0' characters), else
 # 0, including when prev_hash is 0 (since 1.12.3; it used to read address 0).
 # Only the hash is compared; version and signature are not consulted. A genesis
@@ -111,7 +111,7 @@ fn integrity_is_genesis(f) {
     return str_eq(hash, _stik_genesis_hash_cached());
 }
 # An AuditEntry: one audited action. 112 bytes, all 8-byte slots, read through
-# the aentry_* accessors:
+# the AuditEntry_* accessors:
 #   +0 id, +8 correlation_id, +16 timestamp, +24 agent_id, +32 action,
 #   +40 severity, +48 result, +56 details, +64 user_id, +72 source_ip,
 #   +80 target_resource, +88 duration_ms, +96 tags, +104 integrity.
@@ -138,55 +138,55 @@ fn audit_entry_new(id: Str, agent_id, action: Str, severity) {
     return e;
 }
 # Entry id Str, as passed to audit_entry_new.
-fn aentry_id(e)              { return load64(e); }
-# Correlation-id Str, 0 until aentry_set_correlation_id.
-fn aentry_correlation_id(e)  { return load64(e + 8); }
+fn AuditEntry_id(e)              { return load64(e); }
+# Correlation-id Str, 0 until AuditEntry_set_correlation_id.
+fn AuditEntry_correlation_id(e)  { return load64(e + 8); }
 # Construction time from clock_epoch_ns(): Unix time in nanoseconds (wall
 # clock; whole seconds on agnos). There is no setter.
-fn aentry_timestamp(e)       { return load64(e + 16); }
+fn AuditEntry_timestamp(e)       { return load64(e + 16); }
 # AgentId (16-byte UUID) of the acting agent, as passed.
-fn aentry_agent_id(e)        { return load64(e + 24); }
+fn AuditEntry_agent_id(e)        { return load64(e + 24); }
 # Action Str (for example "read"), as passed.
-fn aentry_action(e)          { return load64(e + 32); }
+fn AuditEntry_action(e)          { return load64(e + 32); }
 # AuditSeverity of the entry, as passed. There is no setter.
-fn aentry_severity(e)        { return load64(e + 40); }
-# AuditResult of the action, AUDIT_SUCCESS until aentry_set_result.
-fn aentry_result(e)          { return load64(e + 48); }
-# Details Str, "{}" (an empty JSON object) until aentry_set_details.
-fn aentry_details(e)         { return load64(e + 56); }
-# User-id Str, 0 until aentry_set_user_id.
-fn aentry_user_id(e)         { return load64(e + 64); }
-# Source-IP Str, 0 until aentry_set_source_ip.
-fn aentry_source_ip(e)       { return load64(e + 72); }
-# Target-resource Str, 0 until aentry_set_target_resource.
-fn aentry_target_resource(e) { return load64(e + 80); }
-# Duration of the action in milliseconds, 0 until aentry_set_duration_ms.
-fn aentry_duration_ms(e)     { return load64(e + 88); }
+fn AuditEntry_severity(e)        { return load64(e + 40); }
+# AuditResult of the action, AUDIT_SUCCESS until AuditEntry_set_result.
+fn AuditEntry_result(e)          { return load64(e + 48); }
+# Details Str, "{}" (an empty JSON object) until AuditEntry_set_details.
+fn AuditEntry_details(e)         { return load64(e + 56); }
+# User-id Str, 0 until AuditEntry_set_user_id.
+fn AuditEntry_user_id(e)         { return load64(e + 64); }
+# Source-IP Str, 0 until AuditEntry_set_source_ip.
+fn AuditEntry_source_ip(e)       { return load64(e + 72); }
+# Target-resource Str, 0 until AuditEntry_set_target_resource.
+fn AuditEntry_target_resource(e) { return load64(e + 80); }
+# Duration of the action in milliseconds, 0 until AuditEntry_set_duration_ms.
+fn AuditEntry_duration_ms(e)     { return load64(e + 88); }
 # vec of tags, created empty at construction; push to it directly.
-fn aentry_tags(e)            { return load64(e + 96); }
+fn AuditEntry_tags(e)            { return load64(e + 96); }
 # The entry's IntegrityFields: genesis fields with an empty signature until
-# aentry_set_integrity replaces them.
-fn aentry_integrity(e)       { return load64(e + 104); }
+# AuditEntry_set_integrity replaces them.
+fn AuditEntry_integrity(e)       { return load64(e + 104); }
 # Set the correlation-id Str. Returns 0.
-fn aentry_set_correlation_id(e, v: Str) { store64(e + 8, v); return 0; }
+fn AuditEntry_set_correlation_id(e, v: Str) { store64(e + 8, v); return 0; }
 # Set the AuditResult. Stored without validation. Returns 0.
-fn aentry_set_result(e, v)              { store64(e + 48, v); return 0; }
+fn AuditEntry_set_result(e, v)              { store64(e + 48, v); return 0; }
 # Set the details Str. Not parsed or validated. Returns 0.
-fn aentry_set_details(e, v: Str)        { store64(e + 56, v); return 0; }
+fn AuditEntry_set_details(e, v: Str)        { store64(e + 56, v); return 0; }
 # Set the user-id Str. Returns 0.
-fn aentry_set_user_id(e, v: Str)        { store64(e + 64, v); return 0; }
+fn AuditEntry_set_user_id(e, v: Str)        { store64(e + 64, v); return 0; }
 # Set the source-IP Str. Not validated as an address. Returns 0.
-fn aentry_set_source_ip(e, v: Str)      { store64(e + 72, v); return 0; }
+fn AuditEntry_set_source_ip(e, v: Str)      { store64(e + 72, v); return 0; }
 # Set the target-resource Str. Returns 0.
-fn aentry_set_target_resource(e, v: Str){ store64(e + 80, v); return 0; }
+fn AuditEntry_set_target_resource(e, v: Str){ store64(e + 80, v); return 0; }
 # Set the duration, in milliseconds. Returns 0.
-fn aentry_set_duration_ms(e, v)    { store64(e + 88, v); return 0; }
+fn AuditEntry_set_duration_ms(e, v)    { store64(e + 88, v); return 0; }
 # Replace the entry's IntegrityFields (from integrity_fields_new or
 # integrity_fields_genesis). Stored as passed. Returns 0.
-fn aentry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
+fn AuditEntry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
 # A RetentionPolicy: how long audit records are kept, in days. 24 bytes:
 #   +0 min_days (from the argument), +8 max_days (0), +16 archive (0).
-# max_days and archive are set with retpol_set_max_days / retpol_set_archive
+# max_days and archive are set with RetentionPolicy_set_max_days / RetentionPolicy_set_archive
 # (v1.11.0).
 fn retention_policy_new(min_days) {
     var p = _stik_alloc(24);
@@ -196,15 +196,15 @@ fn retention_policy_new(min_days) {
     return p;
 }
 # Minimum retention period in days, as passed to retention_policy_new.
-fn retpol_min_days(p)    { return load64(p); }
-# Maximum retention period in days; 0 until retpol_set_max_days.
-fn retpol_max_days(p)    { return load64(p + 8); }
-# Set the value retpol_max_days reads, stored as given (not validated). Returns 0.
-fn retpol_set_max_days(p, v) { store64(p + 8, v); return 0; }
-# Archive setting; 0 until retpol_set_archive.
-fn retpol_archive(p)     { return load64(p + 16); }
-# Set the value retpol_archive reads, stored as given (not validated). Returns 0.
-fn retpol_set_archive(p, v) { store64(p + 16, v); return 0; }
+fn RetentionPolicy_min_days(p)    { return load64(p); }
+# Maximum retention period in days; 0 until RetentionPolicy_set_max_days.
+fn RetentionPolicy_max_days(p)    { return load64(p + 8); }
+# Set the value RetentionPolicy_max_days reads, stored as given (not validated). Returns 0.
+fn RetentionPolicy_set_max_days(p, v) { store64(p + 8, v); return 0; }
+# Archive setting; 0 until RetentionPolicy_set_archive.
+fn RetentionPolicy_archive(p)     { return load64(p + 16); }
+# Set the value RetentionPolicy_archive reads, stored as given (not validated). Returns 0.
+fn RetentionPolicy_set_archive(p, v) { store64(p + 16, v); return 0; }
 var AS_APPEND = 0;
 var AS_VERIFY_CHAIN = 1;
 var AS_VERIFY_ENTRY = 2;

@@ -302,25 +302,25 @@ fn test_nested_length_widening() {
 # an ERROR status.
 fn span_full() {
     var sp = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
-    span_set_parent(sp, ids(0xB0, 8));
-    span_set_kind(sp, SPAN_CLIENT);
+    Span_set_parent_id(sp, ids(0xB0, 8));
+    Span_set_kind(sp, SPAN_CLIENT);
     store64(sp + 48, 1234567890);
-    span_set_duration_ms(sp, 5);
-    map_set(span_attributes(sp), "http.status_code", any_int(200));
-    map_set(span_attributes(sp), "http.method", any_string(str_from("GET")));
-    map_set(span_attributes(sp), "error", any_bool(1));
+    Span_set_duration_ms(sp, 5);
+    map_set(Span_attributes(sp), "http.status_code", any_int(200));
+    map_set(Span_attributes(sp), "http.method", any_string(str_from("GET")));
+    map_set(Span_attributes(sp), "error", any_bool(1));
     store64(sp + 88, 1);
     var e1 = span_event_new(str_from("start"));
     store64(e1 + 8, 1000);
-    map_set(sevt_attributes(e1), "k", any_string(str_from("v")));
+    map_set(SpanEvent_attributes(e1), "k", any_string(str_from("v")));
     var e2 = span_event_new(str_from("end"));
     store64(e2 + 8, 2000);
-    vec_push(span_events(sp), e1);
-    vec_push(span_events(sp), e2);
+    vec_push(Span_events(sp), e1);
+    vec_push(Span_events(sp), e2);
     var l1 = span_link_new(ids(0xC0, 16), ids(0xD0, 8));
-    map_set(slink_attributes(l1), "rel", any_string(str_from("follows")));
-    vec_push(span_links(sp), l1);
-    span_set_status(sp, SPAN_ERROR);
+    map_set(SpanLink_attributes(l1), "rel", any_string(str_from("follows")));
+    vec_push(Span_links(sp), l1);
+    Span_set_status(sp, SPAN_ERROR);
     return sp;
 }
 
@@ -344,7 +344,7 @@ fn test_span_golden() {
     assert(str_eq(to_hex(out), str_builder_build(xp1)) == 1, "span_full matches protoc");
     var s2 = span_new(str_from("x"), ids(0, 16), ids(0xA0, 8));
     store64(s2 + 48, 77);
-    span_set_status(s2, SPAN_OK);
+    Span_set_status(s2, SPAN_OK);
     var out2 = enc_span(s2);
     var xp2 = str_builder_new();
     str_builder_add_cstr(xp2, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a0178394d00000000000000");
@@ -356,17 +356,17 @@ fn test_span_golden() {
 # The status code is Status field 3; a value outside SpanStatus writes none.
 fn test_span_status_field() {
     var s = span_new(str_from("x"), ids(0, 16), ids(0xA0, 8));
-    span_set_status(s, SPAN_ERROR);
+    Span_set_status(s, SPAN_ERROR);
     var out = enc_span(s);
     var d = str_data(out);
     var n = str_len(out);
     assert_eq(load8(d + n - 4), 0x7A, "field 15 status");
     assert_eq(load8(d + n - 2), 0x18, "Status.code is field 3, not reserved field 1");
     assert_eq(load8(d + n - 1), 2, "STATUS_CODE_ERROR");
-    span_set_status(s, 7);
+    Span_set_status(s, 7);
     var o2 = enc_span(s);
     assert_eq(str_len(o2), n - 4, "no status for a value outside SpanStatus");
-    span_set_status(s, SPAN_UNSET);
+    Span_set_status(s, SPAN_UNSET);
     assert_eq(str_len(enc_span(s)), n - 4, "no status for UNSET");
     return 0;
 }
@@ -382,10 +382,10 @@ fn enc_log(lr) {
 fn test_log_record_golden() {
     var lr = log_record_new(LOG_WARN, str_from("disk full"));
     store64(lr, 1700000000000000000);
-    map_set(logrec_attributes(lr), "path", any_string(str_from("/var")));
-    map_set(logrec_attributes(lr), "free", any_int(0));
-    logrec_set_trace_id(lr, ids(0, 16));
-    logrec_set_span_id(lr, ids(0xA0, 8));
+    map_set(LogRecord_attributes(lr), "path", any_string(str_from("/var")));
+    map_set(LogRecord_attributes(lr), "free", any_int(0));
+    LogRecord_set_trace_id(lr, ids(0, 16));
+    LogRecord_set_span_id(lr, ids(0xA0, 8));
     var out = enc_log(lr);
     var xp3 = str_builder_new();
     str_builder_add_cstr(xp3, "0900002a36fe9c9717100d1a045741524e2a0b0a096469736b2066756c6c320a0a04667265651202");
@@ -424,7 +424,7 @@ fn point(nm, mv, ts) {
 # Number data points: int, float, negative, no value, and zero.
 fn test_number_data_point_golden() {
     var p1 = point("req", metric_int(42), 99);
-    map_set(mdp_attributes(p1), "route", any_string(str_from("/a")));
+    map_set(MetricDataPoint_attributes(p1), "route", any_string(str_from("/a")));
     var hv4 = enc_mdp(p1);
     assert(hex_is(hv4, "196300000000000000312a000000000000003a0d0a05726f75746512040a022f61") == 1,
       "mdp_int matches protoc");
@@ -451,7 +451,7 @@ fn enc_metric(desc, pts) {
 # Metrics: a gauge, a counter, an up-down counter and an empty counter.
 fn test_metric_golden() {
     var p1 = point("req", metric_int(42), 99);
-    map_set(mdp_attributes(p1), "route", any_string(str_from("/a")));
+    map_set(MetricDataPoint_attributes(p1), "route", any_string(str_from("/a")));
     var p2 = point("lat", metric_float(0x4004000000000000), 100);
     var g = vec_new();
     vec_push(g, p1);
@@ -861,10 +861,10 @@ fn fuzz_span(seed) {
     var i = 0;
     while (i < _FUZZ_ITERS) {
         var sp = span_new(gen_bytes(6), ids(i, 16), ids(i + 1, 8));
-        if (rng_below(2) == 1) { span_set_parent(sp, ids(i + 2, 8)); }
-        span_set_kind(sp, rng_below(7));
-        span_set_status(sp, rng_below(5));
-        span_set_duration_ms(sp, rng_below(1000));
+        if (rng_below(2) == 1) { Span_set_parent_id(sp, ids(i + 2, 8)); }
+        Span_set_kind(sp, rng_below(7));
+        Span_set_status(sp, rng_below(5));
+        Span_set_duration_ms(sp, rng_below(1000));
         store64(sp + 64, gen_map(0));
         var kvs = kv_in_map(load64(sp + 64));
         var ne = rng_below(3);
@@ -873,7 +873,7 @@ fn fuzz_span(seed) {
             var e = span_event_new(gen_bytes(4));
             if (rng_below(2) == 1) { store64(e + 16, gen_map(0)); }
             kvs = kvs + kv_in_map(load64(e + 16));
-            vec_push(span_events(sp), e);
+            vec_push(Span_events(sp), e);
             j = j + 1;
         }
         var nl = rng_below(3);
@@ -882,7 +882,7 @@ fn fuzz_span(seed) {
             var l = span_link_new(ids(j, 16), ids(j + 3, 8));
             if (rng_below(2) == 1) { store64(l + 16, gen_map(0)); }
             kvs = kvs + kv_in_map(load64(l + 16));
-            vec_push(span_links(sp), l);
+            vec_push(Span_links(sp), l);
             j = j + 1;
         }
         var a = enc_span(sp);
@@ -905,8 +905,8 @@ fn fuzz_log(seed) {
         if (rng_below(4) != 0) { body = gen_bytes(12); }
         var lr = log_record_new(rng_below(40) - 5, body);
         store64(lr + 32, gen_map(0));
-        if (rng_below(2) == 1) { logrec_set_trace_id(lr, ids(i, 16)); }
-        if (rng_below(2) == 1) { logrec_set_span_id(lr, ids(i, 8)); }
+        if (rng_below(2) == 1) { LogRecord_set_trace_id(lr, ids(i, 16)); }
+        if (rng_below(2) == 1) { LogRecord_set_span_id(lr, ids(i, 8)); }
         var a = enc_log(lr);
         if (pb_check(a, PB_LOG, kv_in_map(load64(lr + 32))) == 1) {
             if (str_eq(a, enc_log(lr)) == 1) { ok = ok + 1; }

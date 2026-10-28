@@ -399,7 +399,7 @@ enum BatchStatus { BATCH_PENDING; BATCH_IN_PROGRESS; BATCH_COMPLETED; BATCH_FAIL
 # A Message: one turn of an LLM conversation. 24 bytes, all 8-byte slots:
 #   +0 role (MessageRole), +8 content (vec of content-block boxes, starts
 #   empty), +16 zeroed, with no accessor.
-# Add content by pushing content_* boxes onto msg_content.
+# Add content by pushing content_* boxes onto Message_content.
 fn message_new(role) {
     var m = _stik_alloc(24);
     store64(m, role);
@@ -414,9 +414,9 @@ fn message_text(role, text: Str) {
     return m;
 }
 # MessageRole of the message.
-fn msg_role(m)    { return load64(m); }
+fn Message_role(m)    { return load64(m); }
 # vec of the message's content-block boxes (see content_text and friends).
-fn msg_content(m) { return load64(m + 8); }
+fn Message_content(m) { return load64(m + 8); }
 # A ToolDefinition: a tool offered to the model. 32 bytes, all 8-byte slots:
 #   +0 name (Str), +8 description (Str), +16 parameters (Str, may be 0),
 #   +24 zeroed, with no accessor.
@@ -429,11 +429,11 @@ fn tool_definition_new(tname: Str, desc: Str, params: Str) {
     return t;
 }
 # Tool name (Str).
-fn tooldef_name(t)   { return load64(t); }
+fn ToolDefinition_name(t)   { return load64(t); }
 # Tool description (Str).
-fn tooldef_desc(t)   { return load64(t + 8); }
+fn ToolDefinition_desc(t)   { return load64(t + 8); }
 # Tool parameters (Str), or 0 when none were given.
-fn tooldef_params(t) { return load64(t + 16); }
+fn ToolDefinition_params(t) { return load64(t + 16); }
 # A ToolCall: a model's request to invoke a tool. 24 bytes, all 8-byte slots:
 #   +0 call id, +8 tool name, +16 arguments, all Str.
 fn tool_call_new(tid: Str, tname: Str, targs: Str) {
@@ -444,11 +444,11 @@ fn tool_call_new(tid: Str, tname: Str, targs: Str) {
     return tc;
 }
 # Tool call id (Str).
-fn tcall_id(tc)   { return load64(tc); }
+fn ToolCall_id(tc)   { return load64(tc); }
 # Name of the tool to call (Str).
-fn tcall_name(tc) { return load64(tc + 8); }
+fn ToolCall_name(tc) { return load64(tc + 8); }
 # Call arguments (Str), stored as given.
-fn tcall_args(tc) { return load64(tc + 16); }
+fn ToolCall_args(tc) { return load64(tc + 16); }
 # SamplingParams for an inference request. 56 bytes, all 8-byte slots:
 #   +0 temperature (1000), +8 top_p, +16 top_k, +24 frequency penalty,
 #   +32 presence penalty, +40 stop sequences (vec, starts empty), +48 seed.
@@ -464,31 +464,31 @@ fn sampling_params_new() {
     return s;
 }
 # Sampling temperature, an integer stored as given; 1000 by default.
-fn samp_temperature(s)  { return load64(s); }
+fn SamplingParams_temperature(s)  { return load64(s); }
 # Nucleus-sampling top_p, an integer stored as given; 0 by default.
-fn samp_top_p(s)        { return load64(s + 8); }
+fn SamplingParams_top_p(s)        { return load64(s + 8); }
 # top_k sampling cutoff (a token count); 0 by default.
-fn samp_top_k(s)        { return load64(s + 16); }
-# Frequency penalty, an integer; 0 by default (samp_set_freq_penalty).
-fn samp_freq_penalty(s) { return load64(s + 24); }
-# Set the value samp_freq_penalty reads, stored as given (not validated). Returns 0.
-fn samp_set_freq_penalty(s, v) { store64(s + 24, v); return 0; }
-# Presence penalty, an integer; 0 by default (samp_set_pres_penalty).
-fn samp_pres_penalty(s) { return load64(s + 32); }
-# Set the value samp_pres_penalty reads, stored as given (not validated). Returns 0.
-fn samp_set_pres_penalty(s, v) { store64(s + 32, v); return 0; }
+fn SamplingParams_top_k(s)        { return load64(s + 16); }
+# Frequency penalty, an integer; 0 by default (SamplingParams_set_freq_penalty).
+fn SamplingParams_freq_penalty(s) { return load64(s + 24); }
+# Set the value SamplingParams_freq_penalty reads, stored as given (not validated). Returns 0.
+fn SamplingParams_set_freq_penalty(s, v) { store64(s + 24, v); return 0; }
+# Presence penalty, an integer; 0 by default (SamplingParams_set_pres_penalty).
+fn SamplingParams_pres_penalty(s) { return load64(s + 32); }
+# Set the value SamplingParams_pres_penalty reads, stored as given (not validated). Returns 0.
+fn SamplingParams_set_pres_penalty(s, v) { store64(s + 32, v); return 0; }
 # vec of stop sequences (Str), empty by default; push onto it to add one.
-fn samp_stop_seqs(s)    { return load64(s + 40); }
+fn SamplingParams_stop_seqs(s)    { return load64(s + 40); }
 # Sampling seed; 0 by default.
-fn samp_seed(s)         { return load64(s + 48); }
+fn SamplingParams_seed(s)         { return load64(s + 48); }
 # Set the sampling temperature (integer, stored as given). Returns 0.
-fn samp_set_temperature(s, v) { store64(s, v); return 0; }
+fn SamplingParams_set_temperature(s, v) { store64(s, v); return 0; }
 # Set top_p (integer, stored as given). Returns 0.
-fn samp_set_top_p(s, v)       { store64(s + 8, v); return 0; }
+fn SamplingParams_set_top_p(s, v)       { store64(s + 8, v); return 0; }
 # Set top_k. Returns 0.
-fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
+fn SamplingParams_set_top_k(s, v)       { store64(s + 16, v); return 0; }
 # Set the sampling seed. Returns 0.
-fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
+fn SamplingParams_set_seed(s, v)        { store64(s + 48, v); return 0; }
 struct TokenUsage {
     prompt_tok: i64; completion_tok: i64; total_tok: i64;
     cache_create_tok: i64; cache_read_tok: i64;
@@ -568,25 +568,25 @@ fn token_usage_new() {
     return u;
 }
 # Prompt (input) token count.
-fn tusage_prompt(u)      { return load64(u); }
+fn TokenUsage_prompt_tok(u)      { return load64(u); }
 # Completion (output) token count.
-fn tusage_completion(u)  { return load64(u + 8); }
+fn TokenUsage_completion_tok(u)  { return load64(u + 8); }
 # Total token count, as set; nothing derives it from the other counts.
-fn tusage_total(u)       { return load64(u + 16); }
+fn TokenUsage_total_tok(u)       { return load64(u + 16); }
 # Input tokens written to the prompt cache (cache creation).
-fn tusage_cache_create(u){ return load64(u + 24); }
+fn TokenUsage_cache_create_tok(u){ return load64(u + 24); }
 # Input tokens read from the prompt cache.
-fn tusage_cache_read(u)  { return load64(u + 32); }
+fn TokenUsage_cache_read_tok(u)  { return load64(u + 32); }
 # Set the prompt token count. Returns 0.
-fn tusage_set_prompt(u, v)     { store64(u, v); return 0; }
+fn TokenUsage_set_prompt_tok(u, v)     { store64(u, v); return 0; }
 # Set the completion token count. Returns 0.
-fn tusage_set_completion(u, v) { store64(u + 8, v); return 0; }
+fn TokenUsage_set_completion_tok(u, v) { store64(u + 8, v); return 0; }
 # Set the total token count. Returns 0.
-fn tusage_set_total(u, v)        { store64(u + 16, v); return 0; }
+fn TokenUsage_set_total_tok(u, v)        { store64(u + 16, v); return 0; }
 # Set the cache-creation token count. Returns 0.
-fn tusage_set_cache_create(u, v) { store64(u + 24, v); return 0; }
+fn TokenUsage_set_cache_create_tok(u, v) { store64(u + 24, v); return 0; }
 # Set the cache-read token count. Returns 0.
-fn tusage_set_cache_read(u, v)   { store64(u + 32, v); return 0; }
+fn TokenUsage_set_cache_read_tok(u, v)   { store64(u + 32, v); return 0; }
 # An InferenceRequest. 136 bytes, all 8-byte slots:
 #   +0 model (Str), +8 prompt (Str, ""), +16 system prompt (Str, 0 = none),
 #   +24 messages (vec of Message, empty), +32 max_tokens (0),
@@ -616,47 +616,47 @@ fn inference_request_new(model: Str) {
     return r;
 }
 # Model identifier (Str) the request targets.
-fn ireq_model(r)         { return load64(r); }
-# Plain prompt (Str): "" from inference_request_new until ireq_set_prompt.
-fn ireq_prompt(r)        { return load64(r + 8); }
-# Set the value ireq_prompt reads, stored as given (not validated). Returns 0.
-fn ireq_set_prompt(r, v) { store64(r + 8, v); return 0; }
+fn InferenceRequest_model(r)         { return load64(r); }
+# Plain prompt (Str): "" from inference_request_new until InferenceRequest_set_prompt.
+fn InferenceRequest_prompt(r)        { return load64(r + 8); }
+# Set the value InferenceRequest_prompt reads, stored as given (not validated). Returns 0.
+fn InferenceRequest_set_prompt(r, v) { store64(r + 8, v); return 0; }
 # Top-level system prompt (Str), or 0 when none is set.
-fn ireq_system(r)        { return load64(r + 16); }
+fn InferenceRequest_system(r)        { return load64(r + 16); }
 # vec of the conversation's Message pointers, empty at construction; push to add
 # a turn.
-fn ireq_messages(r)      { return load64(r + 24); }
+fn InferenceRequest_messages(r)      { return load64(r + 24); }
 # Maximum number of tokens to generate; 0 until set.
-fn ireq_max_tokens(r)    { return load64(r + 32); }
+fn InferenceRequest_max_tokens(r)    { return load64(r + 32); }
 # The request's SamplingParams pointer, created by inference_request_new.
-fn ireq_sampling(r)      { return load64(r + 40); }
+fn InferenceRequest_sampling(r)      { return load64(r + 40); }
 # Streaming flag: 1 to request a streamed response, 0 (the default) otherwise.
-fn ireq_stream(r)        { return load64(r + 48); }
+fn InferenceRequest_stream(r)        { return load64(r + 48); }
 # vec of ToolDefinition pointers offered to the model; empty at construction.
-fn ireq_tools(r)         { return load64(r + 56); }
+fn InferenceRequest_tools(r)         { return load64(r + 56); }
 # ToolChoice for the request; 0 (TOOL_AUTO) at construction.
-fn ireq_tool_choice(r)   { return load64(r + 64); }
+fn InferenceRequest_tool_choice(r)   { return load64(r + 64); }
 # Set the system prompt (Str). Returns 0.
-fn ireq_set_system(r, v: Str)     { store64(r + 16, v); return 0; }
+fn InferenceRequest_set_system(r, v: Str)     { store64(r + 16, v); return 0; }
 # Set max_tokens. Returns 0.
-fn ireq_set_max_tokens(r, v) { store64(r + 32, v); return 0; }
+fn InferenceRequest_set_max_tokens(r, v) { store64(r + 32, v); return 0; }
 # Set the streaming flag (1 stream, 0 not). Returns 0.
-fn ireq_set_stream(r, v)     { store64(r + 48, v); return 0; }
+fn InferenceRequest_set_stream(r, v)     { store64(r + 48, v); return 0; }
 # Service tier name (Str, e.g. "auto"), or 0 when unset.
-fn ireq_service_tier(r)      { return load64(r + 112); }
-# Request metadata as passed to ireq_set_metadata, or 0 when unset. This module
+fn InferenceRequest_service_tier(r)      { return load64(r + 112); }
+# Request metadata as passed to InferenceRequest_set_metadata, or 0 when unset. This module
 # stores it without interpreting it.
-fn ireq_metadata(r)          { return load64(r + 120); }
+fn InferenceRequest_metadata(r)          { return load64(r + 120); }
 # Reasoning-effort level (Str, e.g. "high"), or 0 when unset.
-fn ireq_reasoning_effort(r)  { return load64(r + 128); }
+fn InferenceRequest_reasoning_effort(r)  { return load64(r + 128); }
 # Set tool_choice, a ToolChoice (not validated). Returns 0.
-fn ireq_set_tool_choice(r, v)       { store64(r + 64, v); return 0; }
+fn InferenceRequest_set_tool_choice(r, v)       { store64(r + 64, v); return 0; }
 # Set the service tier name (Str). Returns 0.
-fn ireq_set_service_tier(r, v: Str)     { store64(r + 112, v); return 0; }
+fn InferenceRequest_set_service_tier(r, v: Str)     { store64(r + 112, v); return 0; }
 # Set the request metadata, stored as given. Returns 0.
-fn ireq_set_metadata(r, v)              { store64(r + 120, v); return 0; }
+fn InferenceRequest_set_metadata(r, v)              { store64(r + 120, v); return 0; }
 # Set the reasoning-effort level (Str). Returns 0.
-fn ireq_set_reasoning_effort(r, v: Str) { store64(r + 128, v); return 0; }
+fn InferenceRequest_set_reasoning_effort(r, v: Str) { store64(r + 128, v); return 0; }
 # An InferenceResponse. 64 bytes, all 8-byte slots:
 #   +0 id (Str, 0 until set), +8 model (Str), +16 content (vec of content-block
 #   boxes, empty), +24 usage (a fresh token_usage_new), +32 finish_reason
@@ -675,21 +675,21 @@ fn inference_response_new(model: Str) {
     return r;
 }
 # Provider-assigned response id (Str), or 0 until set.
-fn iresp_id(r)             { return load64(r); }
+fn InferenceResponse_id(r)             { return load64(r); }
 # Model identifier (Str) passed to inference_response_new.
-fn iresp_model(r)          { return load64(r + 8); }
+fn InferenceResponse_model(r)          { return load64(r + 8); }
 # vec of the response's content-block boxes; empty at construction.
-fn iresp_content(r)        { return load64(r + 16); }
+fn InferenceResponse_content(r)        { return load64(r + 16); }
 # The response's TokenUsage pointer, created zeroed by the constructor.
-fn iresp_usage(r)          { return load64(r + 24); }
+fn InferenceResponse_usage(r)          { return load64(r + 24); }
 # FinishReason of the response; FINISH_STOP until set.
-fn iresp_finish_reason(r)  { return load64(r + 32); }
+fn InferenceResponse_finish_reason(r)  { return load64(r + 32); }
 # vec of ToolCall pointers the model requested; empty at construction.
-fn iresp_tool_calls(r)     { return load64(r + 40); }
+fn InferenceResponse_tool_calls(r)     { return load64(r + 40); }
 # Set the response id (Str). Returns 0.
-fn iresp_set_id(r, v: Str)       { store64(r, v); return 0; }
+fn InferenceResponse_set_id(r, v: Str)       { store64(r, v); return 0; }
 # Set the FinishReason (not validated). Returns 0.
-fn iresp_set_finish_reason(r, v) { store64(r + 32, v); return 0; }
+fn InferenceResponse_set_finish_reason(r, v) { store64(r + 32, v); return 0; }
 # StreamEvent for a text delta: a tagged box with tag STREAM_DELTA whose payload
 # is the `text` Str. Read stream events with boxed_tag / boxed_payload.
 fn stream_delta(text: Str) { return tagged_new(STREAM_DELTA, text); }
@@ -720,69 +720,69 @@ fn model_capabilities_new(model_id: Str, provider) {
     return m;
 }
 # Model identifier (Str).
-fn mcap_model_id(m)        { return load64(m); }
-# Human-readable model name (Str); model_id until mcap_set_display_name.
-fn mcap_display_name(m)    { return load64(m + 8); }
+fn ModelCapabilities_model_id(m)        { return load64(m); }
+# Human-readable model name (Str); model_id until ModelCapabilities_set_display_name.
+fn ModelCapabilities_display_name(m)    { return load64(m + 8); }
 # LlmProvider serving the model.
-fn mcap_provider(m)        { return load64(m + 16); }
+fn ModelCapabilities_provider(m)        { return load64(m + 16); }
 # Context window size in tokens; 0 until set.
-fn mcap_context_window(m)  { return load64(m + 24); }
+fn ModelCapabilities_context_window(m)  { return load64(m + 24); }
 # Maximum output length in tokens; 0 until set.
-fn mcap_max_output(m)      { return load64(m + 32); }
+fn ModelCapabilities_max_output(m)      { return load64(m + 32); }
 # 1 if the model accepts image input, else 0.
-fn mcap_supports_vision(m) { return load64(m + 40); }
+fn ModelCapabilities_supports_vision(m) { return load64(m + 40); }
 # 1 if the model supports tool calling, else 0.
-fn mcap_supports_tools(m)  { return load64(m + 48); }
+fn ModelCapabilities_supports_tools(m)  { return load64(m + 48); }
 # 1 if the model supports structured output, else 0.
-fn mcap_supports_structured(m) { return load64(m + 56); }
+fn ModelCapabilities_supports_structured(m) { return load64(m + 56); }
 # 1 if the model supports streamed responses, else 0.
-fn mcap_supports_streaming(m)  { return load64(m + 64); }
+fn ModelCapabilities_supports_streaming(m)  { return load64(m + 64); }
 # 1 if the model produces thinking (reasoning) output, else 0.
-fn mcap_supports_thinking(m)   { return load64(m + 72); }
+fn ModelCapabilities_supports_thinking(m)   { return load64(m + 72); }
 # 1 if the model supports audio, else 0.
-fn mcap_supports_audio(m)      { return load64(m + 80); }
+fn ModelCapabilities_supports_audio(m)      { return load64(m + 80); }
 # 1 if the model supports citations, else 0.
-fn mcap_supports_citations(m)  { return load64(m + 88); }
+fn ModelCapabilities_supports_citations(m)  { return load64(m + 88); }
 # v1.1.0 — 2026-Q1/Q2 ecosystem wave additions.
 # 1 if the model accepts video input, else 0.
-fn mcap_supports_video_input(m)         { return load64(m + 96); }
+fn ModelCapabilities_supports_video_input(m)         { return load64(m + 96); }
 # 1 if the model supports prompt/context caching, else 0.
-fn mcap_supports_caching(m)             { return load64(m + 104); }  # prompt/context caching
+fn ModelCapabilities_supports_caching(m)             { return load64(m + 104); }  # prompt/context caching
 # 1 if the model can make several tool calls in one response, else 0.
-fn mcap_supports_parallel_tool_calls(m) { return load64(m + 112); }
+fn ModelCapabilities_supports_parallel_tool_calls(m) { return load64(m + 112); }
 # F-021 (audit 2026-08-24): the seven original flag getters below had no
 # setters, so they could only ever read 0 — the same defect class as
 # SecretMetadata's unsettable fields, resolved together in v1.4.0 so the
 # library gives one consistent answer on setter-less getters.
 # Set the vision flag, 1 or 0. Returns 0.
-fn mcap_set_supports_vision(m, v)     { store64(m + 40, v); return 0; }
+fn ModelCapabilities_set_supports_vision(m, v)     { store64(m + 40, v); return 0; }
 # Set the tool-calling flag, 1 or 0. Returns 0.
-fn mcap_set_supports_tools(m, v)      { store64(m + 48, v); return 0; }
+fn ModelCapabilities_set_supports_tools(m, v)      { store64(m + 48, v); return 0; }
 # Set the structured-output flag, 1 or 0. Returns 0.
-fn mcap_set_supports_structured(m, v) { store64(m + 56, v); return 0; }
+fn ModelCapabilities_set_supports_structured(m, v) { store64(m + 56, v); return 0; }
 # Set the streaming flag, 1 or 0. Returns 0.
-fn mcap_set_supports_streaming(m, v)  { store64(m + 64, v); return 0; }
+fn ModelCapabilities_set_supports_streaming(m, v)  { store64(m + 64, v); return 0; }
 # Set the thinking flag, 1 or 0. Returns 0.
-fn mcap_set_supports_thinking(m, v)   { store64(m + 72, v); return 0; }
+fn ModelCapabilities_set_supports_thinking(m, v)   { store64(m + 72, v); return 0; }
 # Set the audio flag, 1 or 0. Returns 0.
-fn mcap_set_supports_audio(m, v)      { store64(m + 80, v); return 0; }
+fn ModelCapabilities_set_supports_audio(m, v)      { store64(m + 80, v); return 0; }
 # Set the citations flag, 1 or 0. Returns 0.
-fn mcap_set_supports_citations(m, v)  { store64(m + 88, v); return 0; }
+fn ModelCapabilities_set_supports_citations(m, v)  { store64(m + 88, v); return 0; }
 # Set the display name (Str). Returns 0.
-fn mcap_set_display_name(m, v: Str) { store64(m + 8, v); return 0; }
+fn ModelCapabilities_set_display_name(m, v: Str) { store64(m + 8, v); return 0; }
 # Set the context window size in tokens. Returns 0.
-fn mcap_set_context_window(m, v)    { store64(m + 24, v); return 0; }
+fn ModelCapabilities_set_context_window(m, v)    { store64(m + 24, v); return 0; }
 # Set the maximum output length in tokens. Returns 0.
-fn mcap_set_max_output(m, v)        { store64(m + 32, v); return 0; }
+fn ModelCapabilities_set_max_output(m, v)        { store64(m + 32, v); return 0; }
 # Set the video-input flag, 1 or 0. Returns 0.
-fn mcap_set_supports_video_input(m, v)         { store64(m + 96, v);  return 0; }
+fn ModelCapabilities_set_supports_video_input(m, v)         { store64(m + 96, v);  return 0; }
 # Set the caching flag, 1 or 0. Returns 0.
-fn mcap_set_supports_caching(m, v)             { store64(m + 104, v); return 0; }
+fn ModelCapabilities_set_supports_caching(m, v)             { store64(m + 104, v); return 0; }
 # Set the parallel-tool-calls flag, 1 or 0. Returns 0.
-fn mcap_set_supports_parallel_tool_calls(m, v) { store64(m + 112, v); return 0; }
+fn ModelCapabilities_set_supports_parallel_tool_calls(m, v) { store64(m + 112, v); return 0; }
 # A RateLimitInfo: a provider's rate-limit state. 40 bytes, all 8-byte slots,
 # all 0 at construction: +0 request limit, +8 requests remaining, +16 token
-# limit, +24 tokens remaining, +32 seconds until reset. The rli_set_* setters
+# limit, +24 tokens remaining, +32 seconds until reset. The RateLimitInfo_set_* setters
 # fill it (since v1.11.0).
 fn rate_limit_info_new() {
     var r = _stik_alloc(40);
@@ -791,25 +791,25 @@ fn rate_limit_info_new() {
     return r;
 }
 # Request limit.
-fn rli_limit_requests(r)     { return load64(r); }
-# Set the value rli_limit_requests reads, stored as given (not validated). Returns 0.
-fn rli_set_limit_requests(r, v) { store64(r, v); return 0; }
+fn RateLimitInfo_limit_requests(r)     { return load64(r); }
+# Set the value RateLimitInfo_limit_requests reads, stored as given (not validated). Returns 0.
+fn RateLimitInfo_set_limit_requests(r, v) { store64(r, v); return 0; }
 # Requests remaining under the limit.
-fn rli_remaining_requests(r) { return load64(r + 8); }
-# Set the value rli_remaining_requests reads, stored as given (not validated). Returns 0.
-fn rli_set_remaining_requests(r, v) { store64(r + 8, v); return 0; }
+fn RateLimitInfo_remaining_requests(r) { return load64(r + 8); }
+# Set the value RateLimitInfo_remaining_requests reads, stored as given (not validated). Returns 0.
+fn RateLimitInfo_set_remaining_requests(r, v) { store64(r + 8, v); return 0; }
 # Token limit.
-fn rli_limit_tokens(r)       { return load64(r + 16); }
-# Set the value rli_limit_tokens reads, stored as given (not validated). Returns 0.
-fn rli_set_limit_tokens(r, v) { store64(r + 16, v); return 0; }
+fn RateLimitInfo_limit_tokens(r)       { return load64(r + 16); }
+# Set the value RateLimitInfo_limit_tokens reads, stored as given (not validated). Returns 0.
+fn RateLimitInfo_set_limit_tokens(r, v) { store64(r + 16, v); return 0; }
 # Tokens remaining under the limit.
-fn rli_remaining_tokens(r)   { return load64(r + 24); }
-# Set the value rli_remaining_tokens reads, stored as given (not validated). Returns 0.
-fn rli_set_remaining_tokens(r, v) { store64(r + 24, v); return 0; }
+fn RateLimitInfo_remaining_tokens(r)   { return load64(r + 24); }
+# Set the value RateLimitInfo_remaining_tokens reads, stored as given (not validated). Returns 0.
+fn RateLimitInfo_set_remaining_tokens(r, v) { store64(r + 24, v); return 0; }
 # Seconds until the rate limit resets.
-fn rli_reset_seconds(r)      { return load64(r + 32); }
-# Set the value rli_reset_seconds reads, stored as given (not validated). Returns 0.
-fn rli_set_reset_seconds(r, v) { store64(r + 32, v); return 0; }
+fn RateLimitInfo_reset_seconds(r)      { return load64(r + 32); }
+# Set the value RateLimitInfo_reset_seconds reads, stored as given (not validated). Returns 0.
+fn RateLimitInfo_set_reset_seconds(r, v) { store64(r + 32, v); return 0; }
 # A ToolResult: the outcome of a tool call, returned to the model. 24 bytes,
 # all 8-byte slots: +0 tool_use_id (Str, the tool use it answers), +8 content
 # (Str), +16 is-error flag. content_tool_result boxes the same record.
@@ -821,14 +821,14 @@ fn tool_result_new(tuid: Str, tcontent: Str, tiserr) {
     return tr;
 }
 # Id (Str) of the tool use this result answers.
-fn tresult_tool_use_id(tr) { return load64(tr); }
+fn ToolResult_tool_use_id(tr) { return load64(tr); }
 # Result content (Str).
-fn tresult_content(tr)     { return load64(tr + 8); }
+fn ToolResult_content(tr)     { return load64(tr + 8); }
 # Is-error flag as passed to tool_result_new: 1 when the result is an error.
-fn tresult_is_error(tr)    { return load64(tr + 16); }
+fn ToolResult_is_error(tr)    { return load64(tr + 16); }
 # A LogprobEntry: a token with its log probability. 24 bytes, all 8-byte
 # slots: +0 token (Str), +8 logprob (integer, stored as given),
-# +16 top_logprobs (vec, 0 until lpe_top_logprobs first creates it).
+# +16 top_logprobs (vec, 0 until LogprobEntry_top_logprobs first creates it).
 fn logprob_entry_new(token: Str, logprob) {
     var e = _stik_alloc(24);
     store64(e, token);
@@ -837,12 +837,12 @@ fn logprob_entry_new(token: Str, logprob) {
     return e;
 }
 # The token (Str).
-fn lpe_token(e)       { return load64(e); }
+fn LogprobEntry_token(e)       { return load64(e); }
 # Log probability of the token, an integer stored as given.
-fn lpe_logprob(e)     { return load64(e + 8); }
+fn LogprobEntry_logprob(e)     { return load64(e + 8); }
 # vec of the top alternative logprobs for this position; created empty on first
 # access.
-fn lpe_top_logprobs(e){ return _stik_lazy_vec(e + 16); }
+fn LogprobEntry_top_logprobs(e){ return _stik_lazy_vec(e + 16); }
 # A TokenLogprob: a token with its log probability. 16 bytes: +0 token (Str),
 # +8 logprob (integer, stored as given).
 fn token_logprob_new(token: Str, logprob) {
@@ -852,9 +852,9 @@ fn token_logprob_new(token: Str, logprob) {
     return t;
 }
 # The token (Str).
-fn tlp_token(t)   { return load64(t); }
+fn TokenLogprob_token(t)   { return load64(t); }
 # Log probability of the token, an integer stored as given.
-fn tlp_logprob(t) { return load64(t + 8); }
+fn TokenLogprob_logprob(t) { return load64(t + 8); }
 # A SafetyRating: a safety assessment for one harm category. 24 bytes, all
 # 8-byte slots: +0 category (SafetyCategory), +8 probability
 # (SafetyProbability), +16 blocked flag. Values are stored as given.
@@ -866,13 +866,13 @@ fn safety_rating_new(category, probability, blocked) {
     return r;
 }
 # SafetyCategory the rating is for.
-fn srating_category(r)    { return load64(r); }
+fn SafetyRating_category(r)    { return load64(r); }
 # SafetyProbability of harm in the category.
-fn srating_probability(r) { return load64(r + 8); }
+fn SafetyRating_probability(r) { return load64(r + 8); }
 # Blocked flag as passed to safety_rating_new: 1 when the content was blocked.
-fn srating_blocked(r)     { return load64(r + 16); }
+fn SafetyRating_blocked(r)     { return load64(r + 16); }
 # An EmbeddingRequest. 24 bytes, all 8-byte slots: +0 model (Str), +8 inputs
-# (vec, 0 until embreq_inputs first creates it), +16 dimensions (0).
+# (vec, 0 until EmbeddingRequest_inputs first creates it), +16 dimensions (0).
 fn embedding_request_new(model: Str) {
     var r = _stik_alloc(24);
     store64(r, model);
@@ -881,15 +881,15 @@ fn embedding_request_new(model: Str) {
     return r;
 }
 # Model identifier (Str).
-fn embreq_model(r)      { return load64(r); }
+fn EmbeddingRequest_model(r)      { return load64(r); }
 # vec of the inputs to embed; created empty on first access.
-fn embreq_inputs(r)     { return _stik_lazy_vec(r + 8); }
+fn EmbeddingRequest_inputs(r)     { return _stik_lazy_vec(r + 8); }
 # Requested embedding dimension count; 0 until set.
-fn embreq_dimensions(r) { return load64(r + 16); }
+fn EmbeddingRequest_dimensions(r) { return load64(r + 16); }
 # Set the requested embedding dimension count. Returns 0.
-fn embreq_set_dimensions(r, v) { store64(r + 16, v); return 0; }
+fn EmbeddingRequest_set_dimensions(r, v) { store64(r + 16, v); return 0; }
 # An EmbeddingResponse. 24 bytes, all 8-byte slots: +0 model (Str),
-# +8 embeddings (vec, 0 until embresp_embeddings first creates it),
+# +8 embeddings (vec, 0 until EmbeddingResponse_embeddings first creates it),
 # +16 usage (a fresh token_usage_new).
 fn embedding_response_new(model: Str) {
     var r = _stik_alloc(24);
@@ -899,11 +899,11 @@ fn embedding_response_new(model: Str) {
     return r;
 }
 # Model identifier (Str).
-fn embresp_model(r)      { return load64(r); }
+fn EmbeddingResponse_model(r)      { return load64(r); }
 # vec of the returned embeddings; created empty on first access.
-fn embresp_embeddings(r) { return _stik_lazy_vec(r + 8); }
+fn EmbeddingResponse_embeddings(r) { return _stik_lazy_vec(r + 8); }
 # The response's TokenUsage pointer, created zeroed by the constructor.
-fn embresp_usage(r)      { return load64(r + 16); }
+fn EmbeddingResponse_usage(r)      { return load64(r + 16); }
 # A BatchRequest: one entry of a batch job. 16 bytes: +0 custom_id (Str),
 # +8 request (pointer, stored as given).
 fn batch_request_new(custom_id: Str, request) {
@@ -913,9 +913,9 @@ fn batch_request_new(custom_id: Str, request) {
     return b;
 }
 # Caller-chosen id (Str) that matches this entry to its BatchResult.
-fn breq_custom_id(b) { return load64(b); }
+fn BatchRequest_custom_id(b) { return load64(b); }
 # The request pointer passed to batch_request_new.
-fn breq_request(b)   { return load64(b + 8); }
+fn BatchRequest_request(b)   { return load64(b + 8); }
 # A BatchResult: the outcome of one batch entry. 24 bytes, all 8-byte slots:
 # +0 custom_id (Str), +8 response (0 until set), +16 error (Str, 0 until set).
 fn batch_result_new(custom_id: Str) {
@@ -926,12 +926,12 @@ fn batch_result_new(custom_id: Str) {
     return b;
 }
 # custom_id (Str) of the batch entry this result belongs to.
-fn bresult_custom_id(b) { return load64(b); }
+fn BatchResult_custom_id(b) { return load64(b); }
 # Response pointer, or 0 when none has been set.
-fn bresult_response(b)  { return load64(b + 8); }
+fn BatchResult_response(b)  { return load64(b + 8); }
 # Error message (Str), or 0 when none has been set.
-fn bresult_error(b)     { return load64(b + 16); }
+fn BatchResult_error(b)     { return load64(b + 16); }
 # Set the response pointer. Returns 0.
-fn bresult_set_response(b, v) { store64(b + 8, v); return 0; }
+fn BatchResult_set_response(b, v) { store64(b + 8, v); return 0; }
 # Set the error message (Str). Returns 0.
-fn bresult_set_error(b, v: Str) { store64(b + 16, v); return 0; }
+fn BatchResult_set_error(b, v: Str) { store64(b + 16, v); return 0; }

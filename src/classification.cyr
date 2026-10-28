@@ -98,13 +98,13 @@ fn pii_kind_parse(s: Str) {
     return stik_err_invalid_argument(str_from("unknown PiiKind name"));
 }
 # A ClassificationResult: the outcome of classifying content for data
-# sensitivity. 56 bytes, all 8-byte slots, read through the cresult_* accessors:
+# sensitivity. 56 bytes, all 8-byte slots, read through the ClassificationResult_* accessors:
 #   +0 level, +8 auto_level, +16 rules, +24 pii, +32 keywords, +40 confidence,
 #   +48 confidence-set flag (since 1.7.0; the first six offsets are unchanged).
 # Both levels start at `level`, the three vecs start empty, and confidence
 # starts at 0 and unset. Record findings by pushing into the vecs. A `level`
 # that is not a ClassificationLevel becomes CLASS_RESTRICTED, failing closed
-# (since 1.12.3; it was stored as given, though cresult_set_level refuses one).
+# (since 1.12.3; it was stored as given, though ClassificationResult_set_level refuses one).
 fn classification_result_new(level) {
     if (level < CLASS_PUBLIC || level > CLASS_RESTRICTED) { level = CLASS_RESTRICTED; }
     var r = _stik_alloc(56);
@@ -118,15 +118,15 @@ fn classification_result_new(level) {
     return r;
 }
 # Final classification level: auto_level, unless policy overrode it with
-# cresult_set_level.
-fn cresult_level(r)       { return load64(r); }
+# ClassificationResult_set_level.
+fn ClassificationResult_level(r)       { return load64(r); }
 # Level the automatic detection rules produced.
-fn cresult_auto_level(r)  { return load64(r + 8); }
+fn ClassificationResult_auto_level(r)  { return load64(r + 8); }
 # Override the final level, as a policy decision kept separate from the
 # detected auto_level. Returns Ok(0), or an invalid-argument Err that leaves
 # the result unchanged when `level` is not a ClassificationLevel: a level that
 # gates data handling is never stored unrecognised.
-fn cresult_set_level(r, level) {
+fn ClassificationResult_set_level(r, level) {
     if (level < CLASS_PUBLIC || level > CLASS_RESTRICTED) {
         return stik_err_invalid_argument(str_from("level is not a ClassificationLevel"));
     }
@@ -134,8 +134,8 @@ fn cresult_set_level(r, level) {
     return Ok(0);
 }
 # Record the level the automatic detection rules produced. Same validation and
-# return as cresult_set_level; the final level is not touched.
-fn cresult_set_auto_level(r, level) {
+# return as ClassificationResult_set_level; the final level is not touched.
+fn ClassificationResult_set_auto_level(r, level) {
     if (level < CLASS_PUBLIC || level > CLASS_RESTRICTED) {
         return stik_err_invalid_argument(str_from("auto_level is not a ClassificationLevel"));
     }
@@ -143,22 +143,22 @@ fn cresult_set_auto_level(r, level) {
     return Ok(0);
 }
 # vec of the names of the rules that triggered.
-fn cresult_rules(r)       { return load64(r + 16); }
+fn ClassificationResult_rules(r)       { return load64(r + 16); }
 # vec of the PiiKind values found in the content.
-fn cresult_pii(r)         { return load64(r + 24); }
+fn ClassificationResult_pii(r)         { return load64(r + 24); }
 # vec of the sensitive keywords found in the content.
-fn cresult_keywords(r)    { return load64(r + 32); }
+fn ClassificationResult_keywords(r)    { return load64(r + 32); }
 # Confidence score in parts per thousand: 0 (none) to 1000 (certain), the
 # fixed-point form of the Rust original's optional 0.0-1.0 float. It reads 0
-# until cresult_set_confidence sets it; cresult_has_confidence tells an unset
+# until ClassificationResult_set_confidence sets it; ClassificationResult_has_confidence tells an unset
 # score from a set 0.
-fn cresult_confidence(r)  { return load64(r + 40); }
-# 1 once cresult_set_confidence has stored a score, else 0.
-fn cresult_has_confidence(r) { return load64(r + 48); }
+fn ClassificationResult_confidence(r)  { return load64(r + 40); }
+# 1 once ClassificationResult_set_confidence has stored a score, else 0.
+fn ClassificationResult_has_confidence(r) { return load64(r + 48); }
 # Set the confidence score, in parts per thousand (0..1000), and mark it set.
 # Returns Ok(0), or an invalid-argument Err that leaves the score and its
 # set flag unchanged when `ppt` is outside 0..1000.
-fn cresult_set_confidence(r, ppt) {
+fn ClassificationResult_set_confidence(r, ppt) {
     if (ppt < 0 || ppt > 1000) {
         return stik_err_invalid_argument(str_from("confidence is outside 0..1000 parts per thousand"));
     }

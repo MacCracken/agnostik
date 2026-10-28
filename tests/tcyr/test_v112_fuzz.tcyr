@@ -27,6 +27,14 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# _stik_json_int's value, or 0 for any Err: the bare-i64 contract it had through
+# 1.12.x, which these regression tests were written against.
+fn json_int0(src, key) {
+    var t, v = _stik_json_int(src, key);
+    if (is_err_result(t) == 1) { return 0; }
+    return v;
+}
+
 # xorshift64 PRNG state — heap slot for mutability across helper fns.
 var _RNG = 0;
 
@@ -123,12 +131,12 @@ fn fuzz_json_int(_seed) {
     while (i < _FUZZ_ITERS) {
         var src = fuzz_json_like(rng_len(150));
         var key = fuzz_random_bytes(rng_len(20));
-        _stik_json_int(src, key);
+        json_int0(src, key);
         i = i + 1;
     }
-    _stik_json_int(str_from("{\"x\":-9999999999999999999}"), str_from("x"));
-    _stik_json_int(str_from("{\"x\":1234567890123456789012}"), str_from("x"));
-    _stik_json_int(str_from("{\"x\":99999999999999999999}"), str_from("x"));
+    json_int0(str_from("{\"x\":-9999999999999999999}"), str_from("x"));
+    json_int0(str_from("{\"x\":1234567890123456789012}"), str_from("x"));
+    json_int0(str_from("{\"x\":99999999999999999999}"), str_from("x"));
     return _FUZZ_ITERS + 3;
 }
 

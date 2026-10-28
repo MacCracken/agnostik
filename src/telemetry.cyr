@@ -108,7 +108,7 @@ fn span_status_parse(s: Str) {
 }
 # An error status with a description: a tagged box with tag SPAN_ERROR and
 # `message` as payload, read with boxed_tag / boxed_payload. It is not a bare
-# SpanStatus: a span's status slot (span_set_status, Span_to_otlp_proto) holds
+# SpanStatus: a span's status slot (Span_set_status, Span_to_otlp_proto) holds
 # the plain enum value.
 fn span_status_error(message: Str) {
     return tagged_new(SPAN_ERROR, message);
@@ -297,18 +297,18 @@ fn resource_default() {
     return resource_new(str_from(""), str_from(""), str_from(""));
 }
 # Name of the service the resource describes (Str).
-fn res_service_name(r)    { return load64(r); }
+fn Resource_service_name(r)    { return load64(r); }
 # Version of that service (Str).
-fn res_service_version(r) { return load64(r + 8); }
+fn Resource_service_version(r) { return load64(r + 8); }
 # Id of this instance of the service (Str).
-fn res_instance_id(r)     { return load64(r + 16); }
+fn Resource_instance_id(r)     { return load64(r + 16); }
 # Further resource attributes: a cstr-keyed map, created empty by resource_new.
-fn res_attributes(r)      { return load64(r + 24); }
+fn Resource_attributes(r)      { return load64(r + 24); }
 # Schema URL; resource_new leaves it 0 (unset).
-fn res_schema_url(r)      { return load64(r + 32); }
-# Set the value res_schema_url reads: a Str (the encoders read its length and
+fn Resource_schema_url(r)      { return load64(r + 32); }
+# Set the value Resource_schema_url reads: a Str (the encoders read its length and
 # bytes, so a C string misencodes), stored as given. Returns 0.
-fn res_set_schema_url(r, v) { store64(r + 32, v); return 0; }
+fn Resource_set_schema_url(r, v) { store64(r + 32, v); return 0; }
 # A TraceContext for a new root span: the identity a W3C traceparent carries.
 # 40 bytes, all 8-byte slots:
 #   +0 trace id (fresh 16-byte id), +8 span id (fresh 8-byte id),
@@ -324,22 +324,22 @@ fn trace_context_new() {
     return ctx;
 }
 # Trace id: pointer to its 16 bytes.
-fn tctx_trace_id(c)       { return load64(c); }
+fn TraceContext_trace_id(c)       { return load64(c); }
 # This context's span id: pointer to its 8 bytes.
-fn tctx_span_id(c)        { return load64(c + 8); }
+fn TraceContext_span_id(c)        { return load64(c + 8); }
 # Parent span id (pointer to 8 bytes), or 0 when there is none: trace_context_new
 # and tctx_from_traceparent leave it 0, tctx_child sets it.
-fn tctx_parent_span_id(c) { return load64(c + 16); }
+fn TraceContext_parent_span_id(c) { return load64(c + 16); }
 # Trace flags as an integer; bit 0 is TRACE_FLAG_SAMPLED. tctx_to_traceparent
 # writes only the low byte.
-fn tctx_trace_flags(c)    { return load64(c + 24); }
-# Set the value tctx_trace_flags reads, stored as given (not validated). Returns 0.
-fn tctx_set_trace_flags(c, v) { store64(c + 24, v); return 0; }
+fn TraceContext_trace_flags(c)    { return load64(c + 24); }
+# Set the value TraceContext_trace_flags reads, stored as given (not validated). Returns 0.
+fn TraceContext_set_trace_flags(c, v) { store64(c + 24, v); return 0; }
 # Trace state (Str). The constructors set it empty and tctx_child copies the
 # parent's; the traceparent functions do not carry it.
-fn tctx_trace_state(c)    { return load64(c + 32); }
-# Set the value tctx_trace_state reads, stored as given (not validated). Returns 0.
-fn tctx_set_trace_state(c, v) { store64(c + 32, v); return 0; }
+fn TraceContext_trace_state(c)    { return load64(c + 32); }
+# Set the value TraceContext_trace_state reads, stored as given (not validated). Returns 0.
+fn TraceContext_set_trace_state(c, v) { store64(c + 32, v); return 0; }
 # 1 when the TRACE_FLAG_SAMPLED bit of the trace flags is set, else 0.
 fn tctx_is_sampled(c) {
     if ((load64(c + 24) & TRACE_FLAG_SAMPLED) != 0) { return 1; }
@@ -363,11 +363,11 @@ fn tctx_child(parent) {
 fn tctx_to_traceparent(c): Str {
     var sb = str_builder_new();
     str_builder_add_cstr(sb, "00-");
-    str_builder_add(sb, trace_id_to_str(tctx_trace_id(c)));
+    str_builder_add(sb, trace_id_to_str(TraceContext_trace_id(c)));
     str_builder_putc(sb, '-');
-    str_builder_add(sb, span_id_to_str(tctx_span_id(c)));
+    str_builder_add(sb, span_id_to_str(TraceContext_span_id(c)));
     str_builder_putc(sb, '-');
-    var flags = tctx_trace_flags(c);
+    var flags = TraceContext_trace_flags(c);
     var fbuf = _stik_alloc(3);
     _stik_hex_byte(fbuf, 0, flags & 0xFF);
     store8(fbuf + 2, 0);
@@ -500,56 +500,56 @@ fn span_new(name: Str, trace_id, span_id) {
     return s;
 }
 # Operation name (Str).
-fn span_name(s)           { return load64(s); }
+fn Span_name(s)           { return load64(s); }
 # Id of the trace the span belongs to: pointer to its 16 bytes.
-fn span_trace_id(s)       { return load64(s + 8); }
+fn Span_trace_id(s)       { return load64(s + 8); }
 # The span's own id: pointer to its 8 bytes.
-fn span_span_id(s)        { return load64(s + 16); }
+fn Span_span_id(s)        { return load64(s + 16); }
 # Parent span id (pointer to 8 bytes), or 0 for a span with no parent.
-fn span_parent_id(s)      { return load64(s + 24); }
-# Status: a SpanStatus value, SPAN_UNSET until span_set_status.
-fn span_status(s)         { return load64(s + 32); }
-# Kind: a SpanKind value, SPAN_INTERNAL until span_set_kind.
-fn span_kind(s)           { return load64(s + 40); }
+fn Span_parent_id(s)      { return load64(s + 24); }
+# Status: a SpanStatus value, SPAN_UNSET until Span_set_status.
+fn Span_status(s)         { return load64(s + 32); }
+# Kind: a SpanKind value, SPAN_INTERNAL until Span_set_kind.
+fn Span_kind(s)           { return load64(s + 40); }
 # Start time, Unix ns from clock_epoch_ns, taken in span_new.
-fn span_started_at(s)     { return load64(s + 48); }
-# Duration in milliseconds; 0 until span_set_duration_ms.
-fn span_duration_ms(s)    { return load64(s + 56); }
+fn Span_started_at(s)     { return load64(s + 48); }
+# Duration in milliseconds; 0 until Span_set_duration_ms.
+fn Span_duration_ms(s)    { return load64(s + 56); }
 # Span attributes: a cstr-keyed map, created empty by span_new. Span_to_otlp_proto
 # reads its values as AnyValue boxes (any_string, any_int, ...).
-fn span_attributes(s)     { return load64(s + 64); }
+fn Span_attributes(s)     { return load64(s + 64); }
 # vec of the span's events, created empty by span_new.
-fn span_events(s)         { return load64(s + 72); }
+fn Span_events(s)         { return load64(s + 72); }
 # vec of the span's links, created empty by span_new.
-fn span_links(s)          { return load64(s + 80); }
+fn Span_links(s)          { return load64(s + 80); }
 # Set the status to a SpanStatus value, stored as given (not validated). Returns 0.
-fn span_set_status(s, v)      { store64(s + 32, v); return 0; }
+fn Span_set_status(s, v)      { store64(s + 32, v); return 0; }
 # Set the kind to a SpanKind value, stored as given (not validated). Returns 0.
-fn span_set_kind(s, v)        { store64(s + 40, v); return 0; }
+fn Span_set_kind(s, v)        { store64(s + 40, v); return 0; }
 # Set the duration in milliseconds; Span_to_otlp_proto derives the end time
 # from it. Returns 0.
-fn span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
+fn Span_set_duration_ms(s, v) { store64(s + 56, v); return 0; }
 # Set the parent span id (pointer to an 8-byte span id, or 0 for none). Returns 0.
-fn span_set_parent(s, v)      { store64(s + 24, v); return 0; }
+fn Span_set_parent_id(s, v)      { store64(s + 24, v); return 0; }
 # Number of attributes dropped from the span; span_new sets 0.
-fn span_dropped_attrs(s)  { return load64(s + 88); }
-# Set the value span_dropped_attrs reads, stored as given (not validated). Returns 0.
-fn span_set_dropped_attrs(s, v) { store64(s + 88, v); return 0; }
+fn Span_dropped_attrs(s)  { return load64(s + 88); }
+# Set the value Span_dropped_attrs reads, stored as given (not validated). Returns 0.
+fn Span_set_dropped_attrs(s, v) { store64(s + 88, v); return 0; }
 # Number of events dropped from the span; span_new sets 0.
-fn span_dropped_events(s) { return load64(s + 96); }
-# Set the value span_dropped_events reads, stored as given (not validated). Returns 0.
-fn span_set_dropped_events(s, v) { store64(s + 96, v); return 0; }
+fn Span_dropped_events(s) { return load64(s + 96); }
+# Set the value Span_dropped_events reads, stored as given (not validated). Returns 0.
+fn Span_set_dropped_events(s, v) { store64(s + 96, v); return 0; }
 # Number of links dropped from the span; span_new sets 0.
-fn span_dropped_links(s)  { return load64(s + 104); }
-# Set the value span_dropped_links reads, stored as given (not validated). Returns 0.
-fn span_set_dropped_links(s, v) { store64(s + 104, v); return 0; }
+fn Span_dropped_links(s)  { return load64(s + 104); }
+# Set the value Span_dropped_links reads, stored as given (not validated). Returns 0.
+fn Span_set_dropped_links(s, v) { store64(s + 104, v); return 0; }
 # Status message (Str): the description that goes with SPAN_ERROR, or 0 when
 # none is set (v1.12.0). span_status_error's box payload belongs here.
-fn span_status_message(s) { return load64(s + 112); }
+fn Span_status_message(s) { return load64(s + 112); }
 # Set the status message (a Str, or 0 to clear it). Span_to_otlp_proto writes
 # it only with SPAN_ERROR: OpenTelemetry ignores a description on Ok and Unset.
 # Returns 0.
-fn span_set_status_message(s, v: Str) { store64(s + 112, v); return 0; }
+fn Span_set_status_message(s, v: Str) { store64(s + 112, v); return 0; }
 # AnyValueType: what an AnyValue box holds. Each value is the field number of
 # the matching member of OTLP's AnyValue oneof
 # (opentelemetry/proto/common/v1/common.proto), so 0 is never a valid type.
@@ -951,8 +951,12 @@ fn TelemetryConfig_to_json(ptr, sb) {
 # fails: returns the config pointer, not a Result.
 fn TelemetryConfig_from_json(src: Str) {
     var c = _stik_alloc(24);
-    store64(c, _stik_json_int(src, str_from("enabled")));
-    store64(c + 8, _stik_json_int(src, str_from("sample_rate")));
+    var en_t, en = _stik_json_int(src, str_from("enabled"));
+    if (is_err_result(en_t) == 1) { en = 0; }
+    var sr_t, sr = _stik_json_int(src, str_from("sample_rate"));
+    if (is_err_result(sr_t) == 1) { sr = 0; }
+    store64(c, en);
+    store64(c + 8, sr);
     store64(c + 16, _stik_json_str(src, str_from("export_endpoint")));
     return c;
 }
@@ -967,17 +971,17 @@ fn telemetry_config_new() {
     return c;
 }
 # Enabled flag: 1 when telemetry is enabled, 0 when disabled.
-fn telcfg_enabled(c)    { return load64(c); }
-# Set the value telcfg_enabled reads, stored as given (not validated). Returns 0.
-fn telcfg_set_enabled(c, v) { store64(c, v); return 0; }
+fn TelemetryConfig_enabled(c)    { return load64(c); }
+# Set the value TelemetryConfig_enabled reads, stored as given (not validated). Returns 0.
+fn TelemetryConfig_set_enabled(c, v) { store64(c, v); return 0; }
 # Sampling rate in thousandths: 1000 is a rate of 1.0, the default.
-fn telcfg_sample_rate(c){ return load64(c + 8); }
-# Set the value telcfg_sample_rate reads, stored as given (not validated). Returns 0.
-fn telcfg_set_sample_rate(c, v) { store64(c + 8, v); return 0; }
+fn TelemetryConfig_sample_rate(c){ return load64(c + 8); }
+# Set the value TelemetryConfig_sample_rate reads, stored as given (not validated). Returns 0.
+fn TelemetryConfig_set_sample_rate(c, v) { store64(c + 8, v); return 0; }
 # Export endpoint (Str), or 0 when none is configured.
-fn telcfg_endpoint(c)   { return load64(c + 16); }
-# Set the value telcfg_endpoint reads, stored as given (not validated). Returns 0.
-fn telcfg_set_endpoint(c, v) { store64(c + 16, v); return 0; }
+fn TelemetryConfig_endpoint(c)   { return load64(c + 16); }
+# Set the value TelemetryConfig_endpoint reads, stored as given (not validated). Returns 0.
+fn TelemetryConfig_set_endpoint(c, v) { store64(c + 16, v); return 0; }
 # A LogRecord. 64 bytes, all 8-byte slots:
 #   +0 timestamp (clock_epoch_ns at creation), +8 0 (no accessor reads it),
 #   +16 severity (LogSeverity, stored as given), +24 body (Str),
@@ -996,26 +1000,26 @@ fn log_record_new(severity, body: Str) {
     return lr;
 }
 # Creation time, Unix ns from clock_epoch_ns.
-fn logrec_timestamp(lr)  { return load64(lr); }
+fn LogRecord_timestamp(lr)  { return load64(lr); }
 # Severity: a LogSeverity value.
-fn logrec_severity(lr)   { return load64(lr + 16); }
+fn LogRecord_severity(lr)   { return load64(lr + 16); }
 # Message body (Str).
-fn logrec_body(lr)       { return load64(lr + 24); }
+fn LogRecord_body(lr)       { return load64(lr + 24); }
 # Record attributes: a cstr-keyed map, created empty by log_record_new; values are
 # AnyValue boxes for OTLP export.
-fn logrec_attributes(lr) { return load64(lr + 32); }
+fn LogRecord_attributes(lr) { return load64(lr + 32); }
 # Id of the trace the record belongs to (pointer to 16 bytes), or 0 when unset.
-fn logrec_trace_id(lr)   { return load64(lr + 40); }
+fn LogRecord_trace_id(lr)   { return load64(lr + 40); }
 # Id of the span the record belongs to (pointer to 8 bytes), or 0 when unset.
-fn logrec_span_id(lr)    { return load64(lr + 48); }
+fn LogRecord_span_id(lr)    { return load64(lr + 48); }
 # Resource that produced the record (see resource_new), or 0 when unset.
-fn logrec_resource(lr)   { return load64(lr + 56); }
+fn LogRecord_resource(lr)   { return load64(lr + 56); }
 # Set the trace id (pointer to a 16-byte trace id, or 0). Returns 0.
-fn logrec_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
+fn LogRecord_set_trace_id(lr, v) { store64(lr + 40, v); return 0; }
 # Set the span id (pointer to an 8-byte span id, or 0). Returns 0.
-fn logrec_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
+fn LogRecord_set_span_id(lr, v)  { store64(lr + 48, v); return 0; }
 # Set the resource (a resource_new pointer, or 0). Returns 0.
-fn logrec_set_resource(lr, v) { store64(lr + 56, v); return 0; }
+fn LogRecord_set_resource(lr, v) { store64(lr + 56, v); return 0; }
 # Write log record `ptr` as the fields of an OTLP LogRecord message
 # (opentelemetry.proto.logs.v1.LogRecord, logs.proto), fields in ascending
 # number order, defaults omitted as proto3 omits them:
@@ -1085,16 +1089,16 @@ fn crash_report_new(agent_id, error_msg: Str) {
     return cr;
 }
 # Id of the agent that crashed (AgentId pointer).
-fn crash_agent_id(cr)  { return load64(cr); }
+fn CrashReport_agent_id(cr)  { return load64(cr); }
 # Error message describing the crash (Str).
-fn crash_error(cr)     { return load64(cr + 8); }
+fn CrashReport_error(cr)     { return load64(cr + 8); }
 # Backtrace slot. crash_report_new sets it to 0 and no fn in this module sets
 # it, so the code does not fix its form.
-fn crash_backtrace(cr) { return load64(cr + 16); }
-# Set the value crash_backtrace reads, stored as given (not validated). Returns 0.
-fn crash_set_backtrace(cr, v) { store64(cr + 16, v); return 0; }
+fn CrashReport_backtrace(cr) { return load64(cr + 16); }
+# Set the value CrashReport_backtrace reads, stored as given (not validated). Returns 0.
+fn CrashReport_set_backtrace(cr, v) { store64(cr + 16, v); return 0; }
 # Time the report was created, Unix ns from clock_epoch_ns.
-fn crash_timestamp(cr) { return load64(cr + 24); }
+fn CrashReport_timestamp(cr) { return load64(cr + 24); }
 # An InstrumentationScope: the instrumenting library or component that emits
 # telemetry. 32 bytes, all 8-byte slots:
 #   +0 name (Str), +8 version (Str), +16 schema URL (a Str, 0 = unset),
@@ -1108,16 +1112,16 @@ fn instrumentation_scope_new(scope_name: Str, scope_version: Str) {
     return s;
 }
 # Scope name (Str).
-fn iscope_name(s)       { return load64(s); }
+fn InstrumentationScope_name(s)       { return load64(s); }
 # Scope version (Str).
-fn iscope_version(s)    { return load64(s + 8); }
+fn InstrumentationScope_version(s)    { return load64(s + 8); }
 # Schema URL; instrumentation_scope_new leaves it 0 (unset).
-fn iscope_schema_url(s) { return load64(s + 16); }
-# Set the value iscope_schema_url reads: a Str (the encoders read its length
+fn InstrumentationScope_schema_url(s) { return load64(s + 16); }
+# Set the value InstrumentationScope_schema_url reads: a Str (the encoders read its length
 # and bytes, so a C string misencodes), stored as given. Returns 0.
-fn iscope_set_schema_url(s, v) { store64(s + 16, v); return 0; }
+fn InstrumentationScope_set_schema_url(s, v) { store64(s + 16, v); return 0; }
 # Scope attributes: a cstr-keyed map, created empty on first access.
-fn iscope_attributes(s) { return _stik_lazy_map(s + 24); }
+fn InstrumentationScope_attributes(s) { return _stik_lazy_map(s + 24); }
 # A SpanEvent: a named, timestamped event within a span. 24 bytes:
 #   +0 name (Str), +8 timestamp (clock_epoch_ns at creation),
 #   +16 attributes (map, created on first access).
@@ -1129,12 +1133,12 @@ fn span_event_new(evt_name: Str) {
     return e;
 }
 # Event name (Str).
-fn sevt_name(e)       { return load64(e); }
+fn SpanEvent_name(e)       { return load64(e); }
 # Event time, Unix ns from clock_epoch_ns.
-fn sevt_timestamp(e)  { return load64(e + 8); }
+fn SpanEvent_timestamp(e)  { return load64(e + 8); }
 # Event attributes: a cstr-keyed map, created empty on first access; values are
 # AnyValue boxes for OTLP export.
-fn sevt_attributes(e) { return _stik_lazy_map(e + 16); }
+fn SpanEvent_attributes(e) { return _stik_lazy_map(e + 16); }
 # A SpanLink: a reference from a span to another span, which may be in another
 # trace. 24 bytes: +0 trace id, +8 span id (pointers, stored as given),
 #   +16 attributes (map, created on first access).
@@ -1146,12 +1150,12 @@ fn span_link_new(link_trace_id, link_span_id) {
     return l;
 }
 # Trace id of the linked span (pointer to 16 bytes).
-fn slink_trace_id(l)   { return load64(l); }
+fn SpanLink_trace_id(l)   { return load64(l); }
 # Span id of the linked span (pointer to 8 bytes).
-fn slink_span_id(l)    { return load64(l + 8); }
+fn SpanLink_span_id(l)    { return load64(l + 8); }
 # Link attributes: a cstr-keyed map, created empty on first access; values are
 # AnyValue boxes for OTLP export.
-fn slink_attributes(l) { return _stik_lazy_map(l + 16); }
+fn SpanLink_attributes(l) { return _stik_lazy_map(l + 16); }
 # An Exemplar: a sample measurement tied to the trace and span it was recorded
 # in. 40 bytes, all 8-byte slots:
 #   +0 trace id, +8 span id (pointers, stored as given), +16 value (as given),
@@ -1167,15 +1171,15 @@ fn exemplar_new(ex_trace_id, ex_span_id, value) {
     return e;
 }
 # Id of the trace the measurement was recorded in (pointer to 16 bytes).
-fn exem_trace_id(e)   { return load64(e); }
+fn Exemplar_trace_id(e)   { return load64(e); }
 # Id of the span the measurement was recorded in (pointer to 8 bytes).
-fn exem_span_id(e)    { return load64(e + 8); }
+fn Exemplar_span_id(e)    { return load64(e + 8); }
 # The measured value: the raw 8-byte value passed to exemplar_new.
-fn exem_value(e)      { return load64(e + 16); }
+fn Exemplar_value(e)      { return load64(e + 16); }
 # Time the exemplar was created, Unix ns from clock_epoch_ns.
-fn exem_timestamp(e)  { return load64(e + 24); }
+fn Exemplar_timestamp(e)  { return load64(e + 24); }
 # Exemplar attributes: a cstr-keyed map, created empty on first access.
-fn exem_attributes(e) { return _stik_lazy_map(e + 32); }
+fn Exemplar_attributes(e) { return _stik_lazy_map(e + 32); }
 # A Baggage: key/value entries carried alongside a trace context. 8 bytes:
 #   +0 entries (map, created on first access).
 fn baggage_new() {
@@ -1208,13 +1212,13 @@ fn instrument_descriptor_new(inst_name: Str, desc: Str, unit: Str, kind) {
     return d;
 }
 # Instrument name (Str).
-fn idesc_name(d) { return load64(d); }
+fn InstrumentDescriptor_name(d) { return load64(d); }
 # Description of the instrument (Str).
-fn idesc_desc(d) { return load64(d + 8); }
+fn InstrumentDescriptor_desc(d) { return load64(d + 8); }
 # Unit of the instrument's measurements (Str).
-fn idesc_unit(d) { return load64(d + 16); }
+fn InstrumentDescriptor_unit(d) { return load64(d + 16); }
 # Instrument kind: a MetricKind value.
-fn idesc_kind(d) { return load64(d + 24); }
+fn InstrumentDescriptor_kind(d) { return load64(d + 24); }
 enum MetricValueType { MV_INT; MV_FLOAT; MV_HISTOGRAM; MV_EXP_HISTOGRAM; }
 # An integer metric value: a tagged box with tag MV_INT and `val` as payload.
 # Read it with metric_value_type / metric_value_val.
@@ -1244,43 +1248,43 @@ fn histogram_value_new() {
     return h;
 }
 # Number of recorded values.
-fn hval_count(h) { return load64(h); }
+fn HistogramValue_count(h) { return load64(h); }
 # Set the number of recorded values. Returns 0.
-fn hval_set_count(h, v) { store64(h, v); return 0; }
-# Sum of the recorded values (double bits); meaningful when hval_has_sum is 1.
-fn hval_sum(h) { return load64(h + 8); }
+fn HistogramValue_set_count(h, v) { store64(h, v); return 0; }
+# Sum of the recorded values (double bits); meaningful when HistogramValue_has_sum is 1.
+fn HistogramValue_sum(h) { return load64(h + 8); }
 # Set the sum (double bits) and mark it present. Returns 0.
-fn hval_set_sum(h, bits) {
+fn HistogramValue_set_sum(h, bits) {
     store64(h + 8, bits);
     store64(h + 16, load64(h + 16) | 1);
     return 0;
 }
 # 1 when a sum was set, else 0.
-fn hval_has_sum(h) { return load64(h + 16) & 1; }
-# Minimum recorded value (double bits); meaningful when hval_has_min is 1.
-fn hval_min(h) { return load64(h + 40); }
+fn HistogramValue_has_sum(h) { return load64(h + 16) & 1; }
+# Minimum recorded value (double bits); meaningful when HistogramValue_has_min is 1.
+fn HistogramValue_min(h) { return load64(h + 40); }
 # Set the minimum (double bits) and mark it present. Returns 0.
-fn hval_set_min(h, bits) {
+fn HistogramValue_set_min(h, bits) {
     store64(h + 40, bits);
     store64(h + 16, load64(h + 16) | 2);
     return 0;
 }
 # 1 when a minimum was set, else 0.
-fn hval_has_min(h) { return (load64(h + 16) >> 1) & 1; }
-# Maximum recorded value (double bits); meaningful when hval_has_max is 1.
-fn hval_max(h) { return load64(h + 48); }
+fn HistogramValue_has_min(h) { return (load64(h + 16) >> 1) & 1; }
+# Maximum recorded value (double bits); meaningful when HistogramValue_has_max is 1.
+fn HistogramValue_max(h) { return load64(h + 48); }
 # Set the maximum (double bits) and mark it present. Returns 0.
-fn hval_set_max(h, bits) {
+fn HistogramValue_set_max(h, bits) {
     store64(h + 48, bits);
     store64(h + 16, load64(h + 16) | 4);
     return 0;
 }
 # 1 when a maximum was set, else 0.
-fn hval_has_max(h) { return (load64(h + 16) >> 2) & 1; }
+fn HistogramValue_has_max(h) { return (load64(h + 16) >> 2) & 1; }
 # vec of explicit bucket bounds (double bits, ascending); push to it.
-fn hval_bounds(h) { return _stik_lazy_vec(h + 24); }
+fn HistogramValue_bounds(h) { return _stik_lazy_vec(h + 24); }
 # vec of bucket counts, one more than the bounds; push to it.
-fn hval_bucket_counts(h) { return _stik_lazy_vec(h + 32); }
+fn HistogramValue_bucket_counts(h) { return _stik_lazy_vec(h + 32); }
 # A histogram metric value: a tagged box with tag MV_HISTOGRAM and
 # HistogramValue `h` as payload (v1.12.0).
 fn metric_histogram(h) { return tagged_new(MV_HISTOGRAM, h); }
@@ -1303,31 +1307,31 @@ fn metric_data_point_new(inst_name: Str, mv) {
     return dp;
 }
 # Name of the instrument the point belongs to (Str), not an InstrumentDescriptor.
-fn mdp_instrument(dp)   { return load64(dp); }
+fn MetricDataPoint_instrument(dp)   { return load64(dp); }
 # The recorded value: a metric value box (metric_int / metric_float).
-fn mdp_value(dp)         { return load64(dp + 8); }
+fn MetricDataPoint_value(dp)         { return load64(dp + 8); }
 # Data-point attributes: a cstr-keyed map, created empty on first access; values
 # are AnyValue boxes for OTLP export.
-fn mdp_attributes(dp)   { return _stik_lazy_map(dp + 16); }
+fn MetricDataPoint_attributes(dp)   { return _stik_lazy_map(dp + 16); }
 # Time the point was created, Unix ns from clock_epoch_ns.
-fn mdp_timestamp(dp)    { return load64(dp + 24); }
+fn MetricDataPoint_timestamp(dp)    { return load64(dp + 24); }
 # AggregationTemporality of the value; metric_data_point_new sets TEMPORALITY_CUMULATIVE.
-fn mdp_temporality(dp)  { return load64(dp + 32); }
-# Set the value mdp_temporality reads, stored as given (not validated). Returns 0.
-fn mdp_set_temporality(dp, v) { store64(dp + 32, v); return 0; }
+fn MetricDataPoint_temporality(dp)  { return load64(dp + 32); }
+# Set the value MetricDataPoint_temporality reads, stored as given (not validated). Returns 0.
+fn MetricDataPoint_set_temporality(dp, v) { store64(dp + 32, v); return 0; }
 # Monotonic flag: 1 when the value never decreases, else 0. metric_data_point_new
-# sets 0; mdp_set_monotonic (v1.11.0) changes it.
-fn mdp_is_monotonic(dp) { return load64(dp + 40); }
-# Set the value mdp_is_monotonic reads, stored as given (not validated). Returns 0.
-fn mdp_set_monotonic(dp, v) { store64(dp + 40, v); return 0; }
+# sets 0; MetricDataPoint_set_is_monotonic (v1.11.0) changes it.
+fn MetricDataPoint_is_monotonic(dp) { return load64(dp + 40); }
+# Set the value MetricDataPoint_is_monotonic reads, stored as given (not validated). Returns 0.
+fn MetricDataPoint_set_is_monotonic(dp, v) { store64(dp + 40, v); return 0; }
 # Start of the interval the value covers (Unix ns), or 0 when unset; OTLP's
 # start_time_unix_nano, which cumulative sums should carry (v1.12.0).
-fn mdp_start_time(dp) { return load64(dp + 48); }
+fn MetricDataPoint_start_time(dp) { return load64(dp + 48); }
 # Set the interval start (Unix ns). Returns 0.
-fn mdp_set_start_time(dp, v) { store64(dp + 48, v); return 0; }
+fn MetricDataPoint_set_start_time(dp, v) { store64(dp + 48, v); return 0; }
 # vec of Exemplars (exemplar_new) recorded with this point, created empty on
 # first access (v1.12.0).
-fn mdp_exemplars(dp) { return _stik_lazy_vec(dp + 56); }
+fn MetricDataPoint_exemplars(dp) { return _stik_lazy_vec(dp + 56); }
 # Append each Exemplar of data point `ptr` as field `field_no` of the point in
 # buffer `b`: time 2, as_double 3 or as_int 6, span_id 4, trace_id 5,
 # filtered_attributes 7, in that ascending order (v1.12.0). Exemplar values are
@@ -1475,10 +1479,10 @@ fn _stik_otlp_histogram_point(b, ptr, path) {
 # Append data point `ptr` to `sb` as an OTLP NumberDataPoint message
 # (opentelemetry.proto.metrics.v1.NumberDataPoint, metrics.proto), fields in
 # ascending number order:
-#   2 start_time_unix_nano  mdp_set_start_time's value, when non-zero
+#   2 start_time_unix_nano  MetricDataPoint_set_start_time's value, when non-zero
 #   3 time_unix_nano   the point's timestamp, when non-zero
 #   4 as_double        for a metric_float value: its raw IEEE-754 bits
-#   5 exemplars        mdp_exemplars, as_int or as_double like the value
+#   5 exemplars        MetricDataPoint_exemplars, as_int or as_double like the value
 #   6 as_int           for a metric_int value (sfixed64)
 #   7 attributes       the point's map, keys sorted; AnyValue values
 #   8 flags            1 (FLAG_NO_RECORDED_VALUE) when the point holds no
@@ -1642,16 +1646,16 @@ fn metric_new(desc, points) {
     return m;
 }
 # The metric's InstrumentDescriptor.
-fn metric_descriptor(m) { return load64(m); }
+fn Metric_descriptor(m) { return load64(m); }
 # The metric's data points (vec).
-fn metric_points(m) { return load64(m + 8); }
+fn Metric_points(m) { return load64(m + 8); }
 # Append Metric `m` to `sb` as an OTLP Metric message: metric_to_otlp_proto of
 # its descriptor and points, with the same Ok / Err.
 fn Metric_to_otlp_proto(m, sb) {
     return metric_to_otlp_proto(load64(m), load64(m + 8), sb);
 }
 # Write the Resource fields of resource `r` into buffer `b`: its attributes
-# (field 1) are the res_attributes map plus the OpenTelemetry semantic-convention
+# (field 1) are the Resource_attributes map plus the OpenTelemetry semantic-convention
 # keys service.name, service.version and service.instance.id from the struct's
 # three Strs. A non-empty struct field replaces a map entry under the same key;
 # an empty one leaves the map's entry, if any. Keys are sorted, as for every

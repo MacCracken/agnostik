@@ -17,11 +17,11 @@ include "src/lib.cyr"
 # Test: resource_new stores service name/version/instance, has attributes, no schema URL.
 fn test_telemetry_resource() {
     var r = resource_new(str_from("svc"), str_from("1.0"), str_from("i1"));
-    assert_eq(str_eq(res_service_name(r), str_from("svc")), 1, "res name");
-    assert_eq(str_eq(res_service_version(r), str_from("1.0")), 1, "res version");
-    assert_eq(str_eq(res_instance_id(r), str_from("i1")), 1, "res instance");
-    assert(res_attributes(r) != 0, "res has attrs");
-    assert_eq(res_schema_url(r), 0, "res no schema");
+    assert_eq(str_eq(Resource_service_name(r), str_from("svc")), 1, "res name");
+    assert_eq(str_eq(Resource_service_version(r), str_from("1.0")), 1, "res version");
+    assert_eq(str_eq(Resource_instance_id(r), str_from("i1")), 1, "res instance");
+    assert(Resource_attributes(r) != 0, "res has attrs");
+    assert_eq(Resource_schema_url(r), 0, "res no schema");
     assert(resource_default() != 0, "res default ok");
     return 0;
 }
@@ -30,44 +30,44 @@ fn test_telemetry_resource() {
 # and the kind / status / duration setters.
 fn test_telemetry_span() {
     var ctx = trace_context_new();
-    var s = span_new(str_from("op"), tctx_trace_id(ctx), tctx_span_id(ctx));
-    assert_eq(span_status(s), SPAN_UNSET, "span unset");
-    assert_eq(span_kind(s), SPAN_INTERNAL, "span internal");
-    assert(span_started_at(s) > 0, "span started");
-    assert_eq(span_duration_ms(s), 0, "span dur 0");
-    assert_eq(vec_len(span_events(s)), 0, "span no events");
-    assert_eq(vec_len(span_links(s)), 0, "span no links");
-    assert_eq(span_parent_id(s), 0, "span no parent");
-    assert_eq(span_dropped_attrs(s), 0, "span 0 da");
-    assert_eq(span_dropped_events(s), 0, "span 0 de");
-    assert_eq(span_dropped_links(s), 0, "span 0 dl");
-    span_set_kind(s, SPAN_SERVER);
-    assert_eq(span_kind(s), SPAN_SERVER, "span server");
-    span_set_status(s, SPAN_OK);
-    assert_eq(span_status(s), SPAN_OK, "span ok");
-    span_set_duration_ms(s, 42);
-    assert_eq(span_duration_ms(s), 42, "span dur 42");
+    var s = span_new(str_from("op"), TraceContext_trace_id(ctx), TraceContext_span_id(ctx));
+    assert_eq(Span_status(s), SPAN_UNSET, "span unset");
+    assert_eq(Span_kind(s), SPAN_INTERNAL, "span internal");
+    assert(Span_started_at(s) > 0, "span started");
+    assert_eq(Span_duration_ms(s), 0, "span dur 0");
+    assert_eq(vec_len(Span_events(s)), 0, "span no events");
+    assert_eq(vec_len(Span_links(s)), 0, "span no links");
+    assert_eq(Span_parent_id(s), 0, "span no parent");
+    assert_eq(Span_dropped_attrs(s), 0, "span 0 da");
+    assert_eq(Span_dropped_events(s), 0, "span 0 de");
+    assert_eq(Span_dropped_links(s), 0, "span 0 dl");
+    Span_set_kind(s, SPAN_SERVER);
+    assert_eq(Span_kind(s), SPAN_SERVER, "span server");
+    Span_set_status(s, SPAN_OK);
+    assert_eq(Span_status(s), SPAN_OK, "span ok");
+    Span_set_duration_ms(s, 42);
+    assert_eq(Span_duration_ms(s), 42, "span dur 42");
     return 0;
 }
 
 # Test: span_event_new name + timestamp, and span_link_new storing the trace ID.
 fn test_telemetry_events_links() {
     var se = span_event_new(str_from("exc"));
-    assert_eq(str_eq(sevt_name(se), str_from("exc")), 1, "se name");
-    assert(sevt_timestamp(se) > 0, "se ts");
+    assert_eq(str_eq(SpanEvent_name(se), str_from("exc")), 1, "se name");
+    assert(SpanEvent_timestamp(se) > 0, "se ts");
     var ctx = trace_context_new();
-    var sl = span_link_new(tctx_trace_id(ctx), tctx_span_id(ctx));
-    assert_eq(trace_id_eq(slink_trace_id(sl), tctx_trace_id(ctx)), 1, "sl tid");
+    var sl = span_link_new(TraceContext_trace_id(ctx), TraceContext_span_id(ctx));
+    assert_eq(trace_id_eq(SpanLink_trace_id(sl), TraceContext_trace_id(ctx)), 1, "sl tid");
     return 0;
 }
 
 # Test: a root TraceContext has no parent span; its child's parent is the root's span ID.
 fn test_telemetry_context() {
     var ctx = trace_context_new();
-    assert(tctx_span_id(ctx) != 0, "has sid");
-    assert_eq(tctx_parent_span_id(ctx), 0, "no parent");
+    assert(TraceContext_span_id(ctx) != 0, "has sid");
+    assert_eq(TraceContext_parent_span_id(ctx), 0, "no parent");
     var child = tctx_child(ctx);
-    assert_eq(span_id_eq(tctx_parent_span_id(child), tctx_span_id(ctx)), 1, "child parent");
+    assert_eq(span_id_eq(TraceContext_parent_span_id(child), TraceContext_span_id(ctx)), 1, "child parent");
     return 0;
 }
 
@@ -79,25 +79,25 @@ fn test_telemetry_metrics() {
     var mvf = metric_float(314);
     assert_eq(metric_value_type(mvf), MV_FLOAT, "mv float");
     var dp = metric_data_point_new(str_from("req"), mv);
-    assert_eq(mdp_temporality(dp), TEMPORALITY_CUMULATIVE, "dp cum");
-    assert_eq(mdp_is_monotonic(dp), 0, "dp not mono");
-    assert(mdp_timestamp(dp) > 0, "dp ts");
+    assert_eq(MetricDataPoint_temporality(dp), TEMPORALITY_CUMULATIVE, "dp cum");
+    assert_eq(MetricDataPoint_is_monotonic(dp), 0, "dp not mono");
+    assert(MetricDataPoint_timestamp(dp) > 0, "dp ts");
     return 0;
 }
 
 # Test: LogRecord severity/timestamp, empty trace/span IDs, and their setters.
 fn test_telemetry_log() {
     var lr = log_record_new(LOG_WARN, str_from("full"));
-    assert_eq(logrec_severity(lr), LOG_WARN, "lr warn");
-    assert(logrec_timestamp(lr) > 0, "lr ts");
-    assert_eq(logrec_trace_id(lr), 0, "lr no tid");
-    assert_eq(logrec_span_id(lr), 0, "lr no sid");
+    assert_eq(LogRecord_severity(lr), LOG_WARN, "lr warn");
+    assert(LogRecord_timestamp(lr) > 0, "lr ts");
+    assert_eq(LogRecord_trace_id(lr), 0, "lr no tid");
+    assert_eq(LogRecord_span_id(lr), 0, "lr no sid");
     var tid = trace_id_new();
     var sid = span_id_new();
-    logrec_set_trace_id(lr, tid);
-    logrec_set_span_id(lr, sid);
-    assert_eq(trace_id_eq(logrec_trace_id(lr), tid), 1, "lr tid set");
-    assert_eq(span_id_eq(logrec_span_id(lr), sid), 1, "lr sid set");
+    LogRecord_set_trace_id(lr, tid);
+    LogRecord_set_span_id(lr, sid);
+    assert_eq(trace_id_eq(LogRecord_trace_id(lr), tid), 1, "lr tid set");
+    assert_eq(span_id_eq(LogRecord_span_id(lr), sid), 1, "lr sid set");
     return 0;
 }
 
@@ -106,9 +106,9 @@ fn test_telemetry_exemplar() {
     var tid = trace_id_new();
     var sid = span_id_new();
     var ex = exemplar_new(tid, sid, 42);
-    assert_eq(trace_id_eq(exem_trace_id(ex), tid), 1, "ex tid");
-    assert_eq(exem_value(ex), 42, "ex val");
-    assert(exem_timestamp(ex) > 0, "ex ts");
+    assert_eq(trace_id_eq(Exemplar_trace_id(ex), tid), 1, "ex tid");
+    assert_eq(Exemplar_value(ex), 42, "ex val");
+    assert(Exemplar_timestamp(ex) > 0, "ex ts");
     return 0;
 }
 

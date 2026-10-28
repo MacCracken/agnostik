@@ -48,9 +48,9 @@ fn main() {
     if (alloc(24) != 0) { _probe_say("err_oom: heap not exhausted; raise the drain\n"); return 2; }
     var e = agnostik_err_new(STIK_ERR_IO, msg);
     if (e == 0) { _probe_say("err_oom: agnostik_err_new returned 0\n"); return 1; }
-    if (agnostik_err_kind(e) != STIK_ERR_RESOURCE_EXHAUSTED) { _probe_say("err_oom: wrong kind\n"); return 1; }
-    if (agnostik_err_code(e) != CODE_RESOURCE_EXHAUSTED) { _probe_say("err_oom: wrong code\n"); return 1; }
-    var m = agnostik_err_message(e);
+    if (AgnostikError_kind(e) != STIK_ERR_RESOURCE_EXHAUSTED) { _probe_say("err_oom: wrong kind\n"); return 1; }
+    if (AgnostikError_code(e) != CODE_RESOURCE_EXHAUSTED) { _probe_say("err_oom: wrong code\n"); return 1; }
+    var m = AgnostikError_message(e);
     if (m == 0) { _probe_say("err_oom: no message\n"); return 1; }
     if (str_eq_cstr(m, "out of memory") != 1) { _probe_say("err_oom: wrong message\n"); return 1; }
     # A stik_err_* constructor goes through the same path; the value-form Err allocates nothing.

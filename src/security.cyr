@@ -11,8 +11,8 @@ enum NetworkAccess { NET_NONE; NET_LOCALHOST_ONLY; NET_RESTRICTED; NET_FULL; }
 enum SeccompAction { SECCOMP_ALLOW; SECCOMP_KILL; SECCOMP_KILL_PROCESS; SECCOMP_TRAP; SECCOMP_LOG; SECCOMP_NOTIFY; }
 # SeccompAction Errno variant: a 16-byte tagged box (tag 100, payload
 # errno_val) for an action that fails the syscall with that errno. The plain
-# SeccompAction members are bare integers, so an action slot (scrule_action,
-# scprof_default_action) holds either form. Read a box only with boxed_tag /
+# SeccompAction members are bare integers, so an action slot (SeccompRule_action,
+# SeccompProfile_default_action) holds either form. Read a box only with boxed_tag /
 # boxed_payload; seccomp_action_name does not recognise one ("Unknown").
 fn seccomp_errno(errno_val) { return tagged_new(100, errno_val); }
 # SeccompAction Trace variant: a 16-byte tagged box (tag 101, payload
@@ -162,11 +162,11 @@ fn network_policy_new() {
     return p;
 }
 # vec of outbound ports.
-fn netpol_outbound_ports(p) { return load64(p); }
+fn NetworkPolicy_outbound_ports(p) { return load64(p); }
 # vec of outbound hosts.
-fn netpol_outbound_hosts(p) { return load64(p + 8); }
+fn NetworkPolicy_outbound_hosts(p) { return load64(p + 8); }
 # vec of inbound ports.
-fn netpol_inbound_ports(p)  { return load64(p + 16); }
+fn NetworkPolicy_inbound_ports(p)  { return load64(p + 16); }
 # A CgroupLimits: resource limits for a cgroup. 96 bytes, zero-filled, so every
 # limit reads 0 until set. Accessed slots: +0 memory_max, +8 memory_high,
 # +16 cpu_max, +32 cpu_weight, +40 pids_max; +24 and +48..+88 have no accessor.
@@ -177,28 +177,28 @@ fn cgroup_limits_new() {
     return c;
 }
 # Maximum memory, in bytes; 0 in a fresh struct.
-fn cglim_memory_max(c)      { return load64(c); }
+fn CgroupLimits_memory_max(c)      { return load64(c); }
 # Memory high threshold, in bytes; 0 in a fresh struct.
-fn cglim_memory_high(c)     { return load64(c + 8); }
+fn CgroupLimits_memory_high(c)     { return load64(c + 8); }
 # CPU max limit, stored as given (this module fixes no unit); 0 in a fresh struct.
-fn cglim_cpu_max(c)         { return load64(c + 16); }
+fn CgroupLimits_cpu_max(c)         { return load64(c + 16); }
 # CPU weight, stored as given; 0 in a fresh struct.
-fn cglim_cpu_weight(c)      { return load64(c + 32); }
+fn CgroupLimits_cpu_weight(c)      { return load64(c + 32); }
 # Maximum number of processes (pids); 0 in a fresh struct.
-fn cglim_pids_max(c)        { return load64(c + 40); }
+fn CgroupLimits_pids_max(c)        { return load64(c + 40); }
 # Set memory_max, in bytes; returns 0.
-fn cglim_set_memory_max(c, v) { store64(c, v); return 0; }
+fn CgroupLimits_set_memory_max(c, v) { store64(c, v); return 0; }
 # Set pids_max; returns 0.
-fn cglim_set_pids_max(c, v)   { store64(c + 40, v); return 0; }
+fn CgroupLimits_set_pids_max(c, v)   { store64(c + 40, v); return 0; }
 # 1.5.1: the remaining three had accessors but no setters, so a consumer
 # populating cgroup_limits from config had to write raw store64 offsets into
 # its own source — the exact hazard the setters exist to prevent. kybernet's
 # per-service limits parser (1.5.5) uses all five.
-fn cglim_set_memory_high(c, v) { store64(c + 8, v); return 0; }
+fn CgroupLimits_set_memory_high(c, v) { store64(c + 8, v); return 0; }
 # Set cpu_max; returns 0.
-fn cglim_set_cpu_max(c, v)     { store64(c + 16, v); return 0; }
+fn CgroupLimits_set_cpu_max(c, v)     { store64(c + 16, v); return 0; }
 # Set cpu_weight; returns 0.
-fn cglim_set_cpu_weight(c, v)  { store64(c + 32, v); return 0; }
+fn CgroupLimits_set_cpu_weight(c, v)  { store64(c + 32, v); return 0; }
 # A NamespaceConfig: one flag per Linux namespace type, nonzero to enable that
 # namespace. 64 bytes, eight zeroed slots: +0 pid, +8 net, +16 mount, +24 user,
 # +32 uts, +40 ipc, +48 cgroup, +56 time. Only pid, net, mount and user have
@@ -210,37 +210,37 @@ fn namespace_config_new() {
     return n;
 }
 # PID namespace flag; 0 in a fresh config.
-fn ns_pid(n)    { return load64(n); }
+fn NamespaceConfig_pid(n)    { return load64(n); }
 # Network namespace flag; 0 in a fresh config.
-fn ns_net(n)    { return load64(n + 8); }
+fn NamespaceConfig_net(n)    { return load64(n + 8); }
 # Mount namespace flag; 0 in a fresh config.
-fn ns_mount(n)  { return load64(n + 16); }
+fn NamespaceConfig_mount(n)  { return load64(n + 16); }
 # User namespace flag; 0 in a fresh config.
-fn ns_user(n)   { return load64(n + 24); }
-# UTS namespace flag; 0 from namespace_config_new until ns_set_uts.
-fn ns_uts(n)    { return load64(n + 32); }
-# Set the value ns_uts reads, stored as given (not validated). Returns 0.
-fn ns_set_uts(n, v) { store64(n + 32, v); return 0; }
-# IPC namespace flag; 0 from namespace_config_new until ns_set_ipc.
-fn ns_ipc(n)    { return load64(n + 40); }
-# Set the value ns_ipc reads, stored as given (not validated). Returns 0.
-fn ns_set_ipc(n, v) { store64(n + 40, v); return 0; }
-# cgroup namespace flag; 0 from namespace_config_new until ns_set_cgroup.
-fn ns_cgroup(n) { return load64(n + 48); }
-# Set the value ns_cgroup reads, stored as given (not validated). Returns 0.
-fn ns_set_cgroup(n, v) { store64(n + 48, v); return 0; }
-# Time namespace flag; 0 from namespace_config_new until ns_set_time.
-fn ns_time(n)   { return load64(n + 56); }
-# Set the value ns_time reads, stored as given (not validated). Returns 0.
-fn ns_set_time(n, v) { store64(n + 56, v); return 0; }
+fn NamespaceConfig_user(n)   { return load64(n + 24); }
+# UTS namespace flag; 0 from namespace_config_new until NamespaceConfig_set_uts.
+fn NamespaceConfig_uts(n)    { return load64(n + 32); }
+# Set the value NamespaceConfig_uts reads, stored as given (not validated). Returns 0.
+fn NamespaceConfig_set_uts(n, v) { store64(n + 32, v); return 0; }
+# IPC namespace flag; 0 from namespace_config_new until NamespaceConfig_set_ipc.
+fn NamespaceConfig_ipc(n)    { return load64(n + 40); }
+# Set the value NamespaceConfig_ipc reads, stored as given (not validated). Returns 0.
+fn NamespaceConfig_set_ipc(n, v) { store64(n + 40, v); return 0; }
+# cgroup namespace flag; 0 from namespace_config_new until NamespaceConfig_set_cgroup.
+fn NamespaceConfig_cgroup(n) { return load64(n + 48); }
+# Set the value NamespaceConfig_cgroup reads, stored as given (not validated). Returns 0.
+fn NamespaceConfig_set_cgroup(n, v) { store64(n + 48, v); return 0; }
+# Time namespace flag; 0 from namespace_config_new until NamespaceConfig_set_time.
+fn NamespaceConfig_time(n)   { return load64(n + 56); }
+# Set the value NamespaceConfig_time reads, stored as given (not validated). Returns 0.
+fn NamespaceConfig_set_time(n, v) { store64(n + 56, v); return 0; }
 # Set the PID namespace flag; returns 0.
-fn ns_set_pid(n, v)    { store64(n, v); return 0; }
+fn NamespaceConfig_set_pid(n, v)    { store64(n, v); return 0; }
 # Set the network namespace flag; returns 0.
-fn ns_set_net(n, v)    { store64(n + 8, v); return 0; }
+fn NamespaceConfig_set_net(n, v)    { store64(n + 8, v); return 0; }
 # Set the mount namespace flag; returns 0.
-fn ns_set_mount(n, v)  { store64(n + 16, v); return 0; }
+fn NamespaceConfig_set_mount(n, v)  { store64(n + 16, v); return 0; }
 # Set the user namespace flag; returns 0.
-fn ns_set_user(n, v)   { store64(n + 24, v); return 0; }
+fn NamespaceConfig_set_user(n, v)   { store64(n + 24, v); return 0; }
 # A SandboxConfig: the isolation settings for a sandbox. 88 bytes, 11 8-byte
 # slots: +0 fs_rules (vec, lazy), +8 net_access (NetworkAccess, default
 # NET_LOCALHOST_ONLY), +16 seccomp (0 = none), +24 isolate_net (default 1),
@@ -286,40 +286,40 @@ fn _stik_lazy_map(ptr) {
     return m;
 }
 # vec of FilesystemRule (filesystem_rule_new); created empty on first access.
-fn sandbox_fs_rules(s)      { return _stik_lazy_vec(s); }
+fn SandboxConfig_fs_rules(s)      { return _stik_lazy_vec(s); }
 # Network access level, a NetworkAccess; NET_LOCALHOST_ONLY by default.
-fn sandbox_net_access(s)    { return load64(s + 8); }
+fn SandboxConfig_net_access(s)    { return load64(s + 8); }
 # Seccomp slot: 0 (the default) means none. Meant to hold a SeccompProfile
 # (seccomp_profile_new); nothing here checks what is stored.
-fn sandbox_seccomp(s)       { return load64(s + 16); }
-# Network-isolation flag; 1 by default, set with sandbox_set_isolate_net.
-fn sandbox_isolate_net(s)   { return load64(s + 24); }
-# Set the value sandbox_isolate_net reads, stored as given (not validated). Returns 0.
-fn sandbox_set_isolate_net(s, v) { store64(s + 24, v); return 0; }
+fn SandboxConfig_seccomp(s)       { return load64(s + 16); }
+# Network-isolation flag; 1 by default, set with SandboxConfig_set_isolate_net.
+fn SandboxConfig_isolate_net(s)   { return load64(s + 24); }
+# Set the value SandboxConfig_isolate_net reads, stored as given (not validated). Returns 0.
+fn SandboxConfig_set_isolate_net(s, v) { store64(s + 24, v); return 0; }
 # vec of paths to mask in the sandbox; created empty on first access.
-fn sandbox_masked_paths(s)  { return _stik_lazy_vec(s + 64); }
+fn SandboxConfig_masked_paths(s)  { return _stik_lazy_vec(s + 64); }
 # vec of paths to make read-only in the sandbox; created empty on first access.
-fn sandbox_readonly_paths(s){ return _stik_lazy_vec(s + 72); }
+fn SandboxConfig_readonly_paths(s){ return _stik_lazy_vec(s + 72); }
 # map of sysctl settings for the sandbox; created empty on first access.
-fn sandbox_sysctl(s)        { return _stik_lazy_map(s + 80); }
+fn SandboxConfig_sysctl(s)        { return _stik_lazy_map(s + 80); }
 # Set the network access level (a NetworkAccess); returns 0.
-fn sandbox_set_net_access(s, v)   { store64(s + 8, v); return 0; }
-# Set the seccomp slot (see sandbox_seccomp); returns 0.
-fn sandbox_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
-# Set the AppArmor profile name (Str, slot +40); returns 0. sandbox_apparmor reads it.
-fn sandbox_set_apparmor(s, v: Str) { store64(s + 40, v); return 0; }
-# Set the SELinux label (Str, slot +48); returns 0. sandbox_selinux reads it.
-fn sandbox_set_selinux(s, v: Str)  { store64(s + 48, v); return 0; }
-# AppArmor profile name (Str) set with sandbox_set_apparmor, or 0 when unset
+fn SandboxConfig_set_net_access(s, v)   { store64(s + 8, v); return 0; }
+# Set the seccomp slot (see SandboxConfig_seccomp); returns 0.
+fn SandboxConfig_set_seccomp(s, v)      { store64(s + 16, v); return 0; }
+# Set the AppArmor profile name (Str, slot +40); returns 0. SandboxConfig_apparmor reads it.
+fn SandboxConfig_set_apparmor(s, v: Str) { store64(s + 40, v); return 0; }
+# Set the SELinux label (Str, slot +48); returns 0. SandboxConfig_selinux reads it.
+fn SandboxConfig_set_selinux(s, v: Str)  { store64(s + 48, v); return 0; }
+# AppArmor profile name (Str) set with SandboxConfig_set_apparmor, or 0 when unset
 # (added in v1.11.0; there was no getter).
-fn sandbox_apparmor(s) { return load64(s + 40); }
-# SELinux label (Str) set with sandbox_set_selinux, or 0 when unset (added in
+fn SandboxConfig_apparmor(s) { return load64(s + 40); }
+# SELinux label (Str) set with SandboxConfig_set_selinux, or 0 when unset (added in
 # v1.11.0).
-fn sandbox_selinux(s) { return load64(s + 48); }
+fn SandboxConfig_selinux(s) { return load64(s + 48); }
 # A SecurityContext: an agent's permissions, sandbox and process identity.
 # 56 bytes: +0 agent_id (as given), +8 permissions (empty vec), +16 sandbox
 # (a fresh sandbox_config_new), +24 run_as_user 0, +32 run_as_group 0,
-# +40 readonly_root 0, +48 no_new_privs 1. The four scalars have secctx_set_*
+# +40 readonly_root 0, +48 no_new_privs 1. The four scalars have SecurityContext_set_*
 # setters since v1.11.0.
 fn security_context_new(agent_id) {
     var ctx = _stik_alloc(56);
@@ -333,30 +333,30 @@ fn security_context_new(agent_id) {
     return ctx;
 }
 # The agent's AgentId, as passed to security_context_new.
-fn secctx_agent_id(c)        { return load64(c); }
+fn SecurityContext_agent_id(c)        { return load64(c); }
 # vec of the Permission values granted to the agent; starts empty.
-fn secctx_permissions(c)     { return load64(c + 8); }
+fn SecurityContext_permissions(c)     { return load64(c + 8); }
 # The agent's SandboxConfig; sandbox_config_new defaults until changed.
-fn secctx_sandbox(c)         { return load64(c + 16); }
+fn SecurityContext_sandbox(c)         { return load64(c + 16); }
 # User ID to run the agent's process as; 0 in a fresh context, meaning "not
 # set". 0 is also root's uid, so a launcher must treat 0 as "inherit" and
 # never setuid(0) from it; v1 has no separate set flag.
-fn secctx_run_as_user(c)     { return load64(c + 24); }
-# Set the value secctx_run_as_user reads, stored as given (not validated). Returns 0.
-fn secctx_set_run_as_user(c, v) { store64(c + 24, v); return 0; }
+fn SecurityContext_run_as_user(c)     { return load64(c + 24); }
+# Set the value SecurityContext_run_as_user reads, stored as given (not validated). Returns 0.
+fn SecurityContext_set_run_as_user(c, v) { store64(c + 24, v); return 0; }
 # Group ID to run the agent's process as; 0 in a fresh context, meaning "not
-# set" (0 is also root's gid; see secctx_run_as_user).
-fn secctx_run_as_group(c)    { return load64(c + 32); }
-# Set the value secctx_run_as_group reads, stored as given (not validated). Returns 0.
-fn secctx_set_run_as_group(c, v) { store64(c + 32, v); return 0; }
+# set" (0 is also root's gid; see SecurityContext_run_as_user).
+fn SecurityContext_run_as_group(c)    { return load64(c + 32); }
+# Set the value SecurityContext_run_as_group reads, stored as given (not validated). Returns 0.
+fn SecurityContext_set_run_as_group(c, v) { store64(c + 32, v); return 0; }
 # Read-only root filesystem flag; 0 in a fresh context.
-fn secctx_readonly_root(c)   { return load64(c + 40); }
-# Set the value secctx_readonly_root reads, stored as given (not validated). Returns 0.
-fn secctx_set_readonly_root(c, v) { store64(c + 40, v); return 0; }
+fn SecurityContext_readonly_root(c)   { return load64(c + 40); }
+# Set the value SecurityContext_readonly_root reads, stored as given (not validated). Returns 0.
+fn SecurityContext_set_readonly_root(c, v) { store64(c + 40, v); return 0; }
 # no_new_privs flag; 1 (on) in a fresh context.
-fn secctx_no_new_privs(c)    { return load64(c + 48); }
-# Set the value secctx_no_new_privs reads, stored as given (not validated). Returns 0.
-fn secctx_set_no_new_privs(c, v) { store64(c + 48, v); return 0; }
+fn SecurityContext_no_new_privs(c)    { return load64(c + 48); }
+# Set the value SecurityContext_no_new_privs reads, stored as given (not validated). Returns 0.
+fn SecurityContext_set_no_new_privs(c, v) { store64(c + 48, v); return 0; }
 # A SecurityPolicy: a named rule applying `effect` to a set of permissions.
 # 24 bytes: +0 name (Str), +8 effect (PolicyEffect), +16 permissions (empty vec).
 fn security_policy_new(name: Str, effect) {
@@ -367,11 +367,11 @@ fn security_policy_new(name: Str, effect) {
     return p;
 }
 # Policy name (Str).
-fn secpol_name(p)        { return load64(p); }
+fn SecurityPolicy_name(p)        { return load64(p); }
 # What the policy does, a PolicyEffect: allow, deny or audit.
-fn secpol_effect(p)      { return load64(p + 8); }
+fn SecurityPolicy_effect(p)      { return load64(p + 8); }
 # vec of the Permission values the policy covers; starts empty.
-fn secpol_permissions(p) { return load64(p + 16); }
+fn SecurityPolicy_permissions(p) { return load64(p + 16); }
 # A CapabilitySet: the five Linux capability sets of a process, each a vec of
 # LinuxCapability values (kernel capability numbers). 40 bytes: +0 effective,
 # +8 permitted, +16 inheritable, +24 bounding, +32 ambient; all start empty.
@@ -385,18 +385,18 @@ fn capability_set_new() {
     return c;
 }
 # vec of LinuxCapability values in the effective set.
-fn capset_effective(c)   { return load64(c); }
+fn CapabilitySet_effective(c)   { return load64(c); }
 # vec of LinuxCapability values in the permitted set.
-fn capset_permitted(c)   { return load64(c + 8); }
+fn CapabilitySet_permitted(c)   { return load64(c + 8); }
 # vec of LinuxCapability values in the inheritable set.
-fn capset_inheritable(c) { return load64(c + 16); }
+fn CapabilitySet_inheritable(c) { return load64(c + 16); }
 # vec of LinuxCapability values in the bounding set.
-fn capset_bounding(c)    { return load64(c + 24); }
+fn CapabilitySet_bounding(c)    { return load64(c + 24); }
 # vec of LinuxCapability values in the ambient set.
-fn capset_ambient(c)     { return load64(c + 32); }
+fn CapabilitySet_ambient(c)     { return load64(c + 32); }
 # A SandboxCapabilities: which sandboxing features the host supports. 48 bytes,
 # zeroed: +0 seccomp, +8 seccomp_mode (SeccompMode), +16 landlock, +24 Landlock
-# ABI version, +32 cgroup v2, +40 namespaces, each set with its sbcap_set_*
+# ABI version, +32 cgroup v2, +40 namespaces, each set with its SandboxCapabilities_set_*
 # setter (v1.11.0).
 fn sandbox_capabilities_new() {
     var c = _stik_alloc(48);
@@ -405,29 +405,29 @@ fn sandbox_capabilities_new() {
     return c;
 }
 # Seccomp-available flag; 0 in a fresh struct.
-fn sbcap_seccomp(c)      { return load64(c); }
-# Set the value sbcap_seccomp reads, stored as given (not validated). Returns 0.
-fn sbcap_set_seccomp(c, v) { store64(c, v); return 0; }
+fn SandboxCapabilities_seccomp(c)      { return load64(c); }
+# Set the value SandboxCapabilities_seccomp reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_seccomp(c, v) { store64(c, v); return 0; }
 # Seccomp mode, a SeccompMode; 0 (SECCOMP_DISABLED) in a fresh struct.
-fn sbcap_seccomp_mode(c) { return load64(c + 8); }
-# Set the value sbcap_seccomp_mode reads, stored as given (not validated). Returns 0.
-fn sbcap_set_seccomp_mode(c, v) { store64(c + 8, v); return 0; }
+fn SandboxCapabilities_seccomp_mode(c) { return load64(c + 8); }
+# Set the value SandboxCapabilities_seccomp_mode reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_seccomp_mode(c, v) { store64(c + 8, v); return 0; }
 # Landlock-available flag; 0 in a fresh struct.
-fn sbcap_landlock(c)     { return load64(c + 16); }
-# Set the value sbcap_landlock reads, stored as given (not validated). Returns 0.
-fn sbcap_set_landlock(c, v) { store64(c + 16, v); return 0; }
+fn SandboxCapabilities_landlock(c)     { return load64(c + 16); }
+# Set the value SandboxCapabilities_landlock reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_landlock(c, v) { store64(c + 16, v); return 0; }
 # Landlock ABI version; 0 in a fresh struct.
-fn sbcap_ll_abi(c)       { return load64(c + 24); }
-# Set the value sbcap_ll_abi reads, stored as given (not validated). Returns 0.
-fn sbcap_set_ll_abi(c, v) { store64(c + 24, v); return 0; }
+fn SandboxCapabilities_ll_abi(c)       { return load64(c + 24); }
+# Set the value SandboxCapabilities_ll_abi reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_ll_abi(c, v) { store64(c + 24, v); return 0; }
 # cgroup v2 available flag; 0 in a fresh struct.
-fn sbcap_cgroup_v2(c)    { return load64(c + 32); }
-# Set the value sbcap_cgroup_v2 reads, stored as given (not validated). Returns 0.
-fn sbcap_set_cgroup_v2(c, v) { store64(c + 32, v); return 0; }
+fn SandboxCapabilities_cgroup_v2(c)    { return load64(c + 32); }
+# Set the value SandboxCapabilities_cgroup_v2 reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_cgroup_v2(c, v) { store64(c + 32, v); return 0; }
 # Namespaces-available flag; 0 in a fresh struct.
-fn sbcap_namespaces(c)   { return load64(c + 40); }
-# Set the value sbcap_namespaces reads, stored as given (not validated). Returns 0.
-fn sbcap_set_namespaces(c, v) { store64(c + 40, v); return 0; }
+fn SandboxCapabilities_namespaces(c)   { return load64(c + 40); }
+# Set the value SandboxCapabilities_namespaces reads, stored as given (not validated). Returns 0.
+fn SandboxCapabilities_set_namespaces(c, v) { store64(c + 40, v); return 0; }
 # A SeccompArg: a condition on one syscall argument, used in a SeccompRule's
 # args. 32 bytes: +0 index (which argument), +8 value, +16 value_two, +24 op
 # (SeccompArgOp), all as given.
@@ -440,13 +440,13 @@ fn seccomp_arg_new(index, value, value_two, op) {
     return a;
 }
 # Index of the syscall argument the condition tests.
-fn scarg_index(a)     { return load64(a); }
+fn SeccompArg_index(a)     { return load64(a); }
 # Value the argument is compared against.
-fn scarg_value(a)     { return load64(a + 8); }
+fn SeccompArg_value(a)     { return load64(a + 8); }
 # Second comparison value (value_two), as given to seccomp_arg_new.
-fn scarg_value_two(a) { return load64(a + 16); }
+fn SeccompArg_value_two(a) { return load64(a + 16); }
 # Comparison operator, a SeccompArgOp.
-fn scarg_op(a)        { return load64(a + 24); }
+fn SeccompArg_op(a)        { return load64(a + 24); }
 # A FilesystemRule: access and mount options for one path. 48 bytes: +0 path
 # (Str), +8 access (FsAccess), +16 readonly 0, +24 noexec 0, +32 zeroed with no
 # accessor, +40 propagation (MountPropagation, MOUNT_PRIVATE). Only readonly
@@ -462,21 +462,21 @@ fn filesystem_rule_new(path: Str, access) {
     return r;
 }
 # Path the rule applies to (Str).
-fn fsrule_path(r)        { return load64(r); }
+fn FilesystemRule_path(r)        { return load64(r); }
 # Access level for the path, an FsAccess.
-fn fsrule_access(r)      { return load64(r + 8); }
+fn FilesystemRule_access(r)      { return load64(r + 8); }
 # Read-only flag; 0 in a fresh rule.
-fn fsrule_readonly(r)    { return load64(r + 16); }
+fn FilesystemRule_readonly(r)    { return load64(r + 16); }
 # noexec flag; 0 in a fresh rule.
-fn fsrule_noexec(r)      { return load64(r + 24); }
+fn FilesystemRule_noexec(r)      { return load64(r + 24); }
 # Mount propagation, a MountPropagation; MOUNT_PRIVATE in a fresh rule.
-fn fsrule_propagation(r) { return load64(r + 40); }
-# Set the value fsrule_propagation reads, stored as given (not validated). Returns 0.
-fn fsrule_set_propagation(r, v) { store64(r + 40, v); return 0; }
+fn FilesystemRule_propagation(r) { return load64(r + 40); }
+# Set the value FilesystemRule_propagation reads, stored as given (not validated). Returns 0.
+fn FilesystemRule_set_propagation(r, v) { store64(r + 40, v); return 0; }
 # Set the read-only flag; returns 0.
-fn fsrule_set_readonly(r, v) { store64(r + 16, v); return 0; }
+fn FilesystemRule_set_readonly(r, v) { store64(r + 16, v); return 0; }
 # Set the noexec flag; returns 0.
-fn fsrule_set_noexec(r, v)   { store64(r + 24, v); return 0; }
+fn FilesystemRule_set_noexec(r, v)   { store64(r + 24, v); return 0; }
 # A SeccompRule: an action applied to a set of syscalls, optionally gated on
 # argument conditions. 24 bytes: +0 names (vec, lazy), +8 action (as given),
 # +16 args (vec, lazy).
@@ -488,12 +488,12 @@ fn seccomp_rule_new(action) {
     return r;
 }
 # vec of the syscall names the rule matches; created empty on first access.
-fn scrule_names(r)  { return _stik_lazy_vec(r); }
+fn SeccompRule_names(r)  { return _stik_lazy_vec(r); }
 # Action taken on a match: a SeccompAction member or a seccomp_errno /
 # seccomp_trace box.
-fn scrule_action(r) { return load64(r + 8); }
+fn SeccompRule_action(r) { return load64(r + 8); }
 # vec of SeccompArg conditions on the arguments; created empty on first access.
-fn scrule_args(r)   { return _stik_lazy_vec(r + 16); }
+fn SeccompRule_args(r)   { return _stik_lazy_vec(r + 16); }
 # A SeccompProfile: a complete seccomp filter. 48 bytes: +0 default_action (as
 # given), +8 architectures, +16 flags, +24 syscalls (three vecs, created
 # lazily), +32 and +40 zeroed with no accessor.
@@ -509,13 +509,13 @@ fn seccomp_profile_new(default_action) {
 }
 # Action for syscalls no rule matches: a SeccompAction member or a
 # seccomp_errno / seccomp_trace box.
-fn scprof_default_action(p) { return load64(p); }
+fn SeccompProfile_default_action(p) { return load64(p); }
 # vec of SeccompArch values the profile targets; created empty on first access.
-fn scprof_architectures(p)  { return _stik_lazy_vec(p + 8); }
+fn SeccompProfile_architectures(p)  { return _stik_lazy_vec(p + 8); }
 # vec of profile flags; created empty on first access.
-fn scprof_flags(p)          { return _stik_lazy_vec(p + 16); }
+fn SeccompProfile_flags(p)          { return _stik_lazy_vec(p + 16); }
 # vec of SeccompRule; created empty on first access.
-fn scprof_syscalls(p)       { return _stik_lazy_vec(p + 24); }
+fn SeccompProfile_syscalls(p)       { return _stik_lazy_vec(p + 24); }
 # An EncryptedStorage: settings for an encrypted storage volume. 24 bytes:
 # +0 enabled 0, +8 size_mb 256, +16 filesystem (Str, "ext4").
 fn encrypted_storage_new() {
@@ -526,17 +526,17 @@ fn encrypted_storage_new() {
     return e;
 }
 # Enabled flag; 0 in a fresh struct.
-fn encst_enabled(e)    { return load64(e); }
+fn EncryptedStorage_enabled(e)    { return load64(e); }
 # Size in megabytes; 256 in a fresh struct.
-fn encst_size_mb(e)    { return load64(e + 8); }
-# Filesystem type (Str); "ext4" in a fresh struct until encst_set_filesystem.
-fn encst_filesystem(e) { return load64(e + 16); }
-# Set the value encst_filesystem reads, stored as given (not validated). Returns 0.
-fn encst_set_filesystem(e, v) { store64(e + 16, v); return 0; }
+fn EncryptedStorage_size_mb(e)    { return load64(e + 8); }
+# Filesystem type (Str); "ext4" in a fresh struct until EncryptedStorage_set_filesystem.
+fn EncryptedStorage_filesystem(e) { return load64(e + 16); }
+# Set the value EncryptedStorage_filesystem reads, stored as given (not validated). Returns 0.
+fn EncryptedStorage_set_filesystem(e, v) { store64(e + 16, v); return 0; }
 # Set the enabled flag; returns 0.
-fn encst_set_enabled(e, v)  { store64(e, v); return 0; }
+fn EncryptedStorage_set_enabled(e, v)  { store64(e, v); return 0; }
 # Set the size in megabytes; returns 0.
-fn encst_set_size_mb(e, v)  { store64(e + 8, v); return 0; }
+fn EncryptedStorage_set_size_mb(e, v)  { store64(e + 8, v); return 0; }
 # An Rlimit: a soft and a hard limit for one resource. 24 bytes: +0 type
 # (RlimitType, an agnostik ordinal, not a kernel RLIMIT_* number), +8 soft,
 # +16 hard, all as given.
@@ -548,15 +548,15 @@ fn rlimit_new(limit_type, soft, hard) {
     return r;
 }
 # Resource limited, an RlimitType (agnostik ordinal; see rlimit_type_name).
-fn rlimit_type(r) { return load64(r); }
+fn Rlimit_type(r) { return load64(r); }
 # Soft limit, as given to rlimit_new.
-fn rlimit_soft(r) { return load64(r + 8); }
+fn Rlimit_soft(r) { return load64(r + 8); }
 # Hard limit, as given to rlimit_new.
-fn rlimit_hard(r) { return load64(r + 16); }
+fn Rlimit_hard(r) { return load64(r + 16); }
 # A DeviceRule: allows or denies access to devices. 40 bytes: +0 allow flag,
 # +8 type (DeviceType), +16 major 0, +24 minor 0, +32 access (Str). allow, type
 # and access come from the arguments; major and minor are set with
-# devrule_set_major / devrule_set_minor.
+# DeviceRule_set_major / DeviceRule_set_minor.
 fn device_rule_new(allow, dtype, access_str: Str) {
     var r = _stik_alloc(40);
     store64(r, allow);
@@ -567,22 +567,22 @@ fn device_rule_new(allow, dtype, access_str: Str) {
     return r;
 }
 # Allow flag: nonzero allows the access, 0 denies it.
-fn devrule_allow(r)  { return load64(r); }
+fn DeviceRule_allow(r)  { return load64(r); }
 # Device type, a DeviceType.
-fn devrule_type(r)   { return load64(r + 8); }
-# Device major number; 0 from device_rule_new until devrule_set_major.
-fn devrule_major(r)  { return load64(r + 16); }
-# Set the value devrule_major reads, stored as given (not validated). Returns 0.
-fn devrule_set_major(r, v) { store64(r + 16, v); return 0; }
-# Device minor number; 0 from device_rule_new until devrule_set_minor.
-fn devrule_minor(r)  { return load64(r + 24); }
-# Set the value devrule_minor reads, stored as given (not validated). Returns 0.
-fn devrule_set_minor(r, v) { store64(r + 24, v); return 0; }
+fn DeviceRule_type(r)   { return load64(r + 8); }
+# Device major number; 0 from device_rule_new until DeviceRule_set_major.
+fn DeviceRule_major(r)  { return load64(r + 16); }
+# Set the value DeviceRule_major reads, stored as given (not validated). Returns 0.
+fn DeviceRule_set_major(r, v) { store64(r + 16, v); return 0; }
+# Device minor number; 0 from device_rule_new until DeviceRule_set_minor.
+fn DeviceRule_minor(r)  { return load64(r + 24); }
+# Set the value DeviceRule_minor reads, stored as given (not validated). Returns 0.
+fn DeviceRule_set_minor(r, v) { store64(r + 24, v); return 0; }
 # Access string (Str), as given to device_rule_new.
-fn devrule_access(r) { return load64(r + 32); }
+fn DeviceRule_access(r) { return load64(r + 32); }
 # A NamespaceEntry: one namespace and an optional path. 16 bytes: +0 type (as
 # given; this module defines no namespace-type enum), +8 path (0 until
-# nsentry_set_path).
+# NamespaceEntry_set_path).
 fn namespace_entry_new(ns_type) {
     var e = _stik_alloc(16);
     store64(e, ns_type);
@@ -590,11 +590,11 @@ fn namespace_entry_new(ns_type) {
     return e;
 }
 # Namespace type, as passed to namespace_entry_new.
-fn nsentry_type(e) { return load64(e); }
-# Namespace path (Str), or 0 until nsentry_set_path stores one.
-fn nsentry_path(e) { return load64(e + 8); }
+fn NamespaceEntry_type(e) { return load64(e); }
+# Namespace path (Str), or 0 until NamespaceEntry_set_path stores one.
+fn NamespaceEntry_path(e) { return load64(e + 8); }
 # Set the namespace path (Str); returns 0.
-fn nsentry_set_path(e, v: Str) { store64(e + 8, v); return 0; }
+fn NamespaceEntry_set_path(e, v: Str) { store64(e + 8, v); return 0; }
 # An IdMapping: maps `count` consecutive IDs starting at outside_id (outside
 # the namespace) to IDs starting at inside_id (inside it). 24 bytes:
 # +0 inside_id, +8 outside_id, +16 count, all as given.
@@ -606,11 +606,11 @@ fn id_mapping_new(inside_id, outside_id, count) {
     return m;
 }
 # First ID of the range inside the namespace.
-fn idmap_inside(m)  { return load64(m); }
+fn IdMapping_inside(m)  { return load64(m); }
 # First ID of the range outside the namespace.
-fn idmap_outside(m) { return load64(m + 8); }
+fn IdMapping_outside(m) { return load64(m + 8); }
 # Number of consecutive IDs mapped.
-fn idmap_count(m)   { return load64(m + 16); }
+fn IdMapping_count(m)   { return load64(m + 16); }
 # A LandlockFsRule: the Landlock filesystem access allowed for one path.
 # 16 bytes: +0 path (Str), +8 allowed_access (vec, lazy).
 fn landlock_fs_rule_new(path: Str) {
@@ -620,10 +620,10 @@ fn landlock_fs_rule_new(path: Str) {
     return r;
 }
 # Path the rule applies to (Str).
-fn llfsr_path(r)           { return load64(r); }
+fn LandlockFsRule_path(r)           { return load64(r); }
 # vec of LandlockFsAccess values allowed for the path; created empty on first
 # access.
-fn llfsr_allowed_access(r) { return _stik_lazy_vec(r + 8); }
+fn LandlockFsRule_allowed_access(r) { return _stik_lazy_vec(r + 8); }
 # A LandlockNetRule: the Landlock network access allowed on one port.
 # 16 bytes: +0 port, +8 allowed_access (vec, lazy).
 fn landlock_net_rule_new(port) {
@@ -633,10 +633,10 @@ fn landlock_net_rule_new(port) {
     return r;
 }
 # Port number the rule applies to.
-fn llnr_port(r)            { return load64(r); }
+fn LandlockNetRule_port(r)            { return load64(r); }
 # vec of LandlockNetAccess values allowed on the port; created empty on first
 # access.
-fn llnr_allowed_access(r)  { return _stik_lazy_vec(r + 8); }
+fn LandlockNetRule_allowed_access(r)  { return _stik_lazy_vec(r + 8); }
 # A LandlockRuleset. 24 bytes, three vecs created lazily: +0 fs_rules
 # (LandlockFsRule), +8 net_rules (LandlockNetRule), +16 scoped (LandlockScope).
 fn landlock_ruleset_new() {
@@ -662,11 +662,11 @@ fn permission_condition_new(field: Str, operator, value) {
     return c;
 }
 # Name of the field the condition tests (Str).
-fn pcond_field(c)    { return load64(c); }
+fn PermissionCondition_field(c)    { return load64(c); }
 # Comparison operator, a ConditionOperator.
-fn pcond_operator(c) { return load64(c + 8); }
+fn PermissionCondition_operator(c) { return load64(c + 8); }
 # Value compared against, stored as given (this module fixes no type).
-fn pcond_value(c)    { return load64(c + 16); }
+fn PermissionCondition_value(c)    { return load64(c + 16); }
 # A RolePermission: the actions allowed on one resource, with optional
 # conditions. 24 bytes: +0 resource (Str), +8 actions, +16 conditions (two
 # vecs, created lazily).
@@ -678,15 +678,15 @@ fn role_permission_new(resource: Str) {
     return p;
 }
 # Resource the permission applies to (Str).
-fn rperm_resource(p)   { return load64(p); }
+fn RolePermission_resource(p)   { return load64(p); }
 # vec of the actions allowed on the resource; created empty on first access.
-fn rperm_actions(p)    { return _stik_lazy_vec(p + 8); }
+fn RolePermission_actions(p)    { return _stik_lazy_vec(p + 8); }
 # vec of PermissionCondition; created empty on first access.
-fn rperm_conditions(p) { return _stik_lazy_vec(p + 16); }
+fn RolePermission_conditions(p) { return _stik_lazy_vec(p + 16); }
 # A TokenPayload: the claims of a JWT-style auth token. 64 bytes: +0 sub (Str),
 # +8 role (Role), +16 permissions (empty vec), +24 iat 0, +32 exp 0, +40 jti
 # (empty Str), +48 email 0, +56 display_name 0. Only sub and role are set at
-# construction; the token_set_* setters (v1.11.0) set the rest.
+# construction; the TokenPayload_set_* setters (v1.11.0) set the rest.
 fn token_payload_new(sub: Str, role) {
     var t = _stik_alloc(64);
     store64(t, sub);
@@ -700,31 +700,31 @@ fn token_payload_new(sub: Str, role) {
     return t;
 }
 # Subject claim (Str): who the token was issued to.
-fn token_sub(t)          { return load64(t); }
+fn TokenPayload_sub(t)          { return load64(t); }
 # Role the token grants, a Role.
-fn token_role(t)         { return load64(t + 8); }
+fn TokenPayload_role(t)         { return load64(t + 8); }
 # vec of the permissions the token carries; starts empty.
-fn token_permissions(t)  { return load64(t + 16); }
+fn TokenPayload_permissions(t)  { return load64(t + 16); }
 # Issued-at time (the iat claim); 0 in a fresh payload. No unit is enforced here.
-fn token_iat(t)          { return load64(t + 24); }
-# Set the value token_iat reads, stored as given (not validated). Returns 0.
-fn token_set_iat(t, v) { store64(t + 24, v); return 0; }
+fn TokenPayload_iat(t)          { return load64(t + 24); }
+# Set the value TokenPayload_iat reads, stored as given (not validated). Returns 0.
+fn TokenPayload_set_iat(t, v) { store64(t + 24, v); return 0; }
 # Expiry time (the exp claim); 0 in a fresh payload. No unit is enforced here.
-fn token_exp(t)          { return load64(t + 32); }
-# Set the value token_exp reads, stored as given (not validated). Returns 0.
-fn token_set_exp(t, v) { store64(t + 32, v); return 0; }
+fn TokenPayload_exp(t)          { return load64(t + 32); }
+# Set the value TokenPayload_exp reads, stored as given (not validated). Returns 0.
+fn TokenPayload_set_exp(t, v) { store64(t + 32, v); return 0; }
 # Token ID (the jti claim), a Str; empty in a fresh payload.
-fn token_jti(t)          { return load64(t + 40); }
-# Set the value token_jti reads, stored as given (not validated). Returns 0.
-fn token_set_jti(t, v) { store64(t + 40, v); return 0; }
+fn TokenPayload_jti(t)          { return load64(t + 40); }
+# Set the value TokenPayload_jti reads, stored as given (not validated). Returns 0.
+fn TokenPayload_set_jti(t, v) { store64(t + 40, v); return 0; }
 # Email address (Str), or 0 (no Str at all) in a fresh payload.
-fn token_email(t)        { return load64(t + 48); }
-# Set the value token_email reads, stored as given (not validated). Returns 0.
-fn token_set_email(t, v) { store64(t + 48, v); return 0; }
+fn TokenPayload_email(t)        { return load64(t + 48); }
+# Set the value TokenPayload_email reads, stored as given (not validated). Returns 0.
+fn TokenPayload_set_email(t, v) { store64(t + 48, v); return 0; }
 # Display name (Str), or 0 (no Str at all) in a fresh payload.
-fn token_display_name(t) { return load64(t + 56); }
-# Set the value token_display_name reads, stored as given (not validated). Returns 0.
-fn token_set_display_name(t, v) { store64(t + 56, v); return 0; }
+fn TokenPayload_display_name(t) { return load64(t + 56); }
+# Set the value TokenPayload_display_name reads, stored as given (not validated). Returns 0.
+fn TokenPayload_set_display_name(t, v) { store64(t + 56, v); return 0; }
 # An AuthContext: an authenticated agent's role and permissions. 24 bytes:
 # +0 agent_id (as given), +8 role (Role), +16 permissions (empty vec).
 fn auth_context_new(agent_id, role) {
@@ -735,11 +735,11 @@ fn auth_context_new(agent_id, role) {
     return a;
 }
 # The agent's AgentId, as passed to auth_context_new.
-fn authctx_agent_id(a)    { return load64(a); }
+fn AuthContext_agent_id(a)    { return load64(a); }
 # The agent's Role.
-fn authctx_role(a)        { return load64(a + 8); }
+fn AuthContext_role(a)        { return load64(a + 8); }
 # vec of the agent's permissions; starts empty.
-fn authctx_permissions(a) { return load64(a + 16); }
+fn AuthContext_permissions(a) { return load64(a + 16); }
 
 # Canonical capability name, lowercase with the `cap_` prefix — the spelling
 # capsh(1), getcap(8) and every capability(7) man page use, so a config file

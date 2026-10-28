@@ -76,11 +76,11 @@ fn test_edge_overrides_golden() {
 # Test: InjectionScores serializes to the exact compact JSON bytes.
 fn test_injection_scores_golden() {
     var is = injection_scores_new();
-    iscore_set_sql(is, 85);
-    iscore_set_xss(is, 10);
-    iscore_set_command(is, 5);
-    iscore_set_path_traversal(is, 0);
-    iscore_set_prompt_injection(is, 95);
+    InjectionScores_set_sql(is, 85);
+    InjectionScores_set_xss(is, 10);
+    InjectionScores_set_command(is, 5);
+    InjectionScores_set_path_traversal(is, 0);
+    InjectionScores_set_prompt_injection(is, 95);
     var got = _ser(is, &InjectionScores_to_json);
     var want = str_from("{\"sql\":85,\"xss\":10,\"command\":5,\"path_traversal\":0,\"prompt_injection\":95}");
     assert_eq(str_eq(got, want), 1, "InjectionScores compact bytes");
@@ -90,11 +90,11 @@ fn test_injection_scores_golden() {
 # Test: TokenUsage serializes to the exact compact JSON bytes.
 fn test_token_usage_golden() {
     var tu = token_usage_new();
-    tusage_set_prompt(tu, 1000);
-    tusage_set_completion(tu, 500);
-    tusage_set_total(tu, 1500);
-    tusage_set_cache_create(tu, 200);
-    tusage_set_cache_read(tu, 800);
+    TokenUsage_set_prompt_tok(tu, 1000);
+    TokenUsage_set_completion_tok(tu, 500);
+    TokenUsage_set_total_tok(tu, 1500);
+    TokenUsage_set_cache_create_tok(tu, 200);
+    TokenUsage_set_cache_read_tok(tu, 800);
     var got = _ser(tu, &TokenUsage_to_json);
     var want = str_cat(
       str_from("{\"prompt_tok\":1000,\"completion_tok\":500,\"total_tok\":1500,"),
@@ -106,8 +106,8 @@ fn test_token_usage_golden() {
 # Test: AcceleratorFlags serializes to the exact compact JSON bytes (all nine flags).
 fn test_accelerator_flags_golden() {
     var af = accelerator_flags_new();
-    aflags_set_cuda(af, 1);
-    aflags_set_vulkan(af, 1);
+    AcceleratorFlags_set_cuda_available(af, 1);
+    AcceleratorFlags_set_vulkan_available(af, 1);
     var got = _ser(af, &AcceleratorFlags_to_json);
     var want = str_cat(
       str_cat(
@@ -194,19 +194,19 @@ fn test_v110_llm_provider_tags_distinct() {
 fn test_v110_new_mcap_flags() {
     var mc = model_capabilities_new(str_from("test-model"), LLM_ANTHROPIC);
     # New v1.1.0 flags default to 0
-    assert_eq(mcap_supports_video_input(mc),         0, "mcap: video_input default 0");
-    assert_eq(mcap_supports_caching(mc),             0, "mcap: caching default 0");
-    assert_eq(mcap_supports_parallel_tool_calls(mc), 0, "mcap: parallel default 0");
+    assert_eq(ModelCapabilities_supports_video_input(mc),         0, "mcap: video_input default 0");
+    assert_eq(ModelCapabilities_supports_caching(mc),             0, "mcap: caching default 0");
+    assert_eq(ModelCapabilities_supports_parallel_tool_calls(mc), 0, "mcap: parallel default 0");
     # Setters
-    mcap_set_supports_video_input(mc, 1);
-    mcap_set_supports_caching(mc, 1);
-    mcap_set_supports_parallel_tool_calls(mc, 1);
-    assert_eq(mcap_supports_video_input(mc),         1, "mcap: video_input set");
-    assert_eq(mcap_supports_caching(mc),             1, "mcap: caching set");
-    assert_eq(mcap_supports_parallel_tool_calls(mc), 1, "mcap: parallel set");
+    ModelCapabilities_set_supports_video_input(mc, 1);
+    ModelCapabilities_set_supports_caching(mc, 1);
+    ModelCapabilities_set_supports_parallel_tool_calls(mc, 1);
+    assert_eq(ModelCapabilities_supports_video_input(mc),         1, "mcap: video_input set");
+    assert_eq(ModelCapabilities_supports_caching(mc),             1, "mcap: caching set");
+    assert_eq(ModelCapabilities_supports_parallel_tool_calls(mc), 1, "mcap: parallel set");
     # Existing flags unaffected
-    assert_eq(mcap_supports_vision(mc),   0, "mcap: vision default unchanged");
-    assert_eq(mcap_supports_thinking(mc), 0, "mcap: thinking default unchanged");
+    assert_eq(ModelCapabilities_supports_vision(mc),   0, "mcap: vision default unchanged");
+    assert_eq(ModelCapabilities_supports_thinking(mc), 0, "mcap: thinking default unchanged");
     return 0;
 }
 

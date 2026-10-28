@@ -51,21 +51,22 @@ fn has_bytes(buf, len, pat, n) {
 fn test_timestamps_are_unix_time() {
     var tid = trace_id_new();
     var sid = span_id_new();
-    assert(is_wall_ns(span_started_at(span_new(str_from("op"), tid, sid))) == 1, "span start is Unix ns");
-    assert(is_wall_ns(logrec_timestamp(log_record_new(LOG_INFO, str_from("b")))) == 1, "log record is Unix ns");
+    assert(is_wall_ns(Span_started_at(span_new(str_from("op"), tid, sid))) == 1, "span start is Unix ns");
+    assert(is_wall_ns(LogRecord_timestamp(log_record_new(LOG_INFO, str_from("b")))) == 1, "log record is Unix ns");
     var cr = crash_report_new(agent_id_new(), str_from("e"));
-    assert(is_wall_ns(crash_timestamp(cr)) == 1, "crash report is Unix ns");
-    assert(is_wall_ns(sevt_timestamp(span_event_new(str_from("ev")))) == 1, "span event is Unix ns");
-    assert(is_wall_ns(exem_timestamp(exemplar_new(tid, sid, 7))) == 1, "exemplar is Unix ns");
-    assert(is_wall_ns(mdp_timestamp(metric_data_point_new(str_from("m"), 1))) == 1, "data point is Unix ns");
+    assert(is_wall_ns(CrashReport_timestamp(cr)) == 1, "crash report is Unix ns");
+    assert(is_wall_ns(SpanEvent_timestamp(span_event_new(str_from("ev")))) == 1, "span event is Unix ns");
+    assert(is_wall_ns(Exemplar_timestamp(exemplar_new(tid, sid, 7))) == 1, "exemplar is Unix ns");
+    var dp = metric_data_point_new(str_from("m"), 1);
+    assert(is_wall_ns(MetricDataPoint_timestamp(dp)) == 1, "data point is Unix ns");
     var ae = audit_entry_new(str_from("a1"), agent_id_new(), str_from("act"), AUDIT_INFO);
-    assert(is_wall_ns(aentry_timestamp(ae)) == 1, "audit entry is Unix ns");
+    assert(is_wall_ns(AuditEntry_timestamp(ae)) == 1, "audit entry is Unix ns");
     var am = agent_message_new(agent_id_new(), agent_id_new(), str_from("{}"));
-    assert(is_wall_ns(amsg_timestamp(am)) == 1, "agent message is Unix ns");
+    assert(is_wall_ns(AgentMessage_timestamp(am)) == 1, "agent message is Unix ns");
     var tm = topic_message_new(str_from("t"), agent_id_new());
-    assert(is_wall_ns(tmsg_timestamp(tm)) == 1, "topic message is Unix ns");
+    assert(is_wall_ns(TopicMessage_timestamp(tm)) == 1, "topic message is Unix ns");
     var sm = secret_metadata_new(str_from("s"), SECRET_OPAQUE);
-    assert(is_wall_ns(smeta_created_at(sm)) == 1, "secret created_at is Unix ns");
+    assert(is_wall_ns(SecretMetadata_created_at(sm)) == 1, "secret created_at is Unix ns");
     # And the OTLP encoding carries that same value as start_time_unix_nano
     # (field 7, fixed64: tag 0x39, then 8 little-endian bytes).
     var sp = span_new(str_from("op"), tid, sid);
@@ -74,7 +75,7 @@ fn test_timestamps_are_unix_time() {
     var out = str_builder_build(sb);
     var pat = alloc(9);
     store8(pat, 57);
-    store64(pat + 1, span_started_at(sp));
+    store64(pat + 1, Span_started_at(sp));
     assert(has_bytes(str_data(out), str_len(out), pat, 9) == 1, "OTLP start_time_unix_nano is the span's Unix start");
     return 0;
 }
@@ -111,7 +112,7 @@ fn test_span_id_text_is_byte_order() {
     var tp = str_from("00-0af7651916cd43dd8448eb211c80319c-0102030405060708-01");
     var c_t, c = tctx_from_traceparent(tp);
     assert(is_ok(c_t) == 1, "traceparent parses");
-    assert_eq(load8(tctx_span_id(c)), 1, "traceparent parent-id byte 0");
+    assert_eq(load8(TraceContext_span_id(c)), 1, "traceparent parent-id byte 0");
     assert(str_eq(tctx_to_traceparent(c), tp) == 1, "traceparent round-trips byte-exact");
     return 0;
 }
@@ -127,8 +128,8 @@ fn test_json_strings_are_escaped() {
     assert(str_eq_cstr(js, "{\"enabled\":1,\"sample_rate\":1000,\"export_endpoint\":\"http://h\\\"x\\\\y\\nz\"}") == 1,
       "endpoint escaped");
     var back = TelemetryConfig_from_json(js);
-    assert(str_eq(telcfg_endpoint(back), ep) == 1, "endpoint round-trips");
-    assert_eq(telcfg_sample_rate(back), 1000, "a field after the endpoint still parses");
+    assert(str_eq(TelemetryConfig_endpoint(back), ep) == 1, "endpoint round-trips");
+    assert_eq(TelemetryConfig_sample_rate(back), 1000, "a field after the endpoint still parses");
     # An agent name crafted to inject a key stays one string value.
     var nm = str_from("x\",\"status\":\"Failed");
     var ai = agent_info_new(agent_id_new(), nm, AGENT_TYPE_SERVICE, AGENT_RUNNING);
@@ -136,8 +137,8 @@ fn test_json_strings_are_escaped() {
     AgentInfo_to_json(ai, sb2);
     var aj = str_builder_build(sb2);
     var a2 = AgentInfo_from_json(aj);
-    assert(str_eq(ainfo_name(a2), nm) == 1, "agent name round-trips");
-    assert_eq(ainfo_status(a2), AGENT_RUNNING, "injected status key has no effect");
+    assert(str_eq(AgentInfo_name(a2), nm) == 1, "agent name round-trips");
+    assert_eq(AgentInfo_status(a2), AGENT_RUNNING, "injected status key has no effect");
     return 0;
 }
 

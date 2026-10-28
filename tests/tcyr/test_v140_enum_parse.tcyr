@@ -920,39 +920,39 @@ fn test_validation_severity_roundtrip() {
 # --- F-021: previously unsettable fields ---
 fn test_f021_secret_metadata_setters() {
     var m = secret_metadata_new(str_from("db-password"), SECRET_PASSWORD);
-    assert_eq(smeta_expires_at(m), 0, "F-021: expires_at starts 0");
-    assert_eq(smeta_owner(m), 0, "F-021: owner starts 0");
-    smeta_set_expires_at(m, 1893456000);
-    assert_eq(smeta_expires_at(m), 1893456000, "F-021: expires_at now settable");
-    smeta_set_owner(m, str_from("billing-svc"));
-    assert_eq(str_eq(smeta_owner(m), str_from("billing-svc")), 1, "F-021: owner now settable");
+    assert_eq(SecretMetadata_expires_at(m), 0, "F-021: expires_at starts 0");
+    assert_eq(SecretMetadata_owner(m), 0, "F-021: owner starts 0");
+    SecretMetadata_set_expires_at(m, 1893456000);
+    assert_eq(SecretMetadata_expires_at(m), 1893456000, "F-021: expires_at now settable");
+    SecretMetadata_set_owner(m, str_from("billing-svc"));
+    assert_eq(str_eq(SecretMetadata_owner(m), str_from("billing-svc")), 1, "F-021: owner now settable");
     return 0;
 }
 
 # Test: the seven original mcap_supports_* flags start 0 and their new setters set them (F-021).
 fn test_f021_mcap_flag_setters() {
     var m = model_capabilities_new(str_from("claude-opus-5"), LLM_ANTHROPIC);
-    assert_eq(mcap_supports_vision(m), 0, "F-021: vision starts 0");
-    assert_eq(mcap_supports_tools(m), 0, "F-021: tools starts 0");
-    assert_eq(mcap_supports_structured(m), 0, "F-021: structured starts 0");
-    assert_eq(mcap_supports_streaming(m), 0, "F-021: streaming starts 0");
-    assert_eq(mcap_supports_thinking(m), 0, "F-021: thinking starts 0");
-    assert_eq(mcap_supports_audio(m), 0, "F-021: audio starts 0");
-    assert_eq(mcap_supports_citations(m), 0, "F-021: citations starts 0");
-    mcap_set_supports_vision(m, 1);
-    mcap_set_supports_tools(m, 1);
-    mcap_set_supports_structured(m, 1);
-    mcap_set_supports_streaming(m, 1);
-    mcap_set_supports_thinking(m, 1);
-    mcap_set_supports_audio(m, 1);
-    mcap_set_supports_citations(m, 1);
-    assert_eq(mcap_supports_vision(m), 1, "F-021: vision now settable");
-    assert_eq(mcap_supports_tools(m), 1, "F-021: tools now settable");
-    assert_eq(mcap_supports_structured(m), 1, "F-021: structured now settable");
-    assert_eq(mcap_supports_streaming(m), 1, "F-021: streaming now settable");
-    assert_eq(mcap_supports_thinking(m), 1, "F-021: thinking now settable");
-    assert_eq(mcap_supports_audio(m), 1, "F-021: audio now settable");
-    assert_eq(mcap_supports_citations(m), 1, "F-021: citations now settable");
+    assert_eq(ModelCapabilities_supports_vision(m), 0, "F-021: vision starts 0");
+    assert_eq(ModelCapabilities_supports_tools(m), 0, "F-021: tools starts 0");
+    assert_eq(ModelCapabilities_supports_structured(m), 0, "F-021: structured starts 0");
+    assert_eq(ModelCapabilities_supports_streaming(m), 0, "F-021: streaming starts 0");
+    assert_eq(ModelCapabilities_supports_thinking(m), 0, "F-021: thinking starts 0");
+    assert_eq(ModelCapabilities_supports_audio(m), 0, "F-021: audio starts 0");
+    assert_eq(ModelCapabilities_supports_citations(m), 0, "F-021: citations starts 0");
+    ModelCapabilities_set_supports_vision(m, 1);
+    ModelCapabilities_set_supports_tools(m, 1);
+    ModelCapabilities_set_supports_structured(m, 1);
+    ModelCapabilities_set_supports_streaming(m, 1);
+    ModelCapabilities_set_supports_thinking(m, 1);
+    ModelCapabilities_set_supports_audio(m, 1);
+    ModelCapabilities_set_supports_citations(m, 1);
+    assert_eq(ModelCapabilities_supports_vision(m), 1, "F-021: vision now settable");
+    assert_eq(ModelCapabilities_supports_tools(m), 1, "F-021: tools now settable");
+    assert_eq(ModelCapabilities_supports_structured(m), 1, "F-021: structured now settable");
+    assert_eq(ModelCapabilities_supports_streaming(m), 1, "F-021: streaming now settable");
+    assert_eq(ModelCapabilities_supports_thinking(m), 1, "F-021: thinking now settable");
+    assert_eq(ModelCapabilities_supports_audio(m), 1, "F-021: audio now settable");
+    assert_eq(ModelCapabilities_supports_citations(m), 1, "F-021: citations now settable");
     return 0;
 }
 

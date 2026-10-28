@@ -30,7 +30,7 @@ fn main() {
     # This test passes in isolation but FAILS in agnostik.tcyr when
     # message_type_name() and system_status_name() are added to types.cyr
     var vp = version_new(1, 0, 0);
-    version_set_prerelease(vp, str_from("beta.1"));
+    Version_set_prerelease(vp, str_from("beta.1"));
     var sp = version_to_str(vp);
     var expected = str_from("1.0.0-beta.1");
 

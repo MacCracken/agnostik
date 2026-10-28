@@ -20,6 +20,14 @@ include "lib/trait.cyr"
 include "lib/assert.cyr"
 include "src/lib.cyr"
 
+# _stik_json_int's value, or 0 for any Err: the bare-i64 contract it had through
+# 1.12.x, which these regression tests were written against.
+fn json_int0(src, key) {
+    var t, v = _stik_json_int(src, key);
+    if (is_err_result(t) == 1) { return 0; }
+    return v;
+}
+
 # F-037: these names were agnostik's private globals through 1.12.2. Same-named
 # globals merge across libraries with no diagnostic, so a consumer's own
 # definitions replaced agnostik's: every UUID became ZZZZZZZZ-... and a genuine
@@ -112,18 +120,18 @@ fn enc_span(sp) {
 fn test_err_oom_static() {
     var e = _stik_err_oom();
     assert(e != 0, "never 0");
-    assert_eq(agnostik_err_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "kind: resource exhausted");
-    assert_eq(agnostik_err_code(e), CODE_RESOURCE_EXHAUSTED, "code 1005");
+    assert_eq(AgnostikError_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "kind: resource exhausted");
+    assert_eq(AgnostikError_code(e), CODE_RESOURCE_EXHAUSTED, "code 1005");
     assert_eq(agnostik_err_is_retriable(e), 1, "retriable, like any exhaustion");
-    var m = agnostik_err_message(e);
+    var m = AgnostikError_message(e);
     assert(m != 0, "has a message");
     assert(str_eq_cstr(m, "out of memory") == 1, "message is 'out of memory'");
     assert_eq(str_len(m), 13, "message length");
     assert_eq(_stik_err_oom(), e, "the same object every call");
     var other = agnostik_err_new(STIK_ERR_IO, str_from("disk"));
     assert(other != e, "an ordinary allocation still gets its own error");
-    assert_eq(agnostik_err_kind(other), STIK_ERR_IO, "ordinary kind kept");
-    assert_eq(agnostik_err_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "static error unchanged");
+    assert_eq(AgnostikError_kind(other), STIK_ERR_IO, "ordinary kind kept");
+    assert_eq(AgnostikError_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "static error unchanged");
     return 0;
 }
 # _stik_alloc hands back usable memory when alloc succeeds.
@@ -140,32 +148,57 @@ fn test_stik_alloc_ok() {
 # A nested key, a repeated key and whitespace before the colon.
 fn test_find_value_structure() {
     var a = AgentInfo_from_json(str_from("{\"meta\":{\"name\":\"victim\"},\"name\":\"attacker\"}"));
-    assert(str_eq_cstr(ainfo_name(a), "attacker") == 1, "a nested name does not shadow the top-level one");
+    assert(str_eq_cstr(AgentInfo_name(a), "attacker") == 1, "a nested name does not shadow the top-level one");
     var b = AgentInfo_from_json(str_from("{\"name\":\"first\",\"name\":\"last\"}"));
-    assert(str_eq_cstr(ainfo_name(b), "last") == 1, "a repeated key gives its last value, as the derived parser did");
+    assert(str_eq_cstr(AgentInfo_name(b), "last") == 1, "a repeated key gives its last value, like the derived parser");
     var c = AgentInfo_from_json(str_from("{\"name\" : \"spaced\"}"));
-    assert(str_eq_cstr(ainfo_name(c), "spaced") == 1, "whitespace before the colon is allowed (RFC 8259)");
+    assert(str_eq_cstr(AgentInfo_name(c), "spaced") == 1, "whitespace before the colon is allowed (RFC 8259)");
     var d = AgentInfo_from_json(str_from("{\"note\":\"\\\"name\\\":\\\"x\\\"\",\"name\":\"real\"}"));
-    assert(str_eq_cstr(ainfo_name(d), "real") == 1, "a key inside a string value is not a key (F-004 still holds)");
+    assert(str_eq_cstr(AgentInfo_name(d), "real") == 1, "a key inside a string value is not a key (F-004 still holds)");
     var e = AgentInfo_from_json(str_from("[{\"name\":\"in-array\"}]"));
-    assert_eq(ainfo_name(e), 0, "a member of a nested object in an array is not top-level");
+    assert_eq(AgentInfo_name(e), 0, "a member of a nested object in an array is not top-level");
     var tj = "{\"x\":{\"enabled\":1,\"export_endpoint\":\"http://evil\"},\"enabled\":0}";
     var t = TelemetryConfig_from_json(str_from(tj));
-    assert_eq(telcfg_enabled(t), 0, "TelemetryConfig: nested enabled ignored");
-    assert_eq(telcfg_endpoint(t), 0, "TelemetryConfig: nested endpoint ignored");
-    assert_eq(_stik_json_int(str_from("{\"a\":{\"a\":5},\"a\":7}"), str_from("a")), 7, "json_int: top-level, last");
-    assert_eq(_stik_json_int(str_from("{\"b\":{\"a\":5}}"), str_from("a")), 0, "json_int: nested only reads 0");
+    assert_eq(TelemetryConfig_enabled(t), 0, "TelemetryConfig: nested enabled ignored");
+    assert_eq(TelemetryConfig_endpoint(t), 0, "TelemetryConfig: nested endpoint ignored");
+    assert_eq(json_int0(str_from("{\"a\":{\"a\":5},\"a\":7}"), str_from("a")), 7, "json_int: top-level, last");
+    assert_eq(json_int0(str_from("{\"b\":{\"a\":5}}"), str_from("a")), 0, "json_int: nested only reads 0");
     return 0;
 }
 
 # ─── F-030: out-of-range numbers read 0 ────
 
+# The Err code _stik_json_int returns for member `k` of C-string JSON `j`, or 0
+# when it returns Ok.
+fn ji_code(j, k) {
+    var t, v = _stik_json_int(str_from(j), str_from(k));
+    if (is_err_result(t) == 1) { return v; }
+    return 0;
+}
+# v2.0.0: _stik_json_int returns a Result, so a missing key, a non-integer and
+# an out-of-range integer are told apart from a literal 0.
+fn test_json_int_result() {
+    assert_eq(ji_code("{\"x\":0}", "x"), 0, "a literal 0 is Ok");
+    assert_eq(json_int0(str_from("{\"x\":0}"), str_from("x")), 0, "and its value is 0");
+    assert_eq(ji_code("{\"y\":1}", "x"), 1, "missing key: Err(1)");
+    assert_eq(ji_code("{\"b\":{\"x\":5}}", "x"), 1, "nested only: Err(1)");
+    assert_eq(ji_code("{\"x\":\"12\"}", "x"), 2, "a quoted number: Err(2)");
+    assert_eq(ji_code("{\"x\":12abc}", "x"), 2, "digits then junk: Err(2)");
+    assert_eq(ji_code("{\"x\":1.9}", "x"), 2, "a fraction: Err(2)");
+    assert_eq(ji_code("{\"x\":1e9}", "x"), 2, "an exponent: Err(2)");
+    assert_eq(ji_code("{\"x\":-}", "x"), 2, "a lone minus: Err(2)");
+    assert_eq(ji_code("{\"x\":9223372036854775808}", "x"), 3, "outside i64: Err(3)");
+    assert_eq(ji_code("{\"x\": 42 }", "x"), 0, "whitespace around the number is fine");
+    assert_eq(ji_code("{\"x\":42}", "x"), 0, "an integer before '}' is Ok");
+    assert_eq(ji_code("{\"x\":[7]}", "x"), 2, "an array: Err(2)");
+    return 0;
+}
 # i64 max reads exactly; one past it, or a 20-digit value, reads 0.
 fn test_json_int_range() {
-    assert_eq(_stik_json_int(str_from("{\"x\":9223372036854775807}"), str_from("x")), 0x7FFFFFFFFFFFFFFF, "i64 max");
-    assert_eq(_stik_json_int(str_from("{\"x\":9223372036854775808}"), str_from("x")), 0, "i64 max + 1 reads 0");
-    assert_eq(_stik_json_int(str_from("{\"x\":12345678901234567890}"), str_from("x")), 0, "no silent prefix");
-    assert_eq(_stik_json_int(str_from("{\"x\":-42}"), str_from("x")), 0 - 42, "negatives still parse");
+    assert_eq(json_int0(str_from("{\"x\":9223372036854775807}"), str_from("x")), 0x7FFFFFFFFFFFFFFF, "i64 max");
+    assert_eq(json_int0(str_from("{\"x\":9223372036854775808}"), str_from("x")), 0, "i64 max + 1 reads 0");
+    assert_eq(json_int0(str_from("{\"x\":12345678901234567890}"), str_from("x")), 0, "no silent prefix");
+    assert_eq(json_int0(str_from("{\"x\":-42}"), str_from("x")), 0 - 42, "negatives still parse");
     return 0;
 }
 
@@ -202,20 +235,20 @@ fn test_json_str_bounded() {
 # Setters saturate, getters cap, and both JSON readers saturate.
 fn test_iscore_range() {
     var s = injection_scores_new();
-    iscore_set_sql(s, 256);
-    assert_eq(iscore_sql(s), 100, "256 saturates to 100 (it wrapped to 0)");
-    iscore_set_xss(s, 0 - 1);
-    assert_eq(iscore_xss(s), 0, "-1 saturates to 0");
-    iscore_set_command(s, 300);
-    assert_eq(iscore_command(s), 100, "300 saturates to 100 (it read 44)");
-    iscore_set_path_traversal(s, 55);
-    assert_eq(iscore_path_traversal(s), 55, "in range unchanged");
+    InjectionScores_set_sql(s, 256);
+    assert_eq(InjectionScores_sql(s), 100, "256 saturates to 100 (it wrapped to 0)");
+    InjectionScores_set_xss(s, 0 - 1);
+    assert_eq(InjectionScores_xss(s), 0, "-1 saturates to 0");
+    InjectionScores_set_command(s, 300);
+    assert_eq(InjectionScores_command(s), 100, "300 saturates to 100 (it read 44)");
+    InjectionScores_set_path_traversal(s, 55);
+    assert_eq(InjectionScores_path_traversal(s), 55, "in range unchanged");
     store8(s + 4, 200);
-    assert_eq(iscore_prompt_injection(s), 100, "a raw byte above 100 reads 100");
+    assert_eq(InjectionScores_prompt_injection(s), 100, "a raw byte above 100 reads 100");
     var j = InjectionScores_from_json_str("{\"sql\":256,\"xss\":-5,\"command\":50}");
-    assert_eq(iscore_sql(j), 100, "JSON 256 saturates (the derived parser read 0)");
-    assert_eq(iscore_xss(j), 0, "JSON -5 saturates to 0");
-    assert_eq(iscore_command(j), 50, "JSON in range");
+    assert_eq(InjectionScores_sql(j), 100, "JSON 256 saturates (the derived parser read 0)");
+    assert_eq(InjectionScores_xss(j), 0, "JSON -5 saturates to 0");
+    assert_eq(InjectionScores_command(j), 50, "JSON in range");
     var out = ser(j, &InjectionScores_to_json);
     var want = "{\"sql\":100,\"xss\":0,\"command\":50,\"path_traversal\":0,\"prompt_injection\":0}";
     assert(str_eq_cstr(out, want) == 1, "to_json agrees with the getters");
@@ -258,9 +291,10 @@ fn test_secret_new_edges() {
 
 # Out-of-range levels become CLASS_RESTRICTED; valid ones are kept.
 fn test_classification_level() {
-    assert_eq(cresult_level(classification_result_new(99)), CLASS_RESTRICTED, "99 -> Restricted");
-    assert_eq(cresult_auto_level(classification_result_new(0 - 1)), CLASS_RESTRICTED, "-1 -> Restricted");
-    assert_eq(cresult_level(classification_result_new(CLASS_INTERNAL)), CLASS_INTERNAL, "valid level kept");
+    assert_eq(ClassificationResult_level(classification_result_new(99)), CLASS_RESTRICTED, "99 -> Restricted");
+    assert_eq(ClassificationResult_auto_level(classification_result_new(0 - 1)), CLASS_RESTRICTED, "-1 -> Restricted");
+    var kept = classification_result_new(CLASS_INTERNAL);
+    assert_eq(ClassificationResult_level(kept), CLASS_INTERNAL, "valid level kept");
     return 0;
 }
 
@@ -412,7 +446,7 @@ fn test_private_globals() {
     assert(str_eq_cstr(agent_id_to_str(v), u) == 1, "a consumer's _hex_lut no longer changes UUIDs");
     var f = integrity_fields_genesis(str_from("sig"));
     assert_eq(integrity_is_genesis(f), 1, "genesis recognised with a consumer _genesis_hash_str defined");
-    assert_eq(str_len(integrity_prev_hash(f)), 64, "genesis hash is 64 chars");
+    assert_eq(str_len(IntegrityFields_prev_hash(f)), 64, "genesis hash is 64 chars");
     return 0;
 }
 
@@ -426,16 +460,16 @@ fn test_version_range() {
     assert(is_err_result(b_t) == 1, "i64 max + 1 is out of range");
     var c_t, c = version_from_str(str_from("9223372036854775807.1.2"));
     assert(is_ok(c_t) == 1, "i64 max parses");
-    assert_eq(version_major(c), 0x7FFFFFFFFFFFFFFF, "major is i64 max");
+    assert_eq(Version_major(c), 0x7FFFFFFFFFFFFFFF, "major is i64 max");
     return 0;
 }
 
 # ─── F-039: AgentInfo_from_json does not default to the most privileged type ────
 
 # The agent_type AgentInfo_from_json reads from C string `c`.
-fn ai_type(c) { return ainfo_type(AgentInfo_from_json(str_from(c))); }
+fn ai_type(c) { return AgentInfo_type(AgentInfo_from_json(str_from(c))); }
 # The status AgentInfo_from_json reads from C string `c`.
-fn ai_status(c) { return ainfo_status(AgentInfo_from_json(str_from(c))); }
+fn ai_status(c) { return AgentInfo_status(AgentInfo_from_json(str_from(c))); }
 # Missing or invalid types read as User; explicit System still parses.
 fn test_agent_info_defaults() {
     assert_eq(ai_type("{}"), AGENT_TYPE_USER, "missing type -> User");
@@ -470,10 +504,10 @@ fn test_traceparent_future() {
 fn hist_ok(bounds, counts, count) {
     var h = histogram_value_new();
     var i = 0;
-    while (i < vec_len(bounds)) { vec_push(hval_bounds(h), vec_get(bounds, i)); i = i + 1; }
+    while (i < vec_len(bounds)) { vec_push(HistogramValue_bounds(h), vec_get(bounds, i)); i = i + 1; }
     i = 0;
-    while (i < vec_len(counts)) { vec_push(hval_bucket_counts(h), vec_get(counts, i)); i = i + 1; }
-    hval_set_count(h, count);
+    while (i < vec_len(counts)) { vec_push(HistogramValue_bucket_counts(h), vec_get(counts, i)); i = i + 1; }
+    HistogramValue_set_count(h, count);
     var pts = vec_new();
     vec_push(pts, metric_data_point_new(str_from("h"), metric_histogram(h)));
     var desc = instrument_descriptor_new(str_from("h"), str_from(""), str_from(""), METRIC_HISTOGRAM);
@@ -518,23 +552,23 @@ fn test_span_wire_ranges() {
     var base = fixed_span();
     var ref = enc_span(base);
     var k = fixed_span();
-    span_set_kind(k, 99);
+    Span_set_kind(k, 99);
     assert(str_eq(enc_span(k), ref) == 1, "a kind outside SpanKind is omitted, not written as 0");
     var d = fixed_span();
-    span_set_duration_ms(d, 0 - 5000);
+    Span_set_duration_ms(d, 0 - 5000);
     assert(str_eq(enc_span(d), ref) == 1, "a negative duration ends at the start");
     var c = fixed_span();
-    span_set_dropped_attrs(c, 0 - 1);
-    span_set_dropped_events(c, 0 - 5);
-    span_set_dropped_links(c, 0 - 9);
+    Span_set_dropped_attrs(c, 0 - 1);
+    Span_set_dropped_events(c, 0 - 5);
+    Span_set_dropped_links(c, 0 - 9);
     assert(str_eq(enc_span(c), ref) == 1, "negative dropped counts are omitted");
     var e = fixed_span();
-    span_set_dropped_attrs(e, 0x10000000000);
+    Span_set_dropped_attrs(e, 0x10000000000);
     var f = fixed_span();
-    span_set_dropped_attrs(f, 0xFFFFFFFF);
+    Span_set_dropped_attrs(f, 0xFFFFFFFF);
     assert(str_eq(enc_span(e), enc_span(f)) == 1, "a count above uint32 saturates at 0xFFFFFFFF");
     var g = fixed_span();
-    span_set_duration_ms(g, 0x7FFFFFFFFFFFFFFF);
+    Span_set_duration_ms(g, 0x7FFFFFFFFFFFFFFF);
     assert_eq(str_has(hex_of(enc_span(g)), "41ffffffffffffff7f"), 1, "a huge duration saturates the end time");
     return 0;
 }
@@ -551,30 +585,30 @@ fn test_genesis_null() {
 fn test_vram_sum() {
     var s = accelerator_summary_new();
     var a = accelerator_device_new(0, str_from("a"), 0, 0);
-    adev_set_vram_total(a, 24576);
+    AcceleratorDevice_set_vram_total(a, 24576);
     asum_add_device(s, a);
     var b = accelerator_device_new(1, str_from("b"), 0, 0);
-    adev_set_vram_total(b, 0 - 100000);
+    AcceleratorDevice_set_vram_total(b, 0 - 100000);
     asum_add_device(s, b);
-    assert_eq(asum_total_vram(s), 24576, "a negative report adds nothing");
+    assert_eq(AcceleratorSummary_total_vram(s), 24576, "a negative report adds nothing");
     var c = accelerator_device_new(2, str_from("c"), 0, 0);
-    adev_set_vram_total(c, 0x7FFFFFFFFFFFFFFF);
+    AcceleratorDevice_set_vram_total(c, 0x7FFFFFFFFFFFFFFF);
     asum_add_device(s, c);
-    assert_eq(asum_total_vram(s), 0x7FFFFFFFFFFFFFFF, "the total saturates instead of wrapping");
+    assert_eq(AcceleratorSummary_total_vram(s), 0x7FFFFFFFFFFFFFFF, "the total saturates instead of wrapping");
     return 0;
 }
 # AcceleratorFlags are 0 or 1 through every path.
 fn test_aflags_bool() {
     var f = accelerator_flags_new();
-    aflags_set_cuda(f, 256);
-    assert_eq(aflags_cuda(f), 1, "256 sets the flag (it stored 0)");
-    aflags_set_rocm(f, 255);
-    assert_eq(aflags_rocm(f), 1, "255 reads 1");
+    AcceleratorFlags_set_cuda_available(f, 256);
+    assert_eq(AcceleratorFlags_cuda_available(f), 1, "256 sets the flag (it stored 0)");
+    AcceleratorFlags_set_rocm_available(f, 255);
+    assert_eq(AcceleratorFlags_rocm_available(f), 1, "255 reads 1");
     store8(f + 2, 7);
-    assert_eq(aflags_metal(f), 1, "a raw nonzero byte reads 1");
+    assert_eq(AcceleratorFlags_metal_available(f), 1, "a raw nonzero byte reads 1");
     var j = AcceleratorFlags_from_json_str("{\"cuda_available\":2,\"rocm_available\":0}");
-    assert_eq(aflags_cuda(j), 1, "JSON 2 reads 1");
-    assert_eq(aflags_rocm(j), 0, "JSON 0 reads 0");
+    assert_eq(AcceleratorFlags_cuda_available(j), 1, "JSON 2 reads 1");
+    assert_eq(AcceleratorFlags_rocm_available(j), 0, "JSON 0 reads 0");
     var out = ser(f, &AcceleratorFlags_to_json);
     assert_eq(str_has(out, "\"cuda_available\":1,\"rocm_available\":1,\"metal_available\":1"), 1, "to_json writes 0/1");
     return 0;
@@ -586,7 +620,7 @@ fn test_aflags_bool() {
 fn test_serde_bounded() {
     var a = TokenUsage_from_json_str("{\"pro");
     assert(a != 0, "truncated object: a struct, not a crash");
-    assert_eq(tusage_total(a), 0, "missing fields read 0");
+    assert_eq(TokenUsage_total_tok(a), 0, "missing fields read 0");
     var buf = alloc(64);
     var lead = "{\"prompt_tok";
     memcpy(buf, lead, strlen(lead));
@@ -594,7 +628,7 @@ fn test_serde_bounded() {
     var tail = "\":77,\"total_tok\":88}";
     memcpy(buf + strlen(lead) + 1, tail, strlen(tail) + 1);
     var b = TokenUsage_from_json_str(buf);
-    assert_eq(tusage_total(b), 0, "nothing is read past the NUL (the derived scanner read 88)");
+    assert_eq(TokenUsage_total_tok(b), 0, "nothing is read past the NUL (the derived scanner read 88)");
     assert_eq(TokenUsage_from_json_str(0), 0, "0 text: 0");
     assert_eq(TokenUsage_from_json_str(""), 0, "empty text: 0");
     assert_eq(TokenUsage_from_json_str("[1,2]"), 0, "not an object: 0");
@@ -604,17 +638,17 @@ fn test_serde_bounded() {
 # Numbers outside i64, or not wholly numbers, read 0 on both paths.
 fn test_serde_ranges() {
     var a = TokenUsage_from_json_str("{\"total_tok\":18446744073709551615}");
-    assert_eq(tusage_total(a), 0, "2^64-1 reads 0 (the derived parser read -1)");
+    assert_eq(TokenUsage_total_tok(a), 0, "2^64-1 reads 0 (the derived parser read -1)");
     var b = ResourceLimits_from_json_str("{\"max_memory\":9223372036854775808,\"max_fds\":64}");
-    assert_eq(rlim_max_memory(b), 0, "i64 max + 1 reads 0");
-    assert_eq(rlim_max_fds(b), 64, "its neighbour is unaffected");
+    assert_eq(ResourceLimits_max_memory(b), 0, "i64 max + 1 reads 0");
+    assert_eq(ResourceLimits_max_fds(b), 64, "its neighbour is unaffected");
     var c = ResourceLimits_from_json(bayan_json_parse(str_from("{\"max_memory\":99999999999999999999,\"max_fds\":7}")));
-    assert_eq(rlim_max_memory(c), 0, "pairs path: out of range reads 0");
-    assert_eq(rlim_max_fds(c), 7, "pairs path: in range kept");
+    assert_eq(ResourceLimits_max_memory(c), 0, "pairs path: out of range reads 0");
+    assert_eq(ResourceLimits_max_fds(c), 7, "pairs path: in range kept");
     var d = ResourceLimits_from_json(0);
-    assert_eq(rlim_max_memory(d), 0, "pairs path: 0 pairs gives zeros, not a crash");
+    assert_eq(ResourceLimits_max_memory(d), 0, "pairs path: 0 pairs gives zeros, not a crash");
     var e = ResourceLimits_from_json_str("{\"max_memory\":1,\"max_memory\":2}");
-    assert_eq(rlim_max_memory(e), 2, "a repeated member gives its last value");
+    assert_eq(ResourceLimits_max_memory(e), 2, "a repeated member gives its last value");
     return 0;
 }
 
@@ -664,7 +698,7 @@ fn fuzz_find_value(seed) {
         }
         str_builder_putc(sb, '}');
         var doc = str_builder_build(sb);
-        if (_stik_json_int(doc, str_from("a")) == expect) { ok = ok + 1; }
+        if (json_int0(doc, str_from("a")) == expect) { ok = ok + 1; }
         it = it + 1;
     }
     assert_eq(ok, 400, "fuzz: json member lookup agrees with the generator");
@@ -768,6 +802,7 @@ fn main() {
     test_stik_alloc_ok();
     test_find_value_structure();
     test_json_int_range();
+    test_json_int_result();
     test_json_str_alloc();
     test_json_str_bounded();
     test_iscore_range();

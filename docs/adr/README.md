@@ -70,3 +70,4 @@ consumer sweeps green.
 - [ADR-006 — OTLP `string` fields are always valid UTF-8 (invalid AnyValue strings go out as bytes)](006-otlp-strings-are-valid-utf8.md)
 - [ADR-007 — An allocation failure fails by name; the error constructor never fails](007-allocation-failure-fails-by-name.md)
 - [ADR-008 — The seven value structs' serde is hand-written, bounded and range-checked](008-value-struct-serde-is-hand-written.md)
+- [ADR-009 — Accessors are named `<Struct>_<field>`; only uniquely named, all-plain structs are derived](009-accessors-take-struct-names.md)

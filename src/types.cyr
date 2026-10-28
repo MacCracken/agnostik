@@ -246,6 +246,13 @@ fn _stik_json_skip_ws(data, i, slen) {
     }
     return k;
 }
+# The integer value of top-level member `key` of JSON object `src`, as a
+# value-form Result: Ok(n), or an Err whose payload is a code (no allocation,
+# since callers probe for optional keys): 1 the key is missing, 2 its value is
+# not an integer, 3 the integer is outside i64. An integer is an optional '-'
+# then digits, ending at whitespace, ',', '}', ']' or the end of `src`, so
+# "12abc", 1e9 and 1.9 are Err(2). Through 1.12.x it returned a bare i64 and
+# read a missing key, a non-number and an out-of-range number all as 0 (v2.0.0).
 # Audit 2026-04-26 F-003: handle leading '-' for negatives.
 # Audit 2026-04-26 F-008: pre-multiply overflow check; we no longer
 # accept digits whose multiply would lift val above i64::MAX. The
@@ -255,16 +262,15 @@ fn _stik_json_skip_ws(data, i, slen) {
 # GHSA-72HV-8253-57QQ-shape risk.
 fn _stik_json_int(src: Str, key: Str) {
     var vi = _stik_json_find_value(src, key);
-    if (vi < 0) { return 0; }
+    if (vi < 0) { return Err(1); }
     return _stik_json_int_at(src.data, src.len, vi);
 }
-# The JSON integer at index `vi` of the `slen` bytes at `data`, as
-# _stik_json_int reads a member's value: an optional '-' then digits, stopping
-# at the first non-digit; 0 when there are no digits or the number is outside
-# i64 (F-030).
+# The JSON integer at index `vi` of the `slen` bytes at `data`, as a Result:
+# see _stik_json_int for Ok and the Err codes 2 and 3.
 fn _stik_json_int_at(data, slen, vi) {
     var neg = 0;
     if (vi < slen && load8(data + vi) == 45) { neg = 1; vi = vi + 1; }
+    var start = vi;
     var val = 0;
     var parsing = 1;
     var overflow = 0;
@@ -284,12 +290,17 @@ fn _stik_json_int_at(data, slen, vi) {
             vi = vi + 1;
         }
     }
-    # F-030 (1.12.3): an out-of-range number reads 0, the contract's value for
-    # an invalid one. F-008 stopped the wrap, but kept the digits read so far:
-    # 12345678901234567890 read as 1234567890123456789.
-    if (overflow == 1) { return 0; }
-    if (neg == 1) { return 0 - val; }
-    return val;
+    # F-030 (1.12.3): out of range is never a wrap or a prefix of the digits.
+    if (overflow == 1) { return Err(3); }
+    if (vi == start) { return Err(2); }
+    if (vi < slen) {
+        var end = load8(data + vi);
+        if (end != 32 && end != 9 && end != 10 && end != 13 && end != 44 && end != 125 && end != 93) {
+            return Err(2);
+        }
+    }
+    if (neg == 1) { return Ok(0 - val); }
+    return Ok(val);
 }
 # Audit 2026-04-26 F-002: respect '\' escape so `"abc\"xyz"` parses as
 # the full string, not just the prefix. Decode the common escapes
@@ -594,7 +605,7 @@ fn user_id_eq(a, b)           { return agent_id_eq(a, b); }
 fn user_id_to_str(id): Str    { return agent_id_to_str(id); }
 # Parse a 36-character UUID string. Ok(id) or Err, as agent_id_from_str.
 fn user_id_from_str(s: Str)   { return agent_id_from_str(s); }
-# A Version (SemVer). 40 bytes, all 8-byte slots, read through the version_*
+# A Version (SemVer). 40 bytes, all 8-byte slots, read through the Version_*
 # accessors:
 #   +0 major, +8 minor, +16 patch, +24 prerelease, +32 build.
 # prerelease and build are Strs, both 0 (absent) at construction.
@@ -610,19 +621,19 @@ fn version_new(major, minor, patch) {
 # Version 0.0.0 with no prerelease or build.
 fn version_default() { return version_new(0, 0, 0); }
 # Major version number.
-fn version_major(v)      { return load64(v); }
+fn Version_major(v)      { return load64(v); }
 # Minor version number.
-fn version_minor(v)      { return load64(v + 8); }
+fn Version_minor(v)      { return load64(v + 8); }
 # Patch version number.
-fn version_patch(v)      { return load64(v + 16); }
+fn Version_patch(v)      { return load64(v + 16); }
 # Prerelease Str, the part after '-' (for example "beta.1"); 0 when absent.
-fn version_prerelease(v) { return load64(v + 24); }
+fn Version_prerelease(v) { return load64(v + 24); }
 # Build-metadata Str, the part after '+'; 0 when absent.
-fn version_build(v)      { return load64(v + 32); }
+fn Version_build(v)      { return load64(v + 32); }
 # Set the prerelease Str, without its leading '-'. Not validated. Returns 0.
-fn version_set_prerelease(v, pre: Str) { store64(v + 24, pre); return 0; }
+fn Version_set_prerelease(v, pre: Str) { store64(v + 24, pre); return 0; }
 # Set the build-metadata Str, without its leading '+'. Not validated. Returns 0.
-fn version_set_build(v, b: Str)        { store64(v + 32, b); return 0; }
+fn Version_set_build(v, b: Str)        { store64(v + 32, b); return 0; }
 # Format as "MAJOR.MINOR.PATCH", then "-PRERELEASE" and "+BUILD" when set, as
 # a new Str. Output is capped at 127 bytes: a prerelease or build part that
 # would not fit is dropped silently, not truncated.
@@ -630,12 +641,12 @@ fn version_to_str(v): Str {
     var buf = _stik_alloc(128);
     var cap = 127;
     var pos = 0;
-    pos = pos + fmt_int_buf(version_major(v), buf + pos);
+    pos = pos + fmt_int_buf(Version_major(v), buf + pos);
     store8(buf + pos, 46); pos = pos + 1;
-    pos = pos + fmt_int_buf(version_minor(v), buf + pos);
+    pos = pos + fmt_int_buf(Version_minor(v), buf + pos);
     store8(buf + pos, 46); pos = pos + 1;
-    pos = pos + fmt_int_buf(version_patch(v), buf + pos);
-    var pre = version_prerelease(v);
+    pos = pos + fmt_int_buf(Version_patch(v), buf + pos);
+    var pre = Version_prerelease(v);
     if (pre != 0) {
         var plen = str_len(pre);
         if (pos + 1 + plen < cap) {
@@ -644,7 +655,7 @@ fn version_to_str(v): Str {
             pos = pos + plen;
         }
     }
-    var bld = version_build(v);
+    var bld = Version_build(v);
     if (bld != 0) {
         var blen = str_len(bld);
         if (pos + 1 + blen < cap) {
@@ -788,9 +799,9 @@ fn version_from_str(s: Str) {
 # 1 when major, minor and patch are equal, else 0. Prerelease and build are
 # not compared, so 1.0.0-rc.1 equals 1.0.0.
 fn version_eq(a, b) {
-    if (version_major(a) != version_major(b)) { return 0; }
-    if (version_minor(a) != version_minor(b)) { return 0; }
-    if (version_patch(a) != version_patch(b)) { return 0; }
+    if (Version_major(a) != Version_major(b)) { return 0; }
+    if (Version_minor(a) != Version_minor(b)) { return 0; }
+    if (Version_patch(a) != Version_patch(b)) { return 0; }
     return 1;
 }
 enum MessageType {
@@ -806,7 +817,7 @@ enum SystemStatus {
     STATUS_UNKNOWN;
 }
 # A capabilities record: four feature flags. 32 bytes, one 0/1 flag per 8-byte
-# slot, read through the capabilities_* accessors:
+# slot, read through the Capabilities_* accessors:
 #   +0 llm, +8 virtualization, +16 gpu, +24 tpm.
 # All start at 0.
 fn capabilities_new() {
@@ -818,21 +829,21 @@ fn capabilities_new() {
     return c;
 }
 # LLM capability flag (0/1).
-fn capabilities_llm(c)            { return load64(c); }
+fn Capabilities_llm(c)            { return load64(c); }
 # Virtualization capability flag (0/1).
-fn capabilities_virtualization(c) { return load64(c + 8); }
+fn Capabilities_virtualization(c) { return load64(c + 8); }
 # GPU capability flag (0/1).
-fn capabilities_gpu(c)            { return load64(c + 16); }
+fn Capabilities_gpu(c)            { return load64(c + 16); }
 # TPM capability flag (0/1).
-fn capabilities_tpm(c)            { return load64(c + 24); }
+fn Capabilities_tpm(c)            { return load64(c + 24); }
 # Set the LLM capability flag. Stored as given. Returns 0.
-fn capabilities_set_llm(c, v)            { store64(c, v); return 0; }
+fn Capabilities_set_llm(c, v)            { store64(c, v); return 0; }
 # Set the virtualization capability flag. Stored as given. Returns 0.
-fn capabilities_set_virtualization(c, v) { store64(c + 8, v); return 0; }
+fn Capabilities_set_virtualization(c, v) { store64(c + 8, v); return 0; }
 # Set the GPU capability flag. Stored as given. Returns 0.
-fn capabilities_set_gpu(c, v)            { store64(c + 16, v); return 0; }
+fn Capabilities_set_gpu(c, v)            { store64(c + 16, v); return 0; }
 # Set the TPM capability flag. Stored as given. Returns 0.
-fn capabilities_set_tpm(c, v)            { store64(c + 24, v); return 0; }
+fn Capabilities_set_tpm(c, v)            { store64(c + 24, v); return 0; }
 # 1 when all four flags are equal, else 0.
 fn capabilities_eq(a, b) {
     if (load64(a) != load64(b)) { return 0; }
@@ -853,11 +864,11 @@ fn component_config_new(name: Str, enabled) {
     return c;
 }
 # Component name Str, as passed.
-fn component_config_name(c)     { return load64(c); }
+fn ComponentConfig_config_name(c)     { return load64(c); }
 # Enabled flag (0/1), as passed.
-fn component_config_enabled(c)  { return load64(c + 8); }
+fn ComponentConfig_config_enabled(c)  { return load64(c + 8); }
 # Settings map (map_new, cstr keys), created empty at construction.
-fn component_config_settings(c) { return load64(c + 16); }
+fn ComponentConfig_config_settings(c) { return load64(c + 16); }
 
 # Display name of a MessageType: "Command", "Response", "Event" or "Heartbeat",
 # and "Unknown" for a value outside the enum. message_type_parse is the inverse.

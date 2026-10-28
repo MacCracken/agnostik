@@ -192,8 +192,8 @@ fn test_span_otlp_kind_and_status() {
     var span_id = alloc(8);
     var s = span_new(str_from("x"), trace_id, span_id);
     store64(s + 48, 0);                  # start_time = 0
-    span_set_kind(s, SPAN_SERVER);       # field 6 = varint(2)
-    span_set_status(s, SPAN_OK);         # field 15 = sub-message{ code (field 3): 1 }
+    Span_set_kind(s, SPAN_SERVER);       # field 6 = varint(2)
+    Span_set_status(s, SPAN_OK);         # field 15 = sub-message{ code (field 3): 1 }
 
     var sb = str_builder_new();
     Span_to_otlp_proto(s, sb);
@@ -228,7 +228,7 @@ fn test_span_otlp_parent_id() {
     var i = 0;
     while (i < 8) { store8(parent_id + i, 0xB0 + i); i = i + 1; }
     var s = span_new(str_from("c"), trace_id, span_id);
-    span_set_parent(s, parent_id);
+    Span_set_parent_id(s, parent_id);
     store64(s + 48, 0);
 
     var sb = str_builder_new();

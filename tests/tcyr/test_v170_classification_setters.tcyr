@@ -8,7 +8,7 @@
 # an out-of-range confidence is an Err that leaves the result unchanged.
 #
 # Confidence is parts per thousand (0..1000). 0 is a real score, so a separate
-# set flag (cresult_has_confidence) tells "set to 0" from "never set".
+# set flag (ClassificationResult_has_confidence) tells "set to 0" from "never set".
 include "lib/syscalls.cyr"
 include "lib/string.cyr"
 include "lib/alloc.cyr"
@@ -26,7 +26,7 @@ include "src/lib.cyr"
 # error box, so reading its kind would dereference it; a setter that wrongly
 # accepts must fail the assertion, not crash the file.
 fn err_kind_or(res_t, res) {
-    if (is_err_result(res_t) == 1) { return agnostik_err_kind(res); }
+    if (is_err_result(res_t) == 1) { return AgnostikError_kind(res); }
     return 0 - 1;
 }
 
@@ -37,35 +37,36 @@ fn main() {
 
     # --- defaults are unchanged by the 48 -> 56 byte layout ---
     var r = classification_result_new(CLASS_INTERNAL);
-    assert_eq(cresult_level(r), CLASS_INTERNAL, "level from constructor");
-    assert_eq(cresult_auto_level(r), CLASS_INTERNAL, "auto_level from constructor");
-    assert_eq(cresult_confidence(r), 0, "confidence reads 0 when unset");
-    assert_eq(cresult_has_confidence(r), 0, "confidence starts unset");
-    vec_push(cresult_rules(r), str_from("ssn-pattern"));
-    vec_push(cresult_pii(r), PII_EMAIL);
-    vec_push(cresult_keywords(r), str_from("secret"));
-    assert_eq(vec_len(cresult_rules(r)), 1, "rules vec intact");
-    assert_eq(vec_len(cresult_pii(r)), 1, "pii vec intact");
-    assert_eq(vec_len(cresult_keywords(r)), 1, "keywords vec intact");
+    assert_eq(ClassificationResult_level(r), CLASS_INTERNAL, "level from constructor");
+    assert_eq(ClassificationResult_auto_level(r), CLASS_INTERNAL, "auto_level from constructor");
+    assert_eq(ClassificationResult_confidence(r), 0, "confidence reads 0 when unset");
+    assert_eq(ClassificationResult_has_confidence(r), 0, "confidence starts unset");
+    vec_push(ClassificationResult_rules(r), str_from("ssn-pattern"));
+    vec_push(ClassificationResult_pii(r), PII_EMAIL);
+    vec_push(ClassificationResult_keywords(r), str_from("secret"));
+    assert_eq(vec_len(ClassificationResult_rules(r)), 1, "rules vec intact");
+    assert_eq(vec_len(ClassificationResult_pii(r)), 1, "pii vec intact");
+    assert_eq(vec_len(ClassificationResult_keywords(r)), 1, "keywords vec intact");
 
     # --- level: policy override, separate from auto_level ---
-    var lv_t, lv = cresult_set_level(r, CLASS_RESTRICTED);
+    var lv_t, lv = ClassificationResult_set_level(r, CLASS_RESTRICTED);
     assert(is_ok(lv_t) == 1, "set_level ok");
-    assert_eq(cresult_level(r), CLASS_RESTRICTED, "level overridden");
-    assert_eq(cresult_auto_level(r), CLASS_INTERNAL, "auto_level untouched by set_level");
+    assert_eq(ClassificationResult_level(r), CLASS_RESTRICTED, "level overridden");
+    assert_eq(ClassificationResult_auto_level(r), CLASS_INTERNAL, "auto_level untouched by set_level");
 
-    var al_t, al = cresult_set_auto_level(r, CLASS_CONFIDENTIAL);
+    var al_t, al = ClassificationResult_set_auto_level(r, CLASS_CONFIDENTIAL);
     assert(is_ok(al_t) == 1, "set_auto_level ok");
-    assert_eq(cresult_auto_level(r), CLASS_CONFIDENTIAL, "auto_level set");
-    assert_eq(cresult_level(r), CLASS_RESTRICTED, "level untouched by set_auto_level");
+    assert_eq(ClassificationResult_auto_level(r), CLASS_CONFIDENTIAL, "auto_level set");
+    assert_eq(ClassificationResult_level(r), CLASS_RESTRICTED, "level untouched by set_auto_level");
 
     # Every ClassificationLevel is accepted by both setters and reads back.
     var accepted = 0;
     var lvl = CLASS_PUBLIC;
     while (lvl <= CLASS_RESTRICTED) {
-        var a_t, a = cresult_set_level(r, lvl);
-        var b_t, b = cresult_set_auto_level(r, lvl);
-        if (is_ok(a_t) == 1 && is_ok(b_t) == 1 && cresult_level(r) == lvl && cresult_auto_level(r) == lvl) {
+        var a_t, a = ClassificationResult_set_level(r, lvl);
+        var b_t, b = ClassificationResult_set_auto_level(r, lvl);
+        var both = is_ok(a_t) == 1 && is_ok(b_t) == 1;
+        if (both && ClassificationResult_level(r) == lvl && ClassificationResult_auto_level(r) == lvl) {
             accepted = accepted + 1;
         }
         lvl = lvl + 1;
@@ -73,50 +74,50 @@ fn main() {
     assert_eq(accepted, 4, "all 4 levels accepted by both setters");
 
     # Values outside the enum are an invalid-argument Err; nothing changes.
-    var set_t, set = cresult_set_level(r, CLASS_CONFIDENTIAL);
-    var set2_t, set2 = cresult_set_auto_level(r, CLASS_INTERNAL);
-    var neg_t, neg = cresult_set_level(r, 0 - 1);
+    var set_t, set = ClassificationResult_set_level(r, CLASS_CONFIDENTIAL);
+    var set2_t, set2 = ClassificationResult_set_auto_level(r, CLASS_INTERNAL);
+    var neg_t, neg = ClassificationResult_set_level(r, 0 - 1);
     assert(is_err_result(neg_t) == 1, "set_level rejects -1");
     assert_eq(err_kind_or(neg_t, neg), STIK_ERR_INVALID_ARGUMENT, "set_level Err is invalid argument");
-    var high_t, high = cresult_set_level(r, CLASS_RESTRICTED + 1);
+    var high_t, high = ClassificationResult_set_level(r, CLASS_RESTRICTED + 1);
     assert(is_err_result(high_t) == 1, "set_level rejects one past the last level");
-    var huge_t, huge = cresult_set_level(r, 9223372036854775807);
+    var huge_t, huge = ClassificationResult_set_level(r, 9223372036854775807);
     assert(is_err_result(huge_t) == 1, "set_level rejects i64 max");
-    assert_eq(cresult_level(r), CLASS_CONFIDENTIAL, "rejected set_level leaves level unchanged");
-    var aneg_t, aneg = cresult_set_auto_level(r, 0 - 1);
+    assert_eq(ClassificationResult_level(r), CLASS_CONFIDENTIAL, "rejected set_level leaves level unchanged");
+    var aneg_t, aneg = ClassificationResult_set_auto_level(r, 0 - 1);
     assert(is_err_result(aneg_t) == 1, "set_auto_level rejects -1");
     assert_eq(err_kind_or(aneg_t, aneg), STIK_ERR_INVALID_ARGUMENT, "set_auto_level Err is invalid argument");
-    var ahigh_t, ahigh = cresult_set_auto_level(r, CLASS_RESTRICTED + 1);
+    var ahigh_t, ahigh = ClassificationResult_set_auto_level(r, CLASS_RESTRICTED + 1);
     assert(is_err_result(ahigh_t) == 1, "set_auto_level rejects one past the last level");
-    assert_eq(cresult_auto_level(r), CLASS_INTERNAL, "rejected set_auto_level leaves auto_level unchanged");
+    assert_eq(ClassificationResult_auto_level(r), CLASS_INTERNAL, "rejected set_auto_level keeps auto_level");
 
     # --- confidence: parts per thousand, with a set flag ---
     var c = classification_result_new(CLASS_PUBLIC);
-    var z_t, z = cresult_set_confidence(c, 0);
+    var z_t, z = ClassificationResult_set_confidence(c, 0);
     assert(is_ok(z_t) == 1, "confidence 0 accepted");
-    assert_eq(cresult_confidence(c), 0, "confidence 0 stored");
-    assert_eq(cresult_has_confidence(c), 1, "a set 0 is distinguishable from unset");
-    var m_t, m = cresult_set_confidence(c, 875);
+    assert_eq(ClassificationResult_confidence(c), 0, "confidence 0 stored");
+    assert_eq(ClassificationResult_has_confidence(c), 1, "a set 0 is distinguishable from unset");
+    var m_t, m = ClassificationResult_set_confidence(c, 875);
     assert(is_ok(m_t) == 1, "confidence 875 accepted");
-    assert_eq(cresult_confidence(c), 875, "confidence 875 stored");
-    var top_t, top = cresult_set_confidence(c, 1000);
+    assert_eq(ClassificationResult_confidence(c), 875, "confidence 875 stored");
+    var top_t, top = ClassificationResult_set_confidence(c, 1000);
     assert(is_ok(top_t) == 1, "confidence 1000 accepted");
-    assert_eq(cresult_confidence(c), 1000, "confidence 1000 stored");
+    assert_eq(ClassificationResult_confidence(c), 1000, "confidence 1000 stored");
 
-    var over_t, over = cresult_set_confidence(c, 1001);
+    var over_t, over = ClassificationResult_set_confidence(c, 1001);
     assert(is_err_result(over_t) == 1, "confidence 1001 rejected");
     assert_eq(err_kind_or(over_t, over), STIK_ERR_INVALID_ARGUMENT, "confidence Err is invalid argument");
-    var under_t, under = cresult_set_confidence(c, 0 - 1);
+    var under_t, under = ClassificationResult_set_confidence(c, 0 - 1);
     assert(is_err_result(under_t) == 1, "confidence -1 rejected");
-    var minv_t, minv = cresult_set_confidence(c, 0 - 9223372036854775807 - 1);
+    var minv_t, minv = ClassificationResult_set_confidence(c, 0 - 9223372036854775807 - 1);
     assert(is_err_result(minv_t) == 1, "confidence i64 min rejected");
-    assert_eq(cresult_confidence(c), 1000, "rejected confidence leaves the score unchanged");
+    assert_eq(ClassificationResult_confidence(c), 1000, "rejected confidence leaves the score unchanged");
 
     # A rejected first set leaves the score unset, not set-to-0.
     var u = classification_result_new(CLASS_PUBLIC);
-    var bad_t, bad = cresult_set_confidence(u, 2000);
+    var bad_t, bad = ClassificationResult_set_confidence(u, 2000);
     assert(is_err_result(bad_t) == 1, "confidence 2000 rejected");
-    assert_eq(cresult_has_confidence(u), 0, "rejected set leaves confidence unset");
+    assert_eq(ClassificationResult_has_confidence(u), 0, "rejected set leaves confidence unset");
 
     # Invariant over the boundary band: accepted exactly when 0 <= v <= 1000,
     # and an accepted value always reads back.
@@ -124,12 +125,12 @@ fn main() {
     var mismatches = 0;
     while (v <= 1050) {
         var s = classification_result_new(CLASS_PUBLIC);
-        var s_t, sv = cresult_set_confidence(s, v);
+        var s_t, sv = ClassificationResult_set_confidence(s, v);
         var want = 0;
         if (v >= 0 && v <= 1000) { want = 1; }
         if (is_ok(s_t) != want) { mismatches = mismatches + 1; }
-        if (want == 1 && cresult_confidence(s) != v) { mismatches = mismatches + 1; }
-        if (cresult_has_confidence(s) != want) { mismatches = mismatches + 1; }
+        if (want == 1 && ClassificationResult_confidence(s) != v) { mismatches = mismatches + 1; }
+        if (ClassificationResult_has_confidence(s) != want) { mismatches = mismatches + 1; }
         v = v + 1;
     }
     assert_eq(mismatches, 0, "accepts exactly 0..1000 over -50..1050");

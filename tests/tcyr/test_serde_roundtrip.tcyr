@@ -23,20 +23,20 @@ fn _ser(ptr, fn_ptr) {
 # Test: ResourceLimits survives to_json -> from_json_str with all six fields set.
 fn test_resource_limits_roundtrip() {
     var rl = resource_limits_new();
-    rlim_set_max_memory(rl, 536870912);
-    rlim_set_max_cpu(rl, 7200);
-    rlim_set_max_fds(rl, 512);
-    rlim_set_max_procs(rl, 128);
-    rlim_set_max_disk(rl, 1073741824);
-    rlim_set_net_bw(rl, 100000000);
+    ResourceLimits_set_max_memory(rl, 536870912);
+    ResourceLimits_set_max_cpu_time(rl, 7200);
+    ResourceLimits_set_max_fds(rl, 512);
+    ResourceLimits_set_max_procs(rl, 128);
+    ResourceLimits_set_max_disk(rl, 1073741824);
+    ResourceLimits_set_net_bw(rl, 100000000);
     var j = _ser(rl, &ResourceLimits_to_json);
     var rl2 = ResourceLimits_from_json_str(str_data(j));
-    assert_eq(rlim_max_memory(rl2), 536870912, "rl mem rt");
-    assert_eq(rlim_max_cpu_time(rl2), 7200, "rl cpu rt");
-    assert_eq(rlim_max_fds(rl2), 512, "rl fds rt");
-    assert_eq(rlim_max_procs(rl2), 128, "rl procs rt");
-    assert_eq(rlim_max_disk(rl2), 1073741824, "rl disk rt");
-    assert_eq(rlim_net_bandwidth(rl2), 100000000, "rl bw rt");
+    assert_eq(ResourceLimits_max_memory(rl2), 536870912, "rl mem rt");
+    assert_eq(ResourceLimits_max_cpu_time(rl2), 7200, "rl cpu rt");
+    assert_eq(ResourceLimits_max_fds(rl2), 512, "rl fds rt");
+    assert_eq(ResourceLimits_max_procs(rl2), 128, "rl procs rt");
+    assert_eq(ResourceLimits_max_disk(rl2), 1073741824, "rl disk rt");
+    assert_eq(ResourceLimits_net_bw(rl2), 100000000, "rl bw rt");
     return 0;
 }
 
@@ -49,10 +49,10 @@ fn test_resource_usage_roundtrip() {
     store64(ru + 24, 8);
     var j = _ser(ru, &ResourceUsage_to_json);
     var ru2 = ResourceUsage_from_json_str(str_data(j));
-    assert_eq(rusage_memory(ru2), 1024, "ru mem rt");
-    assert_eq(rusage_cpu(ru2), 500, "ru cpu rt");
-    assert_eq(rusage_fds(ru2), 42, "ru fds rt");
-    assert_eq(rusage_procs(ru2), 8, "ru procs rt");
+    assert_eq(ResourceUsage_mem_used(ru2), 1024, "ru mem rt");
+    assert_eq(ResourceUsage_cpu_used(ru2), 500, "ru cpu rt");
+    assert_eq(ResourceUsage_fds_used(ru2), 42, "ru fds rt");
+    assert_eq(ResourceUsage_procs_used(ru2), 8, "ru procs rt");
     return 0;
 }
 
@@ -64,45 +64,45 @@ fn test_agent_stats_roundtrip() {
     store64(s + 16, 86400);
     var j = _ser(s, &AgentStats_to_json);
     var s2 = AgentStats_from_json_str(str_data(j));
-    assert_eq(astats_requests(s2), 999, "as req rt");
-    assert_eq(astats_tokens(s2), 50000, "as tok rt");
-    assert_eq(astats_uptime(s2), 86400, "as up rt");
+    assert_eq(AgentStats_total_requests(s2), 999, "as req rt");
+    assert_eq(AgentStats_total_tokens(s2), 50000, "as tok rt");
+    assert_eq(AgentStats_uptime_seconds(s2), 86400, "as up rt");
     return 0;
 }
 
 # Test: TokenUsage survives to_json -> from_json_str on all five counters.
 fn test_token_usage_roundtrip() {
     var tu = token_usage_new();
-    tusage_set_prompt(tu, 100);
-    tusage_set_completion(tu, 50);
-    tusage_set_total(tu, 150);
-    tusage_set_cache_create(tu, 20);
-    tusage_set_cache_read(tu, 10);
+    TokenUsage_set_prompt_tok(tu, 100);
+    TokenUsage_set_completion_tok(tu, 50);
+    TokenUsage_set_total_tok(tu, 150);
+    TokenUsage_set_cache_create_tok(tu, 20);
+    TokenUsage_set_cache_read_tok(tu, 10);
     var j = _ser(tu, &TokenUsage_to_json);
     var tu2 = TokenUsage_from_json_str(str_data(j));
-    assert_eq(tusage_prompt(tu2), 100, "tu prompt rt");
-    assert_eq(tusage_completion(tu2), 50, "tu compl rt");
-    assert_eq(tusage_total(tu2), 150, "tu total rt");
-    assert_eq(tusage_cache_create(tu2), 20, "tu cc rt");
-    assert_eq(tusage_cache_read(tu2), 10, "tu cr rt");
+    assert_eq(TokenUsage_prompt_tok(tu2), 100, "tu prompt rt");
+    assert_eq(TokenUsage_completion_tok(tu2), 50, "tu compl rt");
+    assert_eq(TokenUsage_total_tok(tu2), 150, "tu total rt");
+    assert_eq(TokenUsage_cache_create_tok(tu2), 20, "tu cc rt");
+    assert_eq(TokenUsage_cache_read_tok(tu2), 10, "tu cr rt");
     return 0;
 }
 
 # Test: AcceleratorFlags survives to_json -> from_json_str, set and unset flags alike.
 fn test_accelerator_flags_roundtrip() {
     var f = accelerator_flags_new();
-    aflags_set_cuda(f, 1);
-    aflags_set_vulkan(f, 1);
-    aflags_set_metal(f, 1);
+    AcceleratorFlags_set_cuda_available(f, 1);
+    AcceleratorFlags_set_vulkan_available(f, 1);
+    AcceleratorFlags_set_metal_available(f, 1);
     var j = _ser(f, &AcceleratorFlags_to_json);
     var f2 = AcceleratorFlags_from_json_str(str_data(j));
-    assert_eq(aflags_cuda(f2), 1, "af cuda rt");
-    assert_eq(aflags_rocm(f2), 0, "af rocm rt");
-    assert_eq(aflags_metal(f2), 1, "af metal rt");
-    assert_eq(aflags_vulkan(f2), 1, "af vulkan rt");
-    assert_eq(aflags_oneapi(f2), 0, "af oneapi rt");
-    assert_eq(aflags_tpu(f2), 0, "af tpu rt");
-    assert_eq(aflags_directml(f2), 0, "af dml rt");
+    assert_eq(AcceleratorFlags_cuda_available(f2), 1, "af cuda rt");
+    assert_eq(AcceleratorFlags_rocm_available(f2), 0, "af rocm rt");
+    assert_eq(AcceleratorFlags_metal_available(f2), 1, "af metal rt");
+    assert_eq(AcceleratorFlags_vulkan_available(f2), 1, "af vulkan rt");
+    assert_eq(AcceleratorFlags_oneapi_available(f2), 0, "af oneapi rt");
+    assert_eq(AcceleratorFlags_tpu_available(f2), 0, "af tpu rt");
+    assert_eq(AcceleratorFlags_directml_available(f2), 0, "af dml rt");
     return 0;
 }
 
@@ -114,9 +114,9 @@ fn test_edge_overrides_roundtrip() {
     store64(eo + 16, 5);
     var j = _ser(eo, &EdgeResourceOverrides_to_json);
     var eo2 = EdgeResourceOverrides_from_json_str(str_data(j));
-    assert_eq(eovr_max_memory(eo2), 134217728, "eo mem rt");
-    assert_eq(eovr_max_cpu(eo2), 1800, "eo cpu rt");
-    assert_eq(eovr_max_agents(eo2), 5, "eo agents rt");
+    assert_eq(EdgeResourceOverrides_max_memory(eo2), 134217728, "eo mem rt");
+    assert_eq(EdgeResourceOverrides_max_cpu_time(eo2), 1800, "eo cpu rt");
+    assert_eq(EdgeResourceOverrides_max_agents(eo2), 5, "eo agents rt");
     return 0;
 }
 
@@ -125,27 +125,27 @@ fn test_telemetry_config_roundtrip() {
     var tc = telemetry_config_new();
     var j = _ser(tc, &TelemetryConfig_to_json);
     var tc2 = TelemetryConfig_from_json(j);
-    assert_eq(telcfg_enabled(tc2), 1, "tc enabled rt");
-    assert_eq(telcfg_sample_rate(tc2), 1000, "tc rate rt");
-    assert_eq(telcfg_endpoint(tc2), 0, "tc null ep rt");
+    assert_eq(TelemetryConfig_enabled(tc2), 1, "tc enabled rt");
+    assert_eq(TelemetryConfig_sample_rate(tc2), 1000, "tc rate rt");
+    assert_eq(TelemetryConfig_endpoint(tc2), 0, "tc null ep rt");
     return 0;
 }
 
 # Test: InjectionScores survives to_json -> from_json_str on all five scores.
 fn test_injection_scores_roundtrip() {
     var sc = injection_scores_new();
-    iscore_set_sql(sc, 85);
-    iscore_set_xss(sc, 10);
-    iscore_set_command(sc, 5);
-    iscore_set_path_traversal(sc, 0);
-    iscore_set_prompt_injection(sc, 95);
+    InjectionScores_set_sql(sc, 85);
+    InjectionScores_set_xss(sc, 10);
+    InjectionScores_set_command(sc, 5);
+    InjectionScores_set_path_traversal(sc, 0);
+    InjectionScores_set_prompt_injection(sc, 95);
     var j = _ser(sc, &InjectionScores_to_json);
     var sc2 = InjectionScores_from_json_str(str_data(j));
-    assert_eq(iscore_sql(sc2), 85, "is sql rt");
-    assert_eq(iscore_xss(sc2), 10, "is xss rt");
-    assert_eq(iscore_command(sc2), 5, "is cmd rt");
-    assert_eq(iscore_path_traversal(sc2), 0, "is path rt");
-    assert_eq(iscore_prompt_injection(sc2), 95, "is pi rt");
+    assert_eq(InjectionScores_sql(sc2), 85, "is sql rt");
+    assert_eq(InjectionScores_xss(sc2), 10, "is xss rt");
+    assert_eq(InjectionScores_command(sc2), 5, "is cmd rt");
+    assert_eq(InjectionScores_path_traversal(sc2), 0, "is path rt");
+    assert_eq(InjectionScores_prompt_injection(sc2), 95, "is pi rt");
     return 0;
 }
 
@@ -180,10 +180,10 @@ fn test_agent_info_roundtrip() {
             var id = agent_id_new();
             var a = agent_info_new(id, str_from("agent-x"), t, s);
             var b = AgentInfo_from_json(_ser(a, &AgentInfo_to_json));
-            assert_eq(agent_id_eq(ainfo_id(b), id), 1, "ai rt id");
-            assert_eq(str_eq_cstr(ainfo_name(b), "agent-x"), 1, "ai rt name");
-            assert_eq(ainfo_type(b), t, "ai rt type");
-            assert_eq(ainfo_status(b), s, "ai rt status");
+            assert_eq(agent_id_eq(AgentInfo_id(b), id), 1, "ai rt id");
+            assert_eq(str_eq_cstr(AgentInfo_name(b), "agent-x"), 1, "ai rt name");
+            assert_eq(AgentInfo_type(b), t, "ai rt type");
+            assert_eq(AgentInfo_status(b), s, "ai rt status");
             s = s + 1;
         }
         t = t + 1;
@@ -205,7 +205,7 @@ fn test_agent_info_wire_format() {
     var nwant = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":null,",
       "\"agent_type\":\"User\",\"status\":\"Running\"}");
     assert_eq(str_eq(nj, nwant), 1, "ai golden null name");
-    assert_eq(ainfo_name(AgentInfo_from_json(nj)), 0, "ai null name rt");
+    assert_eq(AgentInfo_name(AgentInfo_from_json(nj)), 0, "ai null name rt");
     return 0;
 }
 
@@ -216,13 +216,13 @@ fn test_agent_info_null_id() {
     var j = _ser(a, &AgentInfo_to_json);
     var want = _j2("{\"id\":null,\"name\":\"x\",", "\"agent_type\":\"System\",\"status\":\"Pending\"}");
     assert_eq(str_eq(j, want), 1, "ai null id written as null");
-    assert_eq(ainfo_id(AgentInfo_from_json(j)), 0, "ai null id rt");
+    assert_eq(AgentInfo_id(AgentInfo_from_json(j)), 0, "ai null id rt");
     # A missing or unparseable id leaves id 0, and re-serializing that
     # must not crash.
     var bsrc = _j2("{\"id\":\"not-a-uuid\",\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
     var bad = AgentInfo_from_json(bsrc);
-    assert_eq(ainfo_id(bad), 0, "ai bad id -> 0");
-    assert_eq(ainfo_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
+    assert_eq(AgentInfo_id(bad), 0, "ai bad id -> 0");
+    assert_eq(AgentInfo_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
     var bwant = _j2("{\"id\":null,\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
     assert_eq(str_eq(_ser(bad, &AgentInfo_to_json), bwant), 1, "ai bad id reserializes");
     # Since 1.12.3 (F-039) a missing agent_type reads as User, not System, the
@@ -240,17 +240,17 @@ fn test_agent_info_legacy_ids() {
     var lsrc = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"legacy\",",
       "\"agent_type_id\":2,\"status_id\":8}");
     var l = AgentInfo_from_json(lsrc);
-    assert_eq(ainfo_type(l), AGENT_TYPE_SERVICE, "ai legacy type id");
-    assert_eq(ainfo_status(l), AGENT_FAILED, "ai legacy status id");
+    assert_eq(AgentInfo_type(l), AGENT_TYPE_SERVICE, "ai legacy type id");
+    assert_eq(AgentInfo_status(l), AGENT_FAILED, "ai legacy status id");
     # ... a recognised name wins over them ...
     var both = AgentInfo_from_json(_j2("{\"agent_type\":\"User\",\"agent_type_id\":2,",
         "\"status\":\"Paused\",\"status_id\":8}"));
-    assert_eq(ainfo_type(both), AGENT_TYPE_USER, "ai name beats type id");
-    assert_eq(ainfo_status(both), AGENT_PAUSED, "ai name beats status id");
+    assert_eq(AgentInfo_type(both), AGENT_TYPE_USER, "ai name beats type id");
+    assert_eq(AgentInfo_status(both), AGENT_PAUSED, "ai name beats status id");
     # ... and an unrecognised name falls back to them (0 when absent).
     var unk = AgentInfo_from_json(str_from("{\"agent_type\":\"Bogus\",\"agent_type_id\":2,\"status\":\"Nope\"}"));
-    assert_eq(ainfo_type(unk), AGENT_TYPE_SERVICE, "ai unknown type name -> id");
-    assert_eq(ainfo_status(unk), AGENT_PENDING, "ai unknown status name -> 0");
+    assert_eq(AgentInfo_type(unk), AGENT_TYPE_SERVICE, "ai unknown type name -> id");
+    assert_eq(AgentInfo_status(unk), AGENT_PENDING, "ai unknown status name -> 0");
     return 0;
 }
 

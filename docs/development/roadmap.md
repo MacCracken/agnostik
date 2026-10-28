@@ -29,9 +29,31 @@ longer here.
 
 ## v2.0.0 — Breaking changes (next major)
 
-Breaking changes are batched here so every consumer absorbs migration once.
+Breaking changes are batched here so every consumer absorbs migration once. Work accumulates under the CHANGELOG's
+`[Unreleased]` until the major is cut.
+
+**Decisions (2026-10-28):**
+- **The accessor rename goes ahead.** Plain one-line accessors become `#derive(accessors)` names
+  (`<Struct>_<field>` / `<Struct>_set_<field>`). Accessors that clamp, validate or lazily build keep hand-written
+  bodies under the same new names. A consumer census found about 22 call sites to migrate (kybernet 19, mela 2,
+  ark 1), and the cut ships a mechanical old-to-new map.
+- **`network_policy_*` stays,** and SandboxConfig gains accessors for it. The other dead helpers are removed
+  after a fresh census.
+
+**Order.** Each step lands with its tests and gates:
+1. `_stik_json_int` returns a Result (private; no consumer impact).
+2. Check that `#derive(accessors)`'s code matches agnostik's layouts (narrow fields, gaps, typed fields) before
+   relying on it.
+3. The accessor rename, one module at a time.
+4. The dead-helper removal.
+5. The items deferred from v1.12.3, each written in the new names.
+6. The closeout: the migration map, a Breaking section, and the consumer sweep, where every consumer's failures
+   must be exactly the mapped renames.
 
 ### `_stik_json_int` Result return
+
+✅ **Done under `[Unreleased]`** (step 1): Ok(n), or Err(1) missing / Err(2) not an integer / Err(3) outside
+i64. The original note:
 
 🔧 `_stik_json_int(src: Str, key: Str)` (`_json_int` before v1.7.0) returns
 `i64` and conflates "missing key" with a literal `0`. F-003 hardened the
@@ -46,9 +68,13 @@ agnostik, so this change no longer needs a major and could move to any minor.
 
 ### `#derive(accessors)` migration with prefix rename
 
+✅ **Step 3a done under `[Unreleased]`:** 706 accessors renamed to `<Struct>_<field>` (ADR-009), with
+`docs/migration/2.0.0-renames.tsv` and `scripts/migrate-2.0.0.sh`. 🔧 **Step 3b next:** derive the uniquely named,
+all-plain structs. The original note:
+
 🔧 Cyrius's `#derive(accessors)` generates `<Struct>_<field>` getters and
-setters. agnostik's convention is `<prefix>_<field>` (`amsg_*`, `aentry_*`,
-`secctx_*`). About 470 hand-written one-line accessors could become derive
+setters. agnostik's convention is `<prefix>_<field>` (`AgentMessage_*`, `AuditEntry_*`,
+`SecurityContext_*`). About 470 hand-written one-line accessors could become derive
 markers, either by renaming to the derive shape (a consumer-visible break) or
 by upstream derive-with-prefix support. v2.0.0 absorbs the rename.
 
@@ -76,7 +102,7 @@ wait for the major. Each is described in [`../audit/2026-10-28-audit.md`](../aud
 §"Deferred to v2.0.0".
 
 - 🔧 **Unset versus zero.**
-  - `secctx_run_as_user` / `_group` use 0 for "not set", which is also root's id.
+  - `SecurityContext_run_as_user` / `_group` use 0 for "not set", which is also root's id.
   - The cgroup limits share the ambiguity: 0 is both "inherit" and a literal `memory.max=0`.
   - Add set-flags, or make the fields optional.
 - 🔧 **The fields the Rust port dropped.**

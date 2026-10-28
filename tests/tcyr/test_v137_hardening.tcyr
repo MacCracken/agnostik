@@ -191,7 +191,7 @@ fn test_canonical_traceparent_still_parses() {
     var r_t, r = tctx_from_traceparent(s);
     assert_eq(is_ok(r_t), 1, "canonical traceparent accepted");
     var ctx = r;
-    assert_eq(tctx_trace_flags(ctx), 1, "canonical flags = 01");
+    assert_eq(TraceContext_trace_flags(ctx), 1, "canonical flags = 01");
     assert_eq(tctx_is_sampled(ctx), 1, "canonical is sampled");
     return 0;
 }

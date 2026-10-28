@@ -167,9 +167,9 @@ fn test_utf8_anyvalue_and_keys() {
 fn test_span_status_message() {
     var s1 = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
     store64(s1 + 48, 77);
-    span_set_status(s1, SPAN_ERROR);
-    span_set_status_message(s1, str_from("boom"));
-    assert(str_eq_cstr(span_status_message(s1), "boom") == 1, "status message getter");
+    Span_set_status(s1, SPAN_ERROR);
+    Span_set_status_message(s1, str_from("boom"));
+    assert(str_eq_cstr(Span_status_message(s1), "boom") == 1, "status message getter");
     var sb = str_builder_new();
     Span_to_otlp_proto(s1, sb);
     var out = str_builder_build(sb);
@@ -179,8 +179,8 @@ fn test_span_status_message() {
     assert(str_eq(to_hex(out), str_builder_build(xp1)) == 1, "span_status_msg matches protoc");
     var s2 = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
     store64(s2 + 48, 77);
-    span_set_status(s2, SPAN_OK);
-    span_set_status_message(s2, str_from("ignored"));
+    Span_set_status(s2, SPAN_OK);
+    Span_set_status_message(s2, str_from("ignored"));
     var sb2 = str_builder_new();
     Span_to_otlp_proto(s2, sb2);
     var out2 = str_builder_build(sb2);
@@ -203,7 +203,7 @@ fn test_span_status_message() {
     str_builder_add_cstr(xp3, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a0b61efbfbdefbfbdefbfbd");
     str_builder_add_cstr(xp3, "62394d00000000000000414d00000000000000");
     assert(str_eq(to_hex(out3), str_builder_build(xp3)) == 1, "span_name_fffd matches protoc");
-    assert_eq(span_status_message(span_new(str_from("x"), 0, 0)), 0, "message starts unset");
+    assert_eq(Span_status_message(span_new(str_from("x"), 0, 0)), 0, "message starts unset");
     return 0;
 }
 
@@ -211,12 +211,12 @@ fn test_span_status_message() {
 fn test_number_point_exemplars() {
     var p1 = metric_data_point_new(str_from("req"), metric_int(42));
     store64(p1 + 24, 99);
-    mdp_set_start_time(p1, 10);
-    assert_eq(mdp_start_time(p1), 10, "start time getter");
+    MetricDataPoint_set_start_time(p1, 10);
+    assert_eq(MetricDataPoint_start_time(p1), 10, "start time getter");
     var e1 = exemplar_new(ids(0, 16), ids(0xA0, 8), 7);
     store64(e1 + 24, 50);
-    map_set(exem_attributes(e1), "user", any_string(str_from("u1")));
-    vec_push(mdp_exemplars(p1), e1);
+    map_set(Exemplar_attributes(e1), "user", any_string(str_from("u1")));
+    vec_push(MetricDataPoint_exemplars(p1), e1);
     var sb = str_builder_new();
     MetricDataPoint_to_otlp_proto(p1, sb);
     var out = str_builder_build(sb);
@@ -229,7 +229,7 @@ fn test_number_point_exemplars() {
     store64(p2 + 24, 100);
     var e2 = exemplar_new(0, 0, 0x3FF8000000000000);
     store64(e2 + 24, 0);
-    vec_push(mdp_exemplars(p2), e2);
+    vec_push(MetricDataPoint_exemplars(p2), e2);
     var sb2 = str_builder_new();
     MetricDataPoint_to_otlp_proto(p2, sb2);
     var out2 = str_builder_build(sb2);
@@ -242,23 +242,23 @@ fn test_number_point_exemplars() {
 # min 0.5, max 9.0, an exemplar and an attribute; DELTA temporality.
 fn hist_point() {
     var h = histogram_value_new();
-    hval_set_count(h, 6);
-    hval_set_sum(h, 0x4029000000000000);
-    vec_push(hval_bounds(h), 0x3FF0000000000000);
-    vec_push(hval_bounds(h), 0x4014000000000000);
-    vec_push(hval_bucket_counts(h), 1);
-    vec_push(hval_bucket_counts(h), 3);
-    vec_push(hval_bucket_counts(h), 2);
-    hval_set_min(h, 0x3FE0000000000000);
-    hval_set_max(h, 0x4022000000000000);
+    HistogramValue_set_count(h, 6);
+    HistogramValue_set_sum(h, 0x4029000000000000);
+    vec_push(HistogramValue_bounds(h), 0x3FF0000000000000);
+    vec_push(HistogramValue_bounds(h), 0x4014000000000000);
+    vec_push(HistogramValue_bucket_counts(h), 1);
+    vec_push(HistogramValue_bucket_counts(h), 3);
+    vec_push(HistogramValue_bucket_counts(h), 2);
+    HistogramValue_set_min(h, 0x3FE0000000000000);
+    HistogramValue_set_max(h, 0x4022000000000000);
     var p = metric_data_point_new(str_from("lat"), metric_histogram(h));
     store64(p + 24, 300);
-    mdp_set_start_time(p, 200);
-    mdp_set_temporality(p, TEMPORALITY_DELTA);
-    map_set(mdp_attributes(p), "route", any_string(str_from("/x")));
+    MetricDataPoint_set_start_time(p, 200);
+    MetricDataPoint_set_temporality(p, TEMPORALITY_DELTA);
+    map_set(MetricDataPoint_attributes(p), "route", any_string(str_from("/x")));
     var e = exemplar_new(ids(0, 16), ids(0xA0, 8), 0x4008000000000000);
     store64(e + 24, 250);
-    vec_push(mdp_exemplars(p), e);
+    vec_push(MetricDataPoint_exemplars(p), e);
     return p;
 }
 
@@ -285,13 +285,13 @@ fn one(p) {
 # Histogram metrics, and the HistogramValue accessors.
 fn test_histogram_metric() {
     var p = hist_point();
-    var h = boxed_payload(mdp_value(p));
-    assert_eq(hval_count(h), 6, "count");
-    assert_eq(hval_has_sum(h), 1, "sum present");
-    assert_eq(hval_has_min(h), 1, "min present");
-    assert_eq(hval_has_max(h), 1, "max present");
-    assert_eq(hval_max(h), 0x4022000000000000, "max bits");
-    assert_eq(vec_len(hval_bounds(h)), 2, "two bounds");
+    var h = boxed_payload(MetricDataPoint_value(p));
+    assert_eq(HistogramValue_count(h), 6, "count");
+    assert_eq(HistogramValue_has_sum(h), 1, "sum present");
+    assert_eq(HistogramValue_has_min(h), 1, "min present");
+    assert_eq(HistogramValue_has_max(h), 1, "max present");
+    assert_eq(HistogramValue_max(h), 0x4022000000000000, "max bits");
+    assert_eq(vec_len(HistogramValue_bounds(h)), 2, "two bounds");
     var out = enc_metric(hist_desc(), one(p));
     assert(out != 0, "histogram encodes");
     var xp5 = str_builder_new();
@@ -302,8 +302,8 @@ fn test_histogram_metric() {
     str_builder_add_cstr(xp5, "0d0e0f4a0d0a05726f75746512040a022f7859000000000000e03f6100000000000022401001");
     assert(str_eq(to_hex(out), str_builder_build(xp5)) == 1, "metric_histogram matches protoc");
     var h2 = histogram_value_new();
-    hval_set_count(h2, 3);
-    assert_eq(hval_has_sum(h2), 0, "sum absent until set");
+    HistogramValue_set_count(h2, 3);
+    assert_eq(HistogramValue_has_sum(h2), 0, "sum absent until set");
     var q2 = metric_data_point_new(str_from("x"), metric_histogram(h2));
     store64(q2 + 24, 0);
     var out2 = enc_metric(instrument_descriptor_new(str_from("h"), 0, 0, METRIC_HISTOGRAM), one(q2));
@@ -314,7 +314,7 @@ fn test_histogram_metric() {
 # A histogram point with one bucket count changed to `v`.
 fn hist_with_bucket(i, v) {
     var p = hist_point();
-    vec_set(hval_bucket_counts(boxed_payload(mdp_value(p))), i, v);
+    vec_set(HistogramValue_bucket_counts(boxed_payload(MetricDataPoint_value(p))), i, v);
     return p;
 }
 
@@ -324,21 +324,21 @@ fn test_histogram_errors() {
     assert_eq(enc_metric(d, one(hist_with_bucket(0, 2))), 0, "bucket sum 7 != count 6");
     assert_eq(enc_metric(d, one(hist_with_bucket(1, 0 - 1))), 0, "negative bucket count");
     var p = hist_point();
-    vec_push(hval_bounds(boxed_payload(mdp_value(p))), 0x4024000000000000);
+    vec_push(HistogramValue_bounds(boxed_payload(MetricDataPoint_value(p))), 0x4024000000000000);
     assert_eq(enc_metric(d, one(p)), 0, "three bounds, three buckets");
     var h = histogram_value_new();
-    vec_push(hval_bounds(h), 0x3FF0000000000000);
-    hval_set_count(h, 0);
+    vec_push(HistogramValue_bounds(h), 0x3FF0000000000000);
+    HistogramValue_set_count(h, 0);
     var bp = metric_data_point_new(str_from("x"), metric_histogram(h));
     assert_eq(enc_metric(d, one(bp)), 0, "bounds without buckets");
     var neg = histogram_value_new();
-    hval_set_count(neg, 0 - 1);
+    HistogramValue_set_count(neg, 0 - 1);
     assert_eq(enc_metric(d, one(metric_data_point_new(str_from("x"), metric_histogram(neg)))), 0, "negative count");
     assert_eq(enc_metric(d, one(metric_data_point_new(str_from("x"), metric_int(3)))), 0, "int point in a histogram");
     var mixed = vec_new();
     vec_push(mixed, hist_point());
     var p2 = hist_point();
-    mdp_set_temporality(p2, TEMPORALITY_CUMULATIVE);
+    MetricDataPoint_set_temporality(p2, TEMPORALITY_CUMULATIVE);
     vec_push(mixed, p2);
     assert_eq(enc_metric(d, mixed), 0, "histogram points disagreeing on temporality");
     var sb = str_builder_new();
@@ -357,22 +357,22 @@ fn test_histogram_errors() {
 # Fixture resource r1: struct fields plus a map entry the struct overrides.
 fn res1() {
     var r = resource_new(str_from("svc"), str_from("1.2"), str_from("i-1"));
-    map_set(res_attributes(r), "host.name", any_string(str_from("h")));
-    map_set(res_attributes(r), "service.name", any_string(str_from("override-me")));
+    map_set(Resource_attributes(r), "host.name", any_string(str_from("h")));
+    map_set(Resource_attributes(r), "service.name", any_string(str_from("override-me")));
     return r;
 }
 
 # Fixture resource r2: empty struct fields, service.name from the map.
 fn res2() {
     var r = resource_default();
-    map_set(res_attributes(r), "service.name", any_string(str_from("fromMap")));
+    map_set(Resource_attributes(r), "service.name", any_string(str_from("fromMap")));
     return r;
 }
 
 # Fixture scope.
 fn scope1() {
     var sc = instrumentation_scope_new(str_from("agnostik"), str_from("1.12.0"));
-    map_set(iscope_attributes(sc), "lib", any_bool(1));
+    map_set(InstrumentationScope_attributes(sc), "lib", any_bool(1));
     return sc;
 }
 
@@ -403,8 +403,8 @@ fn test_resource_and_scope() {
 fn span_err() {
     var s = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
     store64(s + 48, 77);
-    span_set_status(s, SPAN_ERROR);
-    span_set_status_message(s, str_from("boom"));
+    Span_set_status(s, SPAN_ERROR);
+    Span_set_status_message(s, str_from("boom"));
     return s;
 }
 
@@ -412,17 +412,17 @@ fn span_err() {
 fn span_ok() {
     var s = span_new(str_from("op"), ids(0, 16), ids(0xA0, 8));
     store64(s + 48, 77);
-    span_set_status(s, SPAN_OK);
-    span_set_status_message(s, str_from("ignored"));
+    Span_set_status(s, SPAN_OK);
+    Span_set_status_message(s, str_from("ignored"));
     return s;
 }
 
 # The three export requests, an empty one, and two calls batched in one builder.
 fn test_requests() {
     var r1 = res1();
-    res_set_schema_url(r1, str_from("https://opentelemetry.io/schemas/1.26.0"));
+    Resource_set_schema_url(r1, str_from("https://opentelemetry.io/schemas/1.26.0"));
     var sc = scope1();
-    iscope_set_schema_url(sc, str_from("https://s/1"));
+    InstrumentationScope_set_schema_url(sc, str_from("https://s/1"));
     var spans = vec_new();
     vec_push(spans, span_err());
     vec_push(spans, 0);
@@ -472,12 +472,12 @@ fn test_requests() {
     store64(p2 + 24, 100);
     var e2 = exemplar_new(0, 0, 0x3FF8000000000000);
     store64(e2 + 24, 0);
-    vec_push(mdp_exemplars(p2), e2);
+    vec_push(MetricDataPoint_exemplars(p2), e2);
     var g = instrument_descriptor_new(str_from("cpu"), 0, str_from("1"), METRIC_GAUGE);
     var ms = vec_new();
     vec_push(ms, metric_new(g, one(p2)));
     vec_push(ms, metric_new(hist_desc(), one(hist_point())));
-    assert_eq(metric_descriptor(vec_get(ms, 0)), g, "metric_descriptor");
+    assert_eq(Metric_descriptor(vec_get(ms, 0)), g, "Metric_descriptor");
     var sb5 = str_builder_new();
     var m_t, m = otlp_metrics_request(res2(), sc, ms, sb5);
     assert(is_ok(m_t) == 1, "metrics request Ok");
@@ -939,7 +939,7 @@ fn gen_resource() {
         if (str_len(load64(r + f * 8)) > 0) { _RES_KVS = _RES_KVS + 1; }
         f = f + 1;
     }
-    if (rng_below(2) == 1) { res_set_schema_url(r, gen_bytes(6)); }
+    if (rng_below(2) == 1) { Resource_set_schema_url(r, gen_bytes(6)); }
     return r;
 }
 
@@ -952,7 +952,7 @@ fn gen_scope() {
     var sc = instrumentation_scope_new(gen_bytes(5), gen_bytes(3));
     if (rng_below(2) == 1) { store64(sc + 24, gen_map(0)); }
     _SC_KVS = kv_in_map(load64(sc + 24));
-    if (rng_below(2) == 1) { iscope_set_schema_url(sc, gen_bytes(6)); }
+    if (rng_below(2) == 1) { InstrumentationScope_set_schema_url(sc, gen_bytes(6)); }
     return sc;
 }
 
@@ -973,15 +973,15 @@ fn fuzz_traces(seed) {
         var j = 0;
         while (j < ns) {
             var sp = span_new(gen_bytes(6), ids(j, 16), ids(j + 1, 8));
-            span_set_status(sp, rng_below(4));
-            span_set_status_message(sp, gen_bytes(5));
+            Span_set_status(sp, rng_below(4));
+            Span_set_status_message(sp, gen_bytes(5));
             store64(sp + 64, gen_map(0));
             kvs = kvs + kv_in_map(load64(sp + 64));
             if (rng_below(2) == 1) {
                 var e = span_event_new(gen_bytes(4));
                 store64(e + 16, gen_map(0));
                 kvs = kvs + kv_in_map(load64(e + 16));
-                vec_push(span_events(sp), e);
+                vec_push(Span_events(sp), e);
             }
             vec_push(spans, sp);
             j = j + 1;
@@ -1048,31 +1048,31 @@ fn gen_histogram() {
     var bnd = 0x3FF0000000000000;
     while (i < nb) {
         bnd = bnd + 1 + rng_below(0x7FFFFFFF);
-        vec_push(hval_bounds(h), bnd);
+        vec_push(HistogramValue_bounds(h), bnd);
         i = i + 1;
     }
     var total = 0;
     i = 0;
     while (i < nb + 1) {
         var c = rng_below(5);
-        vec_push(hval_bucket_counts(h), c);
+        vec_push(HistogramValue_bucket_counts(h), c);
         total = total + c;
         i = i + 1;
     }
-    hval_set_count(h, total);
-    if (rng_below(2) == 1) { hval_set_sum(h, rng_next()); }
-    if (rng_below(2) == 1) { hval_set_min(h, rng_next()); }
-    if (rng_below(2) == 1) { hval_set_max(h, rng_next()); }
+    HistogramValue_set_count(h, total);
+    if (rng_below(2) == 1) { HistogramValue_set_sum(h, rng_next()); }
+    if (rng_below(2) == 1) { HistogramValue_set_min(h, rng_next()); }
+    if (rng_below(2) == 1) { HistogramValue_set_max(h, rng_next()); }
     _H_GOOD = 1;
     var bad = rng_below(8);
     if (bad == 0) {
-        hval_set_count(h, total + 1);
+        HistogramValue_set_count(h, total + 1);
         _H_GOOD = 0;
     } elif (bad == 1 && nb >= 2) {
-        vec_set(hval_bounds(h), 1, vec_get(hval_bounds(h), 0));
+        vec_set(HistogramValue_bounds(h), 1, vec_get(HistogramValue_bounds(h), 0));
         _H_GOOD = 0;
     } elif (bad == 2 && nb >= 1) {
-        vec_set(hval_bounds(h), nb - 1, 0x7FF8000000000000);
+        vec_set(HistogramValue_bounds(h), nb - 1, 0x7FF8000000000000);
         _H_GOOD = 0;
     }
     return metric_histogram(h);
@@ -1108,12 +1108,12 @@ fn fuzz_metrics(seed) {
                 var p = metric_data_point_new(gen_bytes(3), mv);
                 store64(p + 16, gen_map(0));
                 kvs = kvs + kv_in_map(load64(p + 16));
-                if (rng_below(2) == 1) { mdp_set_start_time(p, rng_next()); }
+                if (rng_below(2) == 1) { MetricDataPoint_set_start_time(p, rng_next()); }
                 if (rng_below(2) == 1) {
                     var ex = exemplar_new(ids(k, 16), ids(k, 8), rng_next());
                     store64(ex + 32, gen_map(0));
                     kvs = kvs + kv_in_map(load64(ex + 32));
-                    vec_push(mdp_exemplars(p), ex);
+                    vec_push(MetricDataPoint_exemplars(p), ex);
                 }
                 vec_push(pts, p);
                 k = k + 1;

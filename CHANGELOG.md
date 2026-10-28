@@ -2,6 +2,71 @@
 
 ## [Unreleased]
 
+Work toward **v2.0.0**, the major that batches the breaking changes (see the roadmap's v2.0.0 slot for the order
+and the decisions: the accessor rename goes ahead, and `network_policy_*` stays and attaches to SandboxConfig).
+
+### Breaking — accessors are named `<Struct>_<field>` (v2.0.0 step 3a, ADR-009)
+
+**The rename:** all 706 field accessors move from short per-type prefixes to the struct name, the shape cyrius's
+`#derive(accessors)` generates.
+- `amsg_content` → `AgentMessage_content`, `secctx_set_run_as_user` → `SecurityContext_set_run_as_user`,
+  `agnostik_err_code` → `AgnostikError_code`.
+- **Every kind of accessor is renamed:** plain ones, and the ones that clamp, validate, build a collection on first
+  use or read a presence bit (`HistogramValue_bounds`, `ClassificationResult_set_level`,
+  `HistogramValue_has_sum`).
+- **Constructors, codecs and operations keep their names:** `span_new`, `agent_status_parse`, `tctx_child`,
+  `asum_add_device`, `agent_id_eq`.
+- **Field names follow the struct where the old name differed:**
+  - the seven value structs take their JSON keys (`rusage_memory` → `ResourceUsage_mem_used`, `tusage_prompt` →
+    `TokenUsage_prompt_tok`, `aflags_cuda` → `AcceleratorFlags_cuda_available`);
+  - a getter and setter that disagreed share one name (`span_set_parent` → `Span_set_parent_id`,
+    `rlim_set_max_cpu` → `ResourceLimits_set_max_cpu_time`, `mdp_set_monotonic` →
+    `MetricDataPoint_set_is_monotonic`).
+
+**Migration:**
+- [`docs/migration/2.0.0-renames.tsv`](docs/migration/2.0.0-renames.tsv) is the complete old → new map.
+- `scripts/migrate-2.0.0.sh [--dry-run] DIR...` applies it to a consumer as whole-word replacements, skipping the
+  consumer's top-level `lib/` and `build/` and any vendored `agnostik.cyr`.
+- [`docs/migration/README.md`](docs/migration/README.md) has examples.
+
+**Verified:**
+- **API:** the public surface keeps 1,122 fns, 706 renamed and nothing else; the old snapshot pushed through the
+  map equals the new one exactly.
+- **Tests:** every test file passes after the same rename (five lines were rewrapped for lint).
+- **Consumers:** copies of all five, migrated by the script, build and pass every assertion on their own pins:
+  aegis 428, anuenue 595, ark 392, kybernet 890 and mela 979; 0 agnostik duplicates. kybernet needed 7 files,
+  anuenue and mela 2 each, aegis and ark none. The sweep caught the script's first version skipping kybernet's
+  `src/lib/`; it now skips only each directory's top-level `lib/`.
+- **Name clashes:** kavach derives `SandboxConfig` and stiva derives `AuditEntry`; argonaut, stiva and agnoshi
+  declare `HealthCheck`, `ResourceLimits`, `SecurityContext` and `NetworkPolicy`. No current consumer combines
+  them with agnostik, and ADR-009 keeps those structs hand-written.
+- **A pre-existing warning:** kybernet already warns that argonaut's 32-byte `ResourceLimits` takes agnostik's
+  48-byte layout. That is safe while agnostik's comes first and is the larger.
+
+### Changed — `_stik_json_int` returns a Result (v2.0.0 step 1)
+
+**What changed:** the private JSON integer reader returned a bare i64. A missing key, a non-number and an
+out-of-range number all read 0, indistinguishable from a literal 0. It now returns a value-form Result: `Ok(n)`,
+or an `Err` whose payload is a code. The code is a plain integer, so probing for an optional key allocates
+nothing:
+
+| Err code | Meaning |
+|---:|---|
+| 1 | the key is missing |
+| 2 | the value is not an integer |
+| 3 | the integer is outside i64 |
+
+**Stricter number:** an integer must end at whitespace, `,`, `}`, `]` or the end of the text, so `12abc`, `1e9`
+and `1.9` are `Err(2)` where they read 12, 1 and 1.
+
+**No caller-visible change:** the helper is private, and the public parsers keep their documented defaults.
+- `AgentInfo_from_json` maps an Err to `AGENT_TYPE_USER` / `AGENT_PENDING`, which drops the extra lookup 1.12.3
+  added only to detect a missing key.
+- `TelemetryConfig_from_json` maps an Err to 0.
+
+**Tests:** the three regression files that call it directly use a `json_int0` helper with the old contract.
+`test_v1123_hardening` asserts every Err code (13 new assertions).
+
 ## [1.12.3] - 2026-10-28
 
 **P(-1) hardening patch: the last v1 repair cycle.** It starts from anuenue's report that `agnostik_err_new` wrote

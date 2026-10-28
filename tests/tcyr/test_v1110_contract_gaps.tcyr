@@ -103,7 +103,7 @@ fn test_agent_id_dashes() {
     assert(agent_id_eq(r, id) == 1, "same bytes");
     # AgentInfo_from_json reads a malformed id as 0, as it does any invalid field.
     var ai = AgentInfo_from_json(str_from("{\"id\":\"0af76519+16cd-43dd-8448-eb211c80319c\",\"name\":\"n\"}"));
-    assert_eq(ainfo_id(ai), 0, "malformed id in JSON reads as 0");
+    assert_eq(AgentInfo_id(ai), 0, "malformed id in JSON reads as 0");
     return 0;
 }
 
@@ -143,8 +143,8 @@ fn test_audit_sink_slots() {
     assert_eq(as_seal(sink), 0, "unset seal: 0");
     var q_t, q = as_query(sink, 3);
     assert(is_err_result(q_t) == 1, "unset query: Err");
-    assert_eq(agnostik_err_kind(q), STIK_ERR_NOT_SUPPORTED, "not-supported kind");
-    assert_eq(agnostik_err_code(q), CODE_NOT_SUPPORTED, "code 1007");
+    assert_eq(AgnostikError_kind(q), STIK_ERR_NOT_SUPPORTED, "not-supported kind");
+    assert_eq(AgnostikError_code(q), CODE_NOT_SUPPORTED, "code 1007");
     assert_eq(audit_sink_has(sink, AS_APPEND), 1, "has append");
     assert_eq(audit_sink_has(sink, AS_VERIFY_ENTRY), 0, "lacks verify_entry");
     assert_eq(audit_sink_has(sink, AS_SEAL + 1), 0, "slot past the vtable");
@@ -183,7 +183,7 @@ fn test_secret_store_slots() {
     var st = secret_store_new(vt, data);
     var a_t, a = ss_rotate(st, str_from("k"));
     assert(is_err_result(a_t) == 1, "unset rotate: Err");
-    assert_eq(agnostik_err_kind(a), STIK_ERR_NOT_SUPPORTED, "rotate: not supported");
+    assert_eq(AgnostikError_kind(a), STIK_ERR_NOT_SUPPORTED, "rotate: not supported");
     var b_t, b = ss_search_by_tag(st, str_from("t"));
     assert(is_err_result(b_t) == 1, "unset search_by_tag: Err");
     assert_eq(ss_get(st, str_from("k")), 0, "0 get slot not called");
@@ -306,330 +306,330 @@ fn test_setters_round_trip() {
     var ok = 0;
     var n = 0;
     var o1 = resource_usage_new();
-    rusage_set_memory(o1, 7010);
-    rusage_set_cpu(o1, 7011);
-    rusage_set_fds(o1, 7012);
-    rusage_set_procs(o1, 7013);
-    if (rusage_memory(o1) == 7010) { ok = ok + 1; }
+    ResourceUsage_set_mem_used(o1, 7010);
+    ResourceUsage_set_cpu_used(o1, 7011);
+    ResourceUsage_set_fds_used(o1, 7012);
+    ResourceUsage_set_procs_used(o1, 7013);
+    if (ResourceUsage_mem_used(o1) == 7010) { ok = ok + 1; }
     n = n + 1;
-    if (rusage_cpu(o1) == 7011) { ok = ok + 1; }
+    if (ResourceUsage_cpu_used(o1) == 7011) { ok = ok + 1; }
     n = n + 1;
-    if (rusage_fds(o1) == 7012) { ok = ok + 1; }
+    if (ResourceUsage_fds_used(o1) == 7012) { ok = ok + 1; }
     n = n + 1;
-    if (rusage_procs(o1) == 7013) { ok = ok + 1; }
+    if (ResourceUsage_procs_used(o1) == 7013) { ok = ok + 1; }
     n = n + 1;
     var o2 = agnostik_health_check_new();
-    hc_set_probe_type(o2, 7020);
-    hc_set_interval(o2, 7021);
-    hc_set_timeout(o2, 7022);
-    hc_set_retries(o2, 7023);
-    hc_set_initial_delay(o2, 7024);
-    if (hc_probe_type(o2) == 7020) { ok = ok + 1; }
+    HealthCheck_set_probe_type(o2, 7020);
+    HealthCheck_set_interval(o2, 7021);
+    HealthCheck_set_timeout(o2, 7022);
+    HealthCheck_set_retries(o2, 7023);
+    HealthCheck_set_initial_delay(o2, 7024);
+    if (HealthCheck_probe_type(o2) == 7020) { ok = ok + 1; }
     n = n + 1;
-    if (hc_interval(o2) == 7021) { ok = ok + 1; }
+    if (HealthCheck_interval(o2) == 7021) { ok = ok + 1; }
     n = n + 1;
-    if (hc_timeout(o2) == 7022) { ok = ok + 1; }
+    if (HealthCheck_timeout(o2) == 7022) { ok = ok + 1; }
     n = n + 1;
-    if (hc_retries(o2) == 7023) { ok = ok + 1; }
+    if (HealthCheck_retries(o2) == 7023) { ok = ok + 1; }
     n = n + 1;
-    if (hc_initial_delay(o2) == 7024) { ok = ok + 1; }
+    if (HealthCheck_initial_delay(o2) == 7024) { ok = ok + 1; }
     n = n + 1;
     var o3 = agent_config_new(str_from("a"));
-    aconf_set_metadata(o3, 7030);
-    aconf_set_startup_timeout(o3, 7031);
-    aconf_set_shutdown_timeout(o3, 7032);
-    aconf_set_restart_backoff(o3, 7033);
-    if (aconf_metadata(o3) == 7030) { ok = ok + 1; }
+    AgentConfig_set_metadata(o3, 7030);
+    AgentConfig_set_startup_timeout(o3, 7031);
+    AgentConfig_set_shutdown_timeout(o3, 7032);
+    AgentConfig_set_restart_backoff(o3, 7033);
+    if (AgentConfig_metadata(o3) == 7030) { ok = ok + 1; }
     n = n + 1;
-    if (aconf_startup_timeout(o3) == 7031) { ok = ok + 1; }
+    if (AgentConfig_startup_timeout(o3) == 7031) { ok = ok + 1; }
     n = n + 1;
-    if (aconf_shutdown_timeout(o3) == 7032) { ok = ok + 1; }
+    if (AgentConfig_shutdown_timeout(o3) == 7032) { ok = ok + 1; }
     n = n + 1;
-    if (aconf_restart_backoff(o3) == 7033) { ok = ok + 1; }
+    if (AgentConfig_restart_backoff(o3) == 7033) { ok = ok + 1; }
     n = n + 1;
     var o4 = agent_rate_limit_new();
-    arl_set_tokens_per_hour(o4, 7040);
-    arl_set_requests_per_min(o4, 7041);
-    arl_set_concurrent(o4, 7042);
-    if (arl_tokens_per_hour(o4) == 7040) { ok = ok + 1; }
+    AgentRateLimit_set_tokens_per_hour(o4, 7040);
+    AgentRateLimit_set_requests_per_min(o4, 7041);
+    AgentRateLimit_set_concurrent(o4, 7042);
+    if (AgentRateLimit_tokens_per_hour(o4) == 7040) { ok = ok + 1; }
     n = n + 1;
-    if (arl_requests_per_min(o4) == 7041) { ok = ok + 1; }
+    if (AgentRateLimit_requests_per_min(o4) == 7041) { ok = ok + 1; }
     n = n + 1;
-    if (arl_concurrent(o4) == 7042) { ok = ok + 1; }
+    if (AgentRateLimit_concurrent(o4) == 7042) { ok = ok + 1; }
     n = n + 1;
     var o5 = agent_stats_new();
-    astats_set_requests(o5, 7050);
-    astats_set_tokens(o5, 7051);
-    astats_set_uptime(o5, 7052);
-    if (astats_requests(o5) == 7050) { ok = ok + 1; }
+    AgentStats_set_total_requests(o5, 7050);
+    AgentStats_set_total_tokens(o5, 7051);
+    AgentStats_set_uptime_seconds(o5, 7052);
+    if (AgentStats_total_requests(o5) == 7050) { ok = ok + 1; }
     n = n + 1;
-    if (astats_tokens(o5) == 7051) { ok = ok + 1; }
+    if (AgentStats_total_tokens(o5) == 7051) { ok = ok + 1; }
     n = n + 1;
-    if (astats_uptime(o5) == 7052) { ok = ok + 1; }
+    if (AgentStats_uptime_seconds(o5) == 7052) { ok = ok + 1; }
     n = n + 1;
     var o6 = agent_manifest_new(str_from("m"));
-    amanifest_set_description(o6, 7060);
-    amanifest_set_author(o6, 7061);
-    amanifest_set_homepage(o6, 7062);
-    if (amanifest_description(o6) == 7060) { ok = ok + 1; }
+    AgentManifest_set_description(o6, 7060);
+    AgentManifest_set_author(o6, 7061);
+    AgentManifest_set_homepage(o6, 7062);
+    if (AgentManifest_description(o6) == 7060) { ok = ok + 1; }
     n = n + 1;
-    if (amanifest_author(o6) == 7061) { ok = ok + 1; }
+    if (AgentManifest_author(o6) == 7061) { ok = ok + 1; }
     n = n + 1;
-    if (amanifest_homepage(o6) == 7062) { ok = ok + 1; }
+    if (AgentManifest_homepage(o6) == 7062) { ok = ok + 1; }
     n = n + 1;
     var o7 = retry_policy_new();
-    rpol_set_max_retries(o7, 7070);
-    rpol_set_initial_delay(o7, 7071);
-    rpol_set_backoff_mult(o7, 7072);
-    rpol_set_max_delay(o7, 7073);
-    rpol_set_jitter(o7, 7074);
-    if (rpol_max_retries(o7) == 7070) { ok = ok + 1; }
+    RetryPolicy_set_max_retries(o7, 7070);
+    RetryPolicy_set_initial_delay(o7, 7071);
+    RetryPolicy_set_backoff_mult(o7, 7072);
+    RetryPolicy_set_max_delay(o7, 7073);
+    RetryPolicy_set_jitter(o7, 7074);
+    if (RetryPolicy_max_retries(o7) == 7070) { ok = ok + 1; }
     n = n + 1;
-    if (rpol_initial_delay(o7) == 7071) { ok = ok + 1; }
+    if (RetryPolicy_initial_delay(o7) == 7071) { ok = ok + 1; }
     n = n + 1;
-    if (rpol_backoff_mult(o7) == 7072) { ok = ok + 1; }
+    if (RetryPolicy_backoff_mult(o7) == 7072) { ok = ok + 1; }
     n = n + 1;
-    if (rpol_max_delay(o7) == 7073) { ok = ok + 1; }
+    if (RetryPolicy_max_delay(o7) == 7073) { ok = ok + 1; }
     n = n + 1;
-    if (rpol_jitter(o7) == 7074) { ok = ok + 1; }
+    if (RetryPolicy_jitter(o7) == 7074) { ok = ok + 1; }
     n = n + 1;
     var o8 = restart_backoff_new();
-    rback_set_initial_delay(o8, 7080);
-    rback_set_multiplier(o8, 7081);
-    rback_set_max_delay(o8, 7082);
-    rback_set_jitter(o8, 7083);
-    if (rback_initial_delay(o8) == 7080) { ok = ok + 1; }
+    RestartBackoff_set_initial_delay(o8, 7080);
+    RestartBackoff_set_multiplier(o8, 7081);
+    RestartBackoff_set_max_delay(o8, 7082);
+    RestartBackoff_set_jitter(o8, 7083);
+    if (RestartBackoff_initial_delay(o8) == 7080) { ok = ok + 1; }
     n = n + 1;
-    if (rback_multiplier(o8) == 7081) { ok = ok + 1; }
+    if (RestartBackoff_multiplier(o8) == 7081) { ok = ok + 1; }
     n = n + 1;
-    if (rback_max_delay(o8) == 7082) { ok = ok + 1; }
+    if (RestartBackoff_max_delay(o8) == 7082) { ok = ok + 1; }
     n = n + 1;
-    if (rback_jitter(o8) == 7083) { ok = ok + 1; }
+    if (RestartBackoff_jitter(o8) == 7083) { ok = ok + 1; }
     n = n + 1;
     var o9 = scheduling_constraints_new();
-    sched_set_preemptible(o9, 7090);
-    if (sched_preemptible(o9) == 7090) { ok = ok + 1; }
+    SchedulingConstraints_set_preemptible(o9, 7090);
+    if (SchedulingConstraints_preemptible(o9) == 7090) { ok = ok + 1; }
     n = n + 1;
     var o10 = retention_policy_new(7);
-    retpol_set_max_days(o10, 7100);
-    retpol_set_archive(o10, 7101);
-    if (retpol_max_days(o10) == 7100) { ok = ok + 1; }
+    RetentionPolicy_set_max_days(o10, 7100);
+    RetentionPolicy_set_archive(o10, 7101);
+    if (RetentionPolicy_max_days(o10) == 7100) { ok = ok + 1; }
     n = n + 1;
-    if (retpol_archive(o10) == 7101) { ok = ok + 1; }
+    if (RetentionPolicy_archive(o10) == 7101) { ok = ok + 1; }
     n = n + 1;
     var o11 = agnos_config_new();
-    acfg_set_generation(o11, 7110);
-    acfg_set_content_hash(o11, 7111);
-    if (acfg_generation(o11) == 7110) { ok = ok + 1; }
+    AgnosConfig_set_generation(o11, 7110);
+    AgnosConfig_set_content_hash(o11, 7111);
+    if (AgnosConfig_generation(o11) == 7110) { ok = ok + 1; }
     n = n + 1;
-    if (acfg_content_hash(o11) == 7111) { ok = ok + 1; }
+    if (AgnosConfig_content_hash(o11) == 7111) { ok = ok + 1; }
     n = n + 1;
     var o12 = edge_overrides_new();
-    eovr_set_max_memory(o12, 7120);
-    eovr_set_max_cpu(o12, 7121);
-    eovr_set_max_agents(o12, 7122);
-    if (eovr_max_memory(o12) == 7120) { ok = ok + 1; }
+    EdgeResourceOverrides_set_max_memory(o12, 7120);
+    EdgeResourceOverrides_set_max_cpu_time(o12, 7121);
+    EdgeResourceOverrides_set_max_agents(o12, 7122);
+    if (EdgeResourceOverrides_max_memory(o12) == 7120) { ok = ok + 1; }
     n = n + 1;
-    if (eovr_max_cpu(o12) == 7121) { ok = ok + 1; }
+    if (EdgeResourceOverrides_max_cpu_time(o12) == 7121) { ok = ok + 1; }
     n = n + 1;
-    if (eovr_max_agents(o12) == 7122) { ok = ok + 1; }
+    if (EdgeResourceOverrides_max_agents(o12) == 7122) { ok = ok + 1; }
     n = n + 1;
     var o13 = profile_definition_new(str_from("p"), 0);
-    profdef_set_inherits_from(o13, 7130);
-    profdef_set_edge_overrides(o13, 7131);
-    if (profdef_inherits_from(o13) == 7130) { ok = ok + 1; }
+    ProfileDefinition_set_inherits_from(o13, 7130);
+    ProfileDefinition_set_edge_overrides(o13, 7131);
+    if (ProfileDefinition_inherits_from(o13) == 7130) { ok = ok + 1; }
     n = n + 1;
-    if (profdef_edge_overrides(o13) == 7131) { ok = ok + 1; }
+    if (ProfileDefinition_edge_overrides(o13) == 7131) { ok = ok + 1; }
     n = n + 1;
     var o14 = fleet_config_new();
-    fleet_set_default(o14, 7140);
-    if (fleet_default(o14) == 7140) { ok = ok + 1; }
+    FleetConfig_set_default(o14, 7140);
+    if (FleetConfig_default(o14) == 7140) { ok = ok + 1; }
     n = n + 1;
     var o15 = sampling_params_new();
-    samp_set_freq_penalty(o15, 7150);
-    samp_set_pres_penalty(o15, 7151);
-    if (samp_freq_penalty(o15) == 7150) { ok = ok + 1; }
+    SamplingParams_set_freq_penalty(o15, 7150);
+    SamplingParams_set_pres_penalty(o15, 7151);
+    if (SamplingParams_freq_penalty(o15) == 7150) { ok = ok + 1; }
     n = n + 1;
-    if (samp_pres_penalty(o15) == 7151) { ok = ok + 1; }
+    if (SamplingParams_pres_penalty(o15) == 7151) { ok = ok + 1; }
     n = n + 1;
     var o16 = inference_request_new(str_from("m"));
-    ireq_set_prompt(o16, 7160);
-    if (ireq_prompt(o16) == 7160) { ok = ok + 1; }
+    InferenceRequest_set_prompt(o16, 7160);
+    if (InferenceRequest_prompt(o16) == 7160) { ok = ok + 1; }
     n = n + 1;
     var o17 = rate_limit_info_new();
-    rli_set_limit_requests(o17, 7170);
-    rli_set_remaining_requests(o17, 7171);
-    rli_set_limit_tokens(o17, 7172);
-    rli_set_remaining_tokens(o17, 7173);
-    rli_set_reset_seconds(o17, 7174);
-    if (rli_limit_requests(o17) == 7170) { ok = ok + 1; }
+    RateLimitInfo_set_limit_requests(o17, 7170);
+    RateLimitInfo_set_remaining_requests(o17, 7171);
+    RateLimitInfo_set_limit_tokens(o17, 7172);
+    RateLimitInfo_set_remaining_tokens(o17, 7173);
+    RateLimitInfo_set_reset_seconds(o17, 7174);
+    if (RateLimitInfo_limit_requests(o17) == 7170) { ok = ok + 1; }
     n = n + 1;
-    if (rli_remaining_requests(o17) == 7171) { ok = ok + 1; }
+    if (RateLimitInfo_remaining_requests(o17) == 7171) { ok = ok + 1; }
     n = n + 1;
-    if (rli_limit_tokens(o17) == 7172) { ok = ok + 1; }
+    if (RateLimitInfo_limit_tokens(o17) == 7172) { ok = ok + 1; }
     n = n + 1;
-    if (rli_remaining_tokens(o17) == 7173) { ok = ok + 1; }
+    if (RateLimitInfo_remaining_tokens(o17) == 7173) { ok = ok + 1; }
     n = n + 1;
-    if (rli_reset_seconds(o17) == 7174) { ok = ok + 1; }
+    if (RateLimitInfo_reset_seconds(o17) == 7174) { ok = ok + 1; }
     n = n + 1;
     var o18 = namespace_config_new();
-    ns_set_uts(o18, 7180);
-    ns_set_ipc(o18, 7181);
-    ns_set_cgroup(o18, 7182);
-    ns_set_time(o18, 7183);
-    if (ns_uts(o18) == 7180) { ok = ok + 1; }
+    NamespaceConfig_set_uts(o18, 7180);
+    NamespaceConfig_set_ipc(o18, 7181);
+    NamespaceConfig_set_cgroup(o18, 7182);
+    NamespaceConfig_set_time(o18, 7183);
+    if (NamespaceConfig_uts(o18) == 7180) { ok = ok + 1; }
     n = n + 1;
-    if (ns_ipc(o18) == 7181) { ok = ok + 1; }
+    if (NamespaceConfig_ipc(o18) == 7181) { ok = ok + 1; }
     n = n + 1;
-    if (ns_cgroup(o18) == 7182) { ok = ok + 1; }
+    if (NamespaceConfig_cgroup(o18) == 7182) { ok = ok + 1; }
     n = n + 1;
-    if (ns_time(o18) == 7183) { ok = ok + 1; }
+    if (NamespaceConfig_time(o18) == 7183) { ok = ok + 1; }
     n = n + 1;
     var o19 = sandbox_config_new();
-    sandbox_set_isolate_net(o19, 7190);
-    if (sandbox_isolate_net(o19) == 7190) { ok = ok + 1; }
+    SandboxConfig_set_isolate_net(o19, 7190);
+    if (SandboxConfig_isolate_net(o19) == 7190) { ok = ok + 1; }
     n = n + 1;
     var o20 = security_context_new(agent_id_new());
-    secctx_set_run_as_user(o20, 7200);
-    secctx_set_run_as_group(o20, 7201);
-    secctx_set_readonly_root(o20, 7202);
-    secctx_set_no_new_privs(o20, 7203);
-    if (secctx_run_as_user(o20) == 7200) { ok = ok + 1; }
+    SecurityContext_set_run_as_user(o20, 7200);
+    SecurityContext_set_run_as_group(o20, 7201);
+    SecurityContext_set_readonly_root(o20, 7202);
+    SecurityContext_set_no_new_privs(o20, 7203);
+    if (SecurityContext_run_as_user(o20) == 7200) { ok = ok + 1; }
     n = n + 1;
-    if (secctx_run_as_group(o20) == 7201) { ok = ok + 1; }
+    if (SecurityContext_run_as_group(o20) == 7201) { ok = ok + 1; }
     n = n + 1;
-    if (secctx_readonly_root(o20) == 7202) { ok = ok + 1; }
+    if (SecurityContext_readonly_root(o20) == 7202) { ok = ok + 1; }
     n = n + 1;
-    if (secctx_no_new_privs(o20) == 7203) { ok = ok + 1; }
+    if (SecurityContext_no_new_privs(o20) == 7203) { ok = ok + 1; }
     n = n + 1;
     var o21 = sandbox_capabilities_new();
-    sbcap_set_seccomp(o21, 7210);
-    sbcap_set_seccomp_mode(o21, 7211);
-    sbcap_set_landlock(o21, 7212);
-    sbcap_set_ll_abi(o21, 7213);
-    sbcap_set_cgroup_v2(o21, 7214);
-    sbcap_set_namespaces(o21, 7215);
-    if (sbcap_seccomp(o21) == 7210) { ok = ok + 1; }
+    SandboxCapabilities_set_seccomp(o21, 7210);
+    SandboxCapabilities_set_seccomp_mode(o21, 7211);
+    SandboxCapabilities_set_landlock(o21, 7212);
+    SandboxCapabilities_set_ll_abi(o21, 7213);
+    SandboxCapabilities_set_cgroup_v2(o21, 7214);
+    SandboxCapabilities_set_namespaces(o21, 7215);
+    if (SandboxCapabilities_seccomp(o21) == 7210) { ok = ok + 1; }
     n = n + 1;
-    if (sbcap_seccomp_mode(o21) == 7211) { ok = ok + 1; }
+    if (SandboxCapabilities_seccomp_mode(o21) == 7211) { ok = ok + 1; }
     n = n + 1;
-    if (sbcap_landlock(o21) == 7212) { ok = ok + 1; }
+    if (SandboxCapabilities_landlock(o21) == 7212) { ok = ok + 1; }
     n = n + 1;
-    if (sbcap_ll_abi(o21) == 7213) { ok = ok + 1; }
+    if (SandboxCapabilities_ll_abi(o21) == 7213) { ok = ok + 1; }
     n = n + 1;
-    if (sbcap_cgroup_v2(o21) == 7214) { ok = ok + 1; }
+    if (SandboxCapabilities_cgroup_v2(o21) == 7214) { ok = ok + 1; }
     n = n + 1;
-    if (sbcap_namespaces(o21) == 7215) { ok = ok + 1; }
+    if (SandboxCapabilities_namespaces(o21) == 7215) { ok = ok + 1; }
     n = n + 1;
     var o22 = filesystem_rule_new(str_from("/p"), 0);
-    fsrule_set_propagation(o22, 7220);
-    if (fsrule_propagation(o22) == 7220) { ok = ok + 1; }
+    FilesystemRule_set_propagation(o22, 7220);
+    if (FilesystemRule_propagation(o22) == 7220) { ok = ok + 1; }
     n = n + 1;
     var o23 = encrypted_storage_new();
-    encst_set_filesystem(o23, 7230);
-    if (encst_filesystem(o23) == 7230) { ok = ok + 1; }
+    EncryptedStorage_set_filesystem(o23, 7230);
+    if (EncryptedStorage_filesystem(o23) == 7230) { ok = ok + 1; }
     n = n + 1;
     var o24 = device_rule_new(1, DEV_CHAR, str_from("rwm"));
-    devrule_set_major(o24, 7240);
-    devrule_set_minor(o24, 7241);
-    if (devrule_major(o24) == 7240) { ok = ok + 1; }
+    DeviceRule_set_major(o24, 7240);
+    DeviceRule_set_minor(o24, 7241);
+    if (DeviceRule_major(o24) == 7240) { ok = ok + 1; }
     n = n + 1;
-    if (devrule_minor(o24) == 7241) { ok = ok + 1; }
+    if (DeviceRule_minor(o24) == 7241) { ok = ok + 1; }
     n = n + 1;
     var o25 = token_payload_new(str_from("s"), 0);
-    token_set_iat(o25, 7250);
-    token_set_exp(o25, 7251);
-    token_set_jti(o25, 7252);
-    token_set_email(o25, 7253);
-    token_set_display_name(o25, 7254);
-    if (token_iat(o25) == 7250) { ok = ok + 1; }
+    TokenPayload_set_iat(o25, 7250);
+    TokenPayload_set_exp(o25, 7251);
+    TokenPayload_set_jti(o25, 7252);
+    TokenPayload_set_email(o25, 7253);
+    TokenPayload_set_display_name(o25, 7254);
+    if (TokenPayload_iat(o25) == 7250) { ok = ok + 1; }
     n = n + 1;
-    if (token_exp(o25) == 7251) { ok = ok + 1; }
+    if (TokenPayload_exp(o25) == 7251) { ok = ok + 1; }
     n = n + 1;
-    if (token_jti(o25) == 7252) { ok = ok + 1; }
+    if (TokenPayload_jti(o25) == 7252) { ok = ok + 1; }
     n = n + 1;
-    if (token_email(o25) == 7253) { ok = ok + 1; }
+    if (TokenPayload_email(o25) == 7253) { ok = ok + 1; }
     n = n + 1;
-    if (token_display_name(o25) == 7254) { ok = ok + 1; }
+    if (TokenPayload_display_name(o25) == 7254) { ok = ok + 1; }
     n = n + 1;
     var o26 = resource_new(str_from("n"), str_from("v"), str_from("i"));
-    res_set_schema_url(o26, 7260);
-    if (res_schema_url(o26) == 7260) { ok = ok + 1; }
+    Resource_set_schema_url(o26, 7260);
+    if (Resource_schema_url(o26) == 7260) { ok = ok + 1; }
     n = n + 1;
     var o27 = trace_context_new();
-    tctx_set_trace_flags(o27, 7270);
-    tctx_set_trace_state(o27, 7271);
-    if (tctx_trace_flags(o27) == 7270) { ok = ok + 1; }
+    TraceContext_set_trace_flags(o27, 7270);
+    TraceContext_set_trace_state(o27, 7271);
+    if (TraceContext_trace_flags(o27) == 7270) { ok = ok + 1; }
     n = n + 1;
-    if (tctx_trace_state(o27) == 7271) { ok = ok + 1; }
+    if (TraceContext_trace_state(o27) == 7271) { ok = ok + 1; }
     n = n + 1;
     var o28 = span_new(str_from("op"), trace_id_new(), span_id_new());
-    span_set_dropped_attrs(o28, 7280);
-    span_set_dropped_events(o28, 7281);
-    span_set_dropped_links(o28, 7282);
-    if (span_dropped_attrs(o28) == 7280) { ok = ok + 1; }
+    Span_set_dropped_attrs(o28, 7280);
+    Span_set_dropped_events(o28, 7281);
+    Span_set_dropped_links(o28, 7282);
+    if (Span_dropped_attrs(o28) == 7280) { ok = ok + 1; }
     n = n + 1;
-    if (span_dropped_events(o28) == 7281) { ok = ok + 1; }
+    if (Span_dropped_events(o28) == 7281) { ok = ok + 1; }
     n = n + 1;
-    if (span_dropped_links(o28) == 7282) { ok = ok + 1; }
+    if (Span_dropped_links(o28) == 7282) { ok = ok + 1; }
     n = n + 1;
     var o29 = telemetry_config_new();
-    telcfg_set_enabled(o29, 7290);
-    telcfg_set_sample_rate(o29, 7291);
-    telcfg_set_endpoint(o29, 7292);
-    if (telcfg_enabled(o29) == 7290) { ok = ok + 1; }
+    TelemetryConfig_set_enabled(o29, 7290);
+    TelemetryConfig_set_sample_rate(o29, 7291);
+    TelemetryConfig_set_endpoint(o29, 7292);
+    if (TelemetryConfig_enabled(o29) == 7290) { ok = ok + 1; }
     n = n + 1;
-    if (telcfg_sample_rate(o29) == 7291) { ok = ok + 1; }
+    if (TelemetryConfig_sample_rate(o29) == 7291) { ok = ok + 1; }
     n = n + 1;
-    if (telcfg_endpoint(o29) == 7292) { ok = ok + 1; }
+    if (TelemetryConfig_endpoint(o29) == 7292) { ok = ok + 1; }
     n = n + 1;
     var o30 = crash_report_new(agent_id_new(), str_from("e"));
-    crash_set_backtrace(o30, 7300);
-    if (crash_backtrace(o30) == 7300) { ok = ok + 1; }
+    CrashReport_set_backtrace(o30, 7300);
+    if (CrashReport_backtrace(o30) == 7300) { ok = ok + 1; }
     n = n + 1;
     var o31 = instrumentation_scope_new(str_from("s"), str_from("1"));
-    iscope_set_schema_url(o31, 7310);
-    if (iscope_schema_url(o31) == 7310) { ok = ok + 1; }
+    InstrumentationScope_set_schema_url(o31, 7310);
+    if (InstrumentationScope_schema_url(o31) == 7310) { ok = ok + 1; }
     n = n + 1;
     var o32 = metric_data_point_new(str_from("m"), metric_int(1));
-    mdp_set_temporality(o32, 7320);
-    mdp_set_monotonic(o32, 7321);
-    if (mdp_temporality(o32) == 7320) { ok = ok + 1; }
+    MetricDataPoint_set_temporality(o32, 7320);
+    MetricDataPoint_set_is_monotonic(o32, 7321);
+    if (MetricDataPoint_temporality(o32) == 7320) { ok = ok + 1; }
     n = n + 1;
-    if (mdp_is_monotonic(o32) == 7321) { ok = ok + 1; }
+    if (MetricDataPoint_is_monotonic(o32) == 7321) { ok = ok + 1; }
     n = n + 1;
     var o33 = validation_warning_new(1, str_from("w"), 0);
-    vwarn_set_position(o33, 7330);
-    vwarn_set_pattern(o33, 7331);
-    if (vwarn_position(o33) == 7330) { ok = ok + 1; }
+    ValidationWarning_set_position(o33, 7330);
+    ValidationWarning_set_pattern(o33, 7331);
+    if (ValidationWarning_position(o33) == 7330) { ok = ok + 1; }
     n = n + 1;
-    if (vwarn_pattern(o33) == 7331) { ok = ok + 1; }
+    if (ValidationWarning_pattern(o33) == 7331) { ok = ok + 1; }
     n = n + 1;
     var o34 = validation_result_new(1, str_from("x"));
-    vresult_set_injection_score(o34, 7340);
-    vresult_set_injection_scores(o34, 7341);
-    if (vresult_injection_score(o34) == 7340) { ok = ok + 1; }
+    ValidationResult_set_injection_score(o34, 7340);
+    ValidationResult_set_injection_scores(o34, 7341);
+    if (ValidationResult_injection_score(o34) == 7340) { ok = ok + 1; }
     n = n + 1;
-    if (vresult_injection_scores(o34) == 7341) { ok = ok + 1; }
+    if (ValidationResult_injection_scores(o34) == 7341) { ok = ok + 1; }
     n = n + 1;
     assert_eq(n, 91, "every setter exercised");
     assert_eq(ok, n, "every setter round-trips through its getter");
     # The two getters that were missing read their setters' slots.
     var sb = sandbox_config_new();
-    assert_eq(sandbox_apparmor(sb), 0, "AppArmor unset reads 0");
+    assert_eq(SandboxConfig_apparmor(sb), 0, "AppArmor unset reads 0");
     var aa = str_from("agnos-default");
     var se = str_from("system_u:system_r:agnos_t:s0");
-    sandbox_set_apparmor(sb, aa);
-    sandbox_set_selinux(sb, se);
-    assert_eq(sandbox_apparmor(sb), aa, "sandbox_apparmor reads sandbox_set_apparmor");
-    assert_eq(sandbox_selinux(sb), se, "sandbox_selinux reads sandbox_set_selinux");
+    SandboxConfig_set_apparmor(sb, aa);
+    SandboxConfig_set_selinux(sb, se);
+    assert_eq(SandboxConfig_apparmor(sb), aa, "SandboxConfig_apparmor reads SandboxConfig_set_apparmor");
+    assert_eq(SandboxConfig_selinux(sb), se, "SandboxConfig_selinux reads SandboxConfig_set_selinux");
     # A value set through a setter reaches the serializers and encoders.
     var cfg = telemetry_config_new();
-    telcfg_set_endpoint(cfg, str_from("http://collector:4318"));
+    TelemetryConfig_set_endpoint(cfg, str_from("http://collector:4318"));
     var jb = str_builder_new();
     TelemetryConfig_to_json(cfg, jb);
     var back = TelemetryConfig_from_json(str_builder_build(jb));
-    assert(str_eq_cstr(telcfg_endpoint(back), "http://collector:4318") == 1, "endpoint set and serialized");
+    assert(str_eq_cstr(TelemetryConfig_endpoint(back), "http://collector:4318") == 1, "endpoint set and serialized");
     return 0;
 }
 

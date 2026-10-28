@@ -18,67 +18,67 @@ include "src/lib.cyr"
 fn test_agent_resource_limits_setters() {
     var rl = resource_limits_new();
     # defaults
-    assert_eq(rlim_max_memory(rl), 268435456, "rl default mem");
-    assert_eq(rlim_max_cpu_time(rl), 3600, "rl default cpu");
-    assert_eq(rlim_max_fds(rl), 256, "rl default fds");
-    assert_eq(rlim_max_procs(rl), 64, "rl default procs");
-    assert_eq(rlim_max_disk(rl), 0, "rl default disk");
-    assert_eq(rlim_net_bandwidth(rl), 0, "rl default bw");
+    assert_eq(ResourceLimits_max_memory(rl), 268435456, "rl default mem");
+    assert_eq(ResourceLimits_max_cpu_time(rl), 3600, "rl default cpu");
+    assert_eq(ResourceLimits_max_fds(rl), 256, "rl default fds");
+    assert_eq(ResourceLimits_max_procs(rl), 64, "rl default procs");
+    assert_eq(ResourceLimits_max_disk(rl), 0, "rl default disk");
+    assert_eq(ResourceLimits_net_bw(rl), 0, "rl default bw");
     # set + get roundtrip
-    rlim_set_max_memory(rl, 536870912);
-    assert_eq(rlim_max_memory(rl), 536870912, "rl set mem 512MB");
-    rlim_set_max_cpu(rl, 7200);
-    assert_eq(rlim_max_cpu_time(rl), 7200, "rl set cpu 7200");
-    rlim_set_max_fds(rl, 512);
-    assert_eq(rlim_max_fds(rl), 512, "rl set fds 512");
-    rlim_set_max_procs(rl, 128);
-    assert_eq(rlim_max_procs(rl), 128, "rl set procs 128");
-    rlim_set_max_disk(rl, 1073741824);
-    assert_eq(rlim_max_disk(rl), 1073741824, "rl set disk 1GB");
-    rlim_set_net_bw(rl, 100000000);
-    assert_eq(rlim_net_bandwidth(rl), 100000000, "rl set bw 100Mbps");
+    ResourceLimits_set_max_memory(rl, 536870912);
+    assert_eq(ResourceLimits_max_memory(rl), 536870912, "rl set mem 512MB");
+    ResourceLimits_set_max_cpu_time(rl, 7200);
+    assert_eq(ResourceLimits_max_cpu_time(rl), 7200, "rl set cpu 7200");
+    ResourceLimits_set_max_fds(rl, 512);
+    assert_eq(ResourceLimits_max_fds(rl), 512, "rl set fds 512");
+    ResourceLimits_set_max_procs(rl, 128);
+    assert_eq(ResourceLimits_max_procs(rl), 128, "rl set procs 128");
+    ResourceLimits_set_max_disk(rl, 1073741824);
+    assert_eq(ResourceLimits_max_disk(rl), 1073741824, "rl set disk 1GB");
+    ResourceLimits_set_net_bw(rl, 100000000);
+    assert_eq(ResourceLimits_net_bw(rl), 100000000, "rl set bw 100Mbps");
     return 0;
 }
 
 # Test: a fresh ResourceUsage reads 0 for memory, cpu, fds and procs.
 fn test_agent_resource_usage_accessors() {
     var ru = resource_usage_new();
-    assert_eq(rusage_memory(ru), 0, "ru default mem");
-    assert_eq(rusage_cpu(ru), 0, "ru default cpu");
-    assert_eq(rusage_fds(ru), 0, "ru default fds");
-    assert_eq(rusage_procs(ru), 0, "ru default procs");
+    assert_eq(ResourceUsage_mem_used(ru), 0, "ru default mem");
+    assert_eq(ResourceUsage_cpu_used(ru), 0, "ru default cpu");
+    assert_eq(ResourceUsage_fds_used(ru), 0, "ru default fds");
+    assert_eq(ResourceUsage_procs_used(ru), 0, "ru default procs");
     return 0;
 }
 
 # Test: AgentConfig name and defaults, then the type / restart policy / max_restarts setters.
 fn test_agent_config_extended() {
     var cfg = agent_config_new(str_from("ext-test"));
-    assert_eq(str_eq(aconf_name(cfg), str_from("ext-test")), 1, "cfg name");
-    assert_eq(aconf_type(cfg), AGENT_TYPE_USER, "cfg default type user");
-    assert_eq(aconf_restart_policy(cfg), RESTART_NEVER, "cfg default restart never");
-    assert_eq(aconf_max_restarts(cfg), 3, "cfg default max_restarts 3");
-    assert_eq(aconf_startup_timeout(cfg), 0, "cfg default startup timeout 0");
-    assert_eq(aconf_shutdown_timeout(cfg), 0, "cfg default shutdown timeout 0");
-    assert_eq(aconf_restart_backoff(cfg), 0, "cfg default no backoff");
-    assert_eq(aconf_metadata(cfg), 0, "cfg default no metadata");
-    assert_eq(aconf_lifecycle_hooks(cfg), 0, "cfg default no hooks");
-    assert(aconf_limits(cfg) != 0, "cfg has resource limits");
+    assert_eq(str_eq(AgentConfig_name(cfg), str_from("ext-test")), 1, "cfg name");
+    assert_eq(AgentConfig_type(cfg), AGENT_TYPE_USER, "cfg default type user");
+    assert_eq(AgentConfig_restart_policy(cfg), RESTART_NEVER, "cfg default restart never");
+    assert_eq(AgentConfig_max_restarts(cfg), 3, "cfg default max_restarts 3");
+    assert_eq(AgentConfig_startup_timeout(cfg), 0, "cfg default startup timeout 0");
+    assert_eq(AgentConfig_shutdown_timeout(cfg), 0, "cfg default shutdown timeout 0");
+    assert_eq(AgentConfig_restart_backoff(cfg), 0, "cfg default no backoff");
+    assert_eq(AgentConfig_metadata(cfg), 0, "cfg default no metadata");
+    assert_eq(AgentConfig_lifecycle_hooks(cfg), 0, "cfg default no hooks");
+    assert(AgentConfig_limits(cfg) != 0, "cfg has resource limits");
     # set and verify
-    aconf_set_type(cfg, AGENT_TYPE_SERVICE);
-    assert_eq(aconf_type(cfg), AGENT_TYPE_SERVICE, "cfg set type service");
-    aconf_set_restart_policy(cfg, RESTART_ON_FAILURE);
-    assert_eq(aconf_restart_policy(cfg), RESTART_ON_FAILURE, "cfg set restart on_failure");
-    aconf_set_max_restarts(cfg, 5);
-    assert_eq(aconf_max_restarts(cfg), 5, "cfg set max_restarts 5");
+    AgentConfig_set_type(cfg, AGENT_TYPE_SERVICE);
+    assert_eq(AgentConfig_type(cfg), AGENT_TYPE_SERVICE, "cfg set type service");
+    AgentConfig_set_restart_policy(cfg, RESTART_ON_FAILURE);
+    assert_eq(AgentConfig_restart_policy(cfg), RESTART_ON_FAILURE, "cfg set restart on_failure");
+    AgentConfig_set_max_restarts(cfg, 5);
+    assert_eq(AgentConfig_max_restarts(cfg), 5, "cfg set max_restarts 5");
     return 0;
 }
 
 # Test: a fresh AgentRateLimit has zero tokens/hour, requests/min and concurrency.
 fn test_agent_rate_limit() {
     var rl = agent_rate_limit_new();
-    assert_eq(arl_tokens_per_hour(rl), 0, "arl default tokens");
-    assert_eq(arl_requests_per_min(rl), 0, "arl default requests");
-    assert_eq(arl_concurrent(rl), 0, "arl default concurrent");
+    assert_eq(AgentRateLimit_tokens_per_hour(rl), 0, "arl default tokens");
+    assert_eq(AgentRateLimit_requests_per_min(rl), 0, "arl default requests");
+    assert_eq(AgentRateLimit_concurrent(rl), 0, "arl default concurrent");
     return 0;
 }
 
@@ -86,9 +86,9 @@ fn test_agent_rate_limit() {
 fn test_agent_event() {
     var id = agent_id_new();
     var ae = agent_event_new(id, 42, str_from("payload-data"));
-    assert_eq(agent_id_eq(aevent_agent_id(ae), id), 1, "ae agent_id");
-    assert_eq(aevent_type(ae), 42, "ae type");
-    assert_eq(str_eq(aevent_payload(ae), str_from("payload-data")), 1, "ae payload");
+    assert_eq(agent_id_eq(AgentEvent_agent_id(ae), id), 1, "ae agent_id");
+    assert_eq(AgentEvent_type(ae), 42, "ae type");
+    assert_eq(str_eq(AgentEvent_payload(ae), str_from("payload-data")), 1, "ae payload");
     return 0;
 }
 
@@ -105,54 +105,54 @@ fn test_agent_stop_reason() {
 # Test: HealthCheck defaults, empty LifecycleHooks, and setting a pre_start hook with timeout.
 fn test_agent_lifecycle() {
     var hc = agnostik_health_check_new();
-    assert_eq(hc_probe_type(hc), PROBE_LIVENESS_READINESS, "hc default probe");
-    assert_eq(hc_interval(hc), 30, "hc default interval");
-    assert_eq(hc_timeout(hc), 5, "hc default timeout");
-    assert_eq(hc_retries(hc), 3, "hc default retries");
-    assert_eq(hc_initial_delay(hc), 0, "hc default initial_delay");
+    assert_eq(HealthCheck_probe_type(hc), PROBE_LIVENESS_READINESS, "hc default probe");
+    assert_eq(HealthCheck_interval(hc), 30, "hc default interval");
+    assert_eq(HealthCheck_timeout(hc), 5, "hc default timeout");
+    assert_eq(HealthCheck_retries(hc), 3, "hc default retries");
+    assert_eq(HealthCheck_initial_delay(hc), 0, "hc default initial_delay");
     # lifecycle hooks
     var lh = lifecycle_hooks_new();
-    assert_eq(lhooks_pre_start(lh), 0, "lh default no pre_start");
-    assert_eq(lhooks_post_start(lh), 0, "lh default no post_start");
-    assert_eq(lhooks_pre_stop(lh), 0, "lh default no pre_stop");
-    assert_eq(lhooks_post_stop(lh), 0, "lh default no post_stop");
+    assert_eq(LifecycleHooks_pre_start(lh), 0, "lh default no pre_start");
+    assert_eq(LifecycleHooks_post_start(lh), 0, "lh default no post_start");
+    assert_eq(LifecycleHooks_pre_stop(lh), 0, "lh default no pre_stop");
+    assert_eq(LifecycleHooks_post_stop(lh), 0, "lh default no post_stop");
     var hook = lifecycle_hook_new(vec_new(), 30);
-    lhooks_set_pre_start(lh, hook);
-    assert(lhooks_pre_start(lh) != 0, "lh set pre_start");
-    assert_eq(lhook_timeout(hook), 30, "hook timeout 30");
+    LifecycleHooks_set_pre_start(lh, hook);
+    assert(LifecycleHooks_pre_start(lh) != 0, "lh set pre_start");
+    assert_eq(LifecycleHook_timeout(hook), 30, "hook timeout 30");
     return 0;
 }
 
 # Test: AgentCapabilities skills/input_types vectors and the max_tasks setter.
 fn test_agent_capabilities() {
     var ac = agent_capabilities_new();
-    assert_eq(acap_max_tasks(ac), 0, "acap default max_tasks");
-    vec_push(acap_skills(ac), str_from("summarize"));
-    assert_eq(vec_len(acap_skills(ac)), 1, "acap 1 skill");
-    vec_push(acap_input_types(ac), str_from("text"));
-    assert_eq(vec_len(acap_input_types(ac)), 1, "acap 1 input");
-    acap_set_max_tasks(ac, 10);
-    assert_eq(acap_max_tasks(ac), 10, "acap set max_tasks");
+    assert_eq(AgentCapabilities_max_tasks(ac), 0, "acap default max_tasks");
+    vec_push(AgentCapabilities_skills(ac), str_from("summarize"));
+    assert_eq(vec_len(AgentCapabilities_skills(ac)), 1, "acap 1 skill");
+    vec_push(AgentCapabilities_input_types(ac), str_from("text"));
+    assert_eq(vec_len(AgentCapabilities_input_types(ac)), 1, "acap 1 input");
+    AgentCapabilities_set_max_tasks(ac, 10);
+    assert_eq(AgentCapabilities_max_tasks(ac), 10, "acap set max_tasks");
     return 0;
 }
 
 # Test: SchedulingConstraints defaults and the priority setter.
 fn test_agent_scheduling() {
     var sc = scheduling_constraints_new();
-    assert_eq(sched_priority(sc), 0, "sched default priority");
-    assert_eq(sched_preemptible(sc), 0, "sched default preemptible");
-    sched_set_priority(sc, 10);
-    assert_eq(sched_priority(sc), 10, "sched set priority");
+    assert_eq(SchedulingConstraints_priority(sc), 0, "sched default priority");
+    assert_eq(SchedulingConstraints_preemptible(sc), 0, "sched default preemptible");
+    SchedulingConstraints_set_priority(sc, 10);
+    assert_eq(SchedulingConstraints_priority(sc), 10, "sched set priority");
     return 0;
 }
 
 # Test: RestartBackoff defaults (1000 ms delay, 2000 multiplier, 60000 ms max, jitter on).
 fn test_agent_restart_backoff() {
     var rb = restart_backoff_new();
-    assert_eq(rback_initial_delay(rb), 1000, "rb default delay 1000");
-    assert_eq(rback_multiplier(rb), 2000, "rb default mult 2000");
-    assert_eq(rback_max_delay(rb), 60000, "rb default max 60000");
-    assert_eq(rback_jitter(rb), 1, "rb default jitter 1");
+    assert_eq(RestartBackoff_initial_delay(rb), 1000, "rb default delay 1000");
+    assert_eq(RestartBackoff_multiplier(rb), 2000, "rb default mult 2000");
+    assert_eq(RestartBackoff_max_delay(rb), 60000, "rb default max 60000");
+    assert_eq(RestartBackoff_jitter(rb), 1, "rb default jitter 1");
     return 0;
 }
 
@@ -161,16 +161,16 @@ fn test_agent_resource_request_grant() {
     var id = agent_id_new();
     var lim = resource_limits_new();
     var rr = resource_request_new(id, lim);
-    assert_eq(agent_id_eq(rreq_agent_id(rr), id), 1, "rr agent_id");
-    assert(rreq_limits(rr) != 0, "rr has limits");
-    assert_eq(rreq_justification(rr), 0, "rr default no justification");
-    rreq_set_justification(rr, str_from("need more memory"));
-    assert_eq(str_eq(rreq_justification(rr), str_from("need more memory")), 1, "rr set justification");
+    assert_eq(agent_id_eq(ResourceRequest_agent_id(rr), id), 1, "rr agent_id");
+    assert(ResourceRequest_limits(rr) != 0, "rr has limits");
+    assert_eq(ResourceRequest_justification(rr), 0, "rr default no justification");
+    ResourceRequest_set_justification(rr, str_from("need more memory"));
+    assert_eq(str_eq(ResourceRequest_justification(rr), str_from("need more memory")), 1, "rr set justification");
     var rg = resource_grant_new(id, lim, 1);
-    assert_eq(rgrant_approved(rg), 1, "rg approved");
-    assert_eq(rgrant_reason(rg), 0, "rg default no reason");
-    rgrant_set_reason(rg, str_from("within limits"));
-    assert_eq(str_eq(rgrant_reason(rg), str_from("within limits")), 1, "rg set reason");
+    assert_eq(ResourceGrant_approved(rg), 1, "rg approved");
+    assert_eq(ResourceGrant_reason(rg), 0, "rg default no reason");
+    ResourceGrant_set_reason(rg, str_from("within limits"));
+    assert_eq(str_eq(ResourceGrant_reason(rg), str_from("within limits")), 1, "rg set reason");
     return 0;
 }
 
@@ -179,13 +179,13 @@ fn test_agent_message_extended() {
     var s = agent_id_new();
     var r = agent_id_new();
     var msg = agent_message_new(s, r, str_from("hello"));
-    assert(amsg_id(msg) != 0, "msg has id");
-    assert_eq(agent_id_eq(amsg_sender(msg), s), 1, "msg sender");
-    assert_eq(agent_id_eq(amsg_receiver(msg), r), 1, "msg receiver");
-    assert_eq(amsg_correlation_id(msg), 0, "msg default no correlation");
-    assert_eq(amsg_reply_to(msg), 0, "msg default no reply_to");
-    amsg_set_correlation_id(msg, str_from("corr-1"));
-    assert_eq(str_eq(amsg_correlation_id(msg), str_from("corr-1")), 1, "msg set correlation");
+    assert(AgentMessage_id(msg) != 0, "msg has id");
+    assert_eq(agent_id_eq(AgentMessage_sender(msg), s), 1, "msg sender");
+    assert_eq(agent_id_eq(AgentMessage_receiver(msg), r), 1, "msg receiver");
+    assert_eq(AgentMessage_correlation_id(msg), 0, "msg default no correlation");
+    assert_eq(AgentMessage_reply_to(msg), 0, "msg default no reply_to");
+    AgentMessage_set_correlation_id(msg, str_from("corr-1"));
+    assert_eq(str_eq(AgentMessage_correlation_id(msg), str_from("corr-1")), 1, "msg set correlation");
     return 0;
 }
 
@@ -193,29 +193,29 @@ fn test_agent_message_extended() {
 fn test_agent_topic_message() {
     var id = agent_id_new();
     var tm = topic_message_new(str_from("events"), id);
-    assert(tmsg_id(tm) != 0, "tm has id");
-    assert_eq(str_eq(tmsg_topic(tm), str_from("events")), 1, "tm topic");
-    assert_eq(agent_id_eq(tmsg_publisher(tm), id), 1, "tm publisher");
-    assert(tmsg_timestamp(tm) > 0, "tm has timestamp");
-    tmsg_set_priority(tm, 5);
-    assert_eq(tmsg_priority(tm), 5, "tm set priority");
-    tmsg_set_ttl(tm, 3600);
-    assert_eq(tmsg_ttl(tm), 3600, "tm set ttl");
+    assert(TopicMessage_id(tm) != 0, "tm has id");
+    assert_eq(str_eq(TopicMessage_topic(tm), str_from("events")), 1, "tm topic");
+    assert_eq(agent_id_eq(TopicMessage_publisher(tm), id), 1, "tm publisher");
+    assert(TopicMessage_timestamp(tm) > 0, "tm has timestamp");
+    TopicMessage_set_priority(tm, 5);
+    assert_eq(TopicMessage_priority(tm), 5, "tm set priority");
+    TopicMessage_set_ttl(tm, 3600);
+    assert_eq(TopicMessage_ttl(tm), 3600, "tm set ttl");
     return 0;
 }
 
 # Test: SandboxConfig defaults and the net-access, seccomp, AppArmor and SELinux setters.
 fn test_security_sandbox_extended() {
     var sb = sandbox_config_new();
-    assert_eq(sandbox_net_access(sb), NET_LOCALHOST_ONLY, "sb default net");
-    assert_eq(sandbox_isolate_net(sb), 1, "sb default isolate");
-    assert_eq(sandbox_seccomp(sb), 0, "sb default no seccomp");
-    sandbox_set_net_access(sb, NET_FULL);
-    assert_eq(sandbox_net_access(sb), NET_FULL, "sb set net full");
-    sandbox_set_seccomp(sb, 1);
-    assert_eq(sandbox_seccomp(sb), 1, "sb set seccomp");
-    sandbox_set_apparmor(sb, str_from("docker-default"));
-    sandbox_set_selinux(sb, str_from("system_u:system_r:container_t"));
+    assert_eq(SandboxConfig_net_access(sb), NET_LOCALHOST_ONLY, "sb default net");
+    assert_eq(SandboxConfig_isolate_net(sb), 1, "sb default isolate");
+    assert_eq(SandboxConfig_seccomp(sb), 0, "sb default no seccomp");
+    SandboxConfig_set_net_access(sb, NET_FULL);
+    assert_eq(SandboxConfig_net_access(sb), NET_FULL, "sb set net full");
+    SandboxConfig_set_seccomp(sb, 1);
+    assert_eq(SandboxConfig_seccomp(sb), 1, "sb set seccomp");
+    SandboxConfig_set_apparmor(sb, str_from("docker-default"));
+    SandboxConfig_set_selinux(sb, str_from("system_u:system_r:container_t"));
     return 0;
 }
 
@@ -223,54 +223,54 @@ fn test_security_sandbox_extended() {
 fn test_security_context_extended() {
     var id = agent_id_new();
     var ctx = security_context_new(id);
-    assert_eq(agent_id_eq(secctx_agent_id(ctx), id), 1, "ctx agent_id");
-    assert_eq(secctx_no_new_privs(ctx), 1, "ctx no_new_privs");
-    assert_eq(vec_len(secctx_permissions(ctx)), 0, "ctx default empty perms");
-    assert_eq(secctx_run_as_user(ctx), 0, "ctx default user 0");
-    assert_eq(secctx_run_as_group(ctx), 0, "ctx default group 0");
-    assert_eq(secctx_readonly_root(ctx), 0, "ctx default not readonly");
-    assert(secctx_sandbox(ctx) != 0, "ctx has sandbox");
-    vec_push(secctx_permissions(ctx), PERM_FILE_READ);
-    vec_push(secctx_permissions(ctx), PERM_NETWORK_ACCESS);
-    assert_eq(vec_len(secctx_permissions(ctx)), 2, "ctx 2 perms");
+    assert_eq(agent_id_eq(SecurityContext_agent_id(ctx), id), 1, "ctx agent_id");
+    assert_eq(SecurityContext_no_new_privs(ctx), 1, "ctx no_new_privs");
+    assert_eq(vec_len(SecurityContext_permissions(ctx)), 0, "ctx default empty perms");
+    assert_eq(SecurityContext_run_as_user(ctx), 0, "ctx default user 0");
+    assert_eq(SecurityContext_run_as_group(ctx), 0, "ctx default group 0");
+    assert_eq(SecurityContext_readonly_root(ctx), 0, "ctx default not readonly");
+    assert(SecurityContext_sandbox(ctx) != 0, "ctx has sandbox");
+    vec_push(SecurityContext_permissions(ctx), PERM_FILE_READ);
+    vec_push(SecurityContext_permissions(ctx), PERM_NETWORK_ACCESS);
+    assert_eq(vec_len(SecurityContext_permissions(ctx)), 2, "ctx 2 perms");
     return 0;
 }
 
 # Test: SecurityPolicy name, allow effect, and its permissions vector.
 fn test_security_policy() {
     var pol = security_policy_new(str_from("allow-read"), POLICY_ALLOW);
-    assert_eq(str_eq(secpol_name(pol), str_from("allow-read")), 1, "pol name");
-    assert_eq(secpol_effect(pol), POLICY_ALLOW, "pol effect allow");
-    assert_eq(vec_len(secpol_permissions(pol)), 0, "pol default empty perms");
-    vec_push(secpol_permissions(pol), PERM_FILE_READ);
-    assert_eq(vec_len(secpol_permissions(pol)), 1, "pol 1 perm");
+    assert_eq(str_eq(SecurityPolicy_name(pol), str_from("allow-read")), 1, "pol name");
+    assert_eq(SecurityPolicy_effect(pol), POLICY_ALLOW, "pol effect allow");
+    assert_eq(vec_len(SecurityPolicy_permissions(pol)), 0, "pol default empty perms");
+    vec_push(SecurityPolicy_permissions(pol), PERM_FILE_READ);
+    assert_eq(vec_len(SecurityPolicy_permissions(pol)), 1, "pol 1 perm");
     return 0;
 }
 
 # Test: a CapabilitySet starts with all five sets empty; effective/permitted accept a push.
 fn test_security_capabilities() {
     var cs = capability_set_new();
-    assert_eq(vec_len(capset_effective(cs)), 0, "cs default empty effective");
-    assert_eq(vec_len(capset_permitted(cs)), 0, "cs default empty permitted");
-    assert_eq(vec_len(capset_inheritable(cs)), 0, "cs default empty inheritable");
-    assert_eq(vec_len(capset_bounding(cs)), 0, "cs default empty bounding");
-    assert_eq(vec_len(capset_ambient(cs)), 0, "cs default empty ambient");
-    vec_push(capset_effective(cs), CAP_NET_BIND_SERVICE);
-    vec_push(capset_permitted(cs), CAP_NET_BIND_SERVICE);
-    assert_eq(vec_len(capset_effective(cs)), 1, "cs 1 effective");
-    assert_eq(vec_len(capset_permitted(cs)), 1, "cs 1 permitted");
+    assert_eq(vec_len(CapabilitySet_effective(cs)), 0, "cs default empty effective");
+    assert_eq(vec_len(CapabilitySet_permitted(cs)), 0, "cs default empty permitted");
+    assert_eq(vec_len(CapabilitySet_inheritable(cs)), 0, "cs default empty inheritable");
+    assert_eq(vec_len(CapabilitySet_bounding(cs)), 0, "cs default empty bounding");
+    assert_eq(vec_len(CapabilitySet_ambient(cs)), 0, "cs default empty ambient");
+    vec_push(CapabilitySet_effective(cs), CAP_NET_BIND_SERVICE);
+    vec_push(CapabilitySet_permitted(cs), CAP_NET_BIND_SERVICE);
+    assert_eq(vec_len(CapabilitySet_effective(cs)), 1, "cs 1 effective");
+    assert_eq(vec_len(CapabilitySet_permitted(cs)), 1, "cs 1 permitted");
     return 0;
 }
 
 # Test: a fresh SandboxCapabilities reports every probe as 0.
 fn test_security_sandbox_capabilities() {
     var sc = sandbox_capabilities_new();
-    assert_eq(sbcap_seccomp(sc), 0, "sbcap default no seccomp");
-    assert_eq(sbcap_seccomp_mode(sc), 0, "sbcap default mode 0");
-    assert_eq(sbcap_landlock(sc), 0, "sbcap default no landlock");
-    assert_eq(sbcap_ll_abi(sc), 0, "sbcap default abi 0");
-    assert_eq(sbcap_cgroup_v2(sc), 0, "sbcap default no cgroup");
-    assert_eq(sbcap_namespaces(sc), 0, "sbcap default no namespaces");
+    assert_eq(SandboxCapabilities_seccomp(sc), 0, "sbcap default no seccomp");
+    assert_eq(SandboxCapabilities_seccomp_mode(sc), 0, "sbcap default mode 0");
+    assert_eq(SandboxCapabilities_landlock(sc), 0, "sbcap default no landlock");
+    assert_eq(SandboxCapabilities_ll_abi(sc), 0, "sbcap default abi 0");
+    assert_eq(SandboxCapabilities_cgroup_v2(sc), 0, "sbcap default no cgroup");
+    assert_eq(SandboxCapabilities_namespaces(sc), 0, "sbcap default no namespaces");
     return 0;
 }
 
@@ -278,100 +278,100 @@ fn test_security_sandbox_capabilities() {
 fn test_security_auth() {
     var id = agent_id_new();
     var tp = token_payload_new(str_from("user-123"), ROLE_OPERATOR);
-    assert_eq(str_eq(token_sub(tp), str_from("user-123")), 1, "tp sub");
-    assert_eq(token_role(tp), ROLE_OPERATOR, "tp role operator");
-    assert_eq(vec_len(token_permissions(tp)), 0, "tp default no perms");
+    assert_eq(str_eq(TokenPayload_sub(tp), str_from("user-123")), 1, "tp sub");
+    assert_eq(TokenPayload_role(tp), ROLE_OPERATOR, "tp role operator");
+    assert_eq(vec_len(TokenPayload_permissions(tp)), 0, "tp default no perms");
     var ac = auth_context_new(id, ROLE_ADMIN);
-    assert_eq(agent_id_eq(authctx_agent_id(ac), id), 1, "ac agent_id");
-    assert_eq(authctx_role(ac), ROLE_ADMIN, "ac role admin");
-    assert_eq(vec_len(authctx_permissions(ac)), 0, "ac default no perms");
+    assert_eq(agent_id_eq(AuthContext_agent_id(ac), id), 1, "ac agent_id");
+    assert_eq(AuthContext_role(ac), ROLE_ADMIN, "ac role admin");
+    assert_eq(vec_len(AuthContext_permissions(ac)), 0, "ac default no perms");
     return 0;
 }
 
 # Test: tool_definition_new stores name, description and (null) params.
 fn test_llm_tool_definition() {
     var td = tool_definition_new(str_from("search"), str_from("Search the web"), 0);
-    assert_eq(str_eq(tooldef_name(td), str_from("search")), 1, "td name");
-    assert_eq(str_eq(tooldef_desc(td), str_from("Search the web")), 1, "td desc");
-    assert_eq(tooldef_params(td), 0, "td no params");
+    assert_eq(str_eq(ToolDefinition_name(td), str_from("search")), 1, "td name");
+    assert_eq(str_eq(ToolDefinition_desc(td), str_from("Search the web")), 1, "td desc");
+    assert_eq(ToolDefinition_params(td), 0, "td no params");
     return 0;
 }
 
 # Test: tool_call_new stores the call id, tool name and argument JSON.
 fn test_llm_tool_call() {
     var tc = tool_call_new(str_from("call_1"), str_from("search"), str_from("{\"q\":\"test\"}"));
-    assert_eq(str_eq(tcall_id(tc), str_from("call_1")), 1, "tc id");
-    assert_eq(str_eq(tcall_name(tc), str_from("search")), 1, "tc name");
-    assert_eq(str_eq(tcall_args(tc), str_from("{\"q\":\"test\"}")), 1, "tc args");
+    assert_eq(str_eq(ToolCall_id(tc), str_from("call_1")), 1, "tc id");
+    assert_eq(str_eq(ToolCall_name(tc), str_from("search")), 1, "tc name");
+    assert_eq(str_eq(ToolCall_args(tc), str_from("{\"q\":\"test\"}")), 1, "tc args");
     return 0;
 }
 
 # Test: SamplingParams defaults, the temperature/top_p/top_k/seed setters, and stop sequences.
 fn test_llm_sampling_params() {
     var sp = sampling_params_new();
-    assert_eq(samp_temperature(sp), 1000, "sp default temp 1000");
-    assert_eq(samp_top_p(sp), 0, "sp default top_p");
-    assert_eq(samp_top_k(sp), 0, "sp default top_k");
-    assert_eq(samp_freq_penalty(sp), 0, "sp default freq");
-    assert_eq(samp_pres_penalty(sp), 0, "sp default pres");
-    assert_eq(vec_len(samp_stop_seqs(sp)), 0, "sp default no stops");
-    assert_eq(samp_seed(sp), 0, "sp default seed");
-    samp_set_temperature(sp, 700);
-    samp_set_top_p(sp, 900);
-    samp_set_top_k(sp, 50);
-    samp_set_seed(sp, 42);
-    assert_eq(samp_temperature(sp), 700, "sp set temp");
-    assert_eq(samp_top_p(sp), 900, "sp set top_p");
-    assert_eq(samp_top_k(sp), 50, "sp set top_k");
-    assert_eq(samp_seed(sp), 42, "sp set seed");
-    vec_push(samp_stop_seqs(sp), str_from("\n"));
-    assert_eq(vec_len(samp_stop_seqs(sp)), 1, "sp 1 stop seq");
+    assert_eq(SamplingParams_temperature(sp), 1000, "sp default temp 1000");
+    assert_eq(SamplingParams_top_p(sp), 0, "sp default top_p");
+    assert_eq(SamplingParams_top_k(sp), 0, "sp default top_k");
+    assert_eq(SamplingParams_freq_penalty(sp), 0, "sp default freq");
+    assert_eq(SamplingParams_pres_penalty(sp), 0, "sp default pres");
+    assert_eq(vec_len(SamplingParams_stop_seqs(sp)), 0, "sp default no stops");
+    assert_eq(SamplingParams_seed(sp), 0, "sp default seed");
+    SamplingParams_set_temperature(sp, 700);
+    SamplingParams_set_top_p(sp, 900);
+    SamplingParams_set_top_k(sp, 50);
+    SamplingParams_set_seed(sp, 42);
+    assert_eq(SamplingParams_temperature(sp), 700, "sp set temp");
+    assert_eq(SamplingParams_top_p(sp), 900, "sp set top_p");
+    assert_eq(SamplingParams_top_k(sp), 50, "sp set top_k");
+    assert_eq(SamplingParams_seed(sp), 42, "sp set seed");
+    vec_push(SamplingParams_stop_seqs(sp), str_from("\n"));
+    assert_eq(vec_len(SamplingParams_stop_seqs(sp)), 1, "sp 1 stop seq");
     return 0;
 }
 
 # Test: TokenUsage zero defaults and a set/get roundtrip on all five counters.
 fn test_llm_token_usage_extended() {
     var tu = token_usage_new();
-    assert_eq(tusage_prompt(tu), 0, "tu default prompt");
-    assert_eq(tusage_completion(tu), 0, "tu default completion");
-    assert_eq(tusage_total(tu), 0, "tu default total");
-    assert_eq(tusage_cache_create(tu), 0, "tu default cache_create");
-    assert_eq(tusage_cache_read(tu), 0, "tu default cache_read");
-    tusage_set_prompt(tu, 100);
-    tusage_set_completion(tu, 50);
-    tusage_set_total(tu, 150);
-    tusage_set_cache_create(tu, 20);
-    tusage_set_cache_read(tu, 10);
-    assert_eq(tusage_prompt(tu), 100, "tu set prompt");
-    assert_eq(tusage_completion(tu), 50, "tu set completion");
-    assert_eq(tusage_total(tu), 150, "tu set total");
-    assert_eq(tusage_cache_create(tu), 20, "tu set cache_create");
-    assert_eq(tusage_cache_read(tu), 10, "tu set cache_read");
+    assert_eq(TokenUsage_prompt_tok(tu), 0, "tu default prompt");
+    assert_eq(TokenUsage_completion_tok(tu), 0, "tu default completion");
+    assert_eq(TokenUsage_total_tok(tu), 0, "tu default total");
+    assert_eq(TokenUsage_cache_create_tok(tu), 0, "tu default cache_create");
+    assert_eq(TokenUsage_cache_read_tok(tu), 0, "tu default cache_read");
+    TokenUsage_set_prompt_tok(tu, 100);
+    TokenUsage_set_completion_tok(tu, 50);
+    TokenUsage_set_total_tok(tu, 150);
+    TokenUsage_set_cache_create_tok(tu, 20);
+    TokenUsage_set_cache_read_tok(tu, 10);
+    assert_eq(TokenUsage_prompt_tok(tu), 100, "tu set prompt");
+    assert_eq(TokenUsage_completion_tok(tu), 50, "tu set completion");
+    assert_eq(TokenUsage_total_tok(tu), 150, "tu set total");
+    assert_eq(TokenUsage_cache_create_tok(tu), 20, "tu set cache_create");
+    assert_eq(TokenUsage_cache_read_tok(tu), 10, "tu set cache_read");
     return 0;
 }
 
 # Test: InferenceRequest defaults, system prompt + tools; InferenceResponse id/finish_reason.
 fn test_llm_inference_extended() {
     var req = inference_request_new(str_from("claude-3"));
-    assert_eq(str_eq(ireq_model(req), str_from("claude-3")), 1, "req model");
-    assert_eq(ireq_stream(req), 0, "req default no stream");
-    assert_eq(vec_len(ireq_messages(req)), 0, "req default no messages");
-    assert_eq(vec_len(ireq_tools(req)), 0, "req default no tools");
-    assert(ireq_sampling(req) != 0, "req has sampling");
-    ireq_set_system(req, str_from("You are helpful."));
-    assert_eq(str_eq(ireq_system(req), str_from("You are helpful.")), 1, "req set system");
+    assert_eq(str_eq(InferenceRequest_model(req), str_from("claude-3")), 1, "req model");
+    assert_eq(InferenceRequest_stream(req), 0, "req default no stream");
+    assert_eq(vec_len(InferenceRequest_messages(req)), 0, "req default no messages");
+    assert_eq(vec_len(InferenceRequest_tools(req)), 0, "req default no tools");
+    assert(InferenceRequest_sampling(req) != 0, "req has sampling");
+    InferenceRequest_set_system(req, str_from("You are helpful."));
+    assert_eq(str_eq(InferenceRequest_system(req), str_from("You are helpful.")), 1, "req set system");
     var td = tool_definition_new(str_from("calc"), str_from("Calculate"), 0);
-    vec_push(ireq_tools(req), td);
-    assert_eq(vec_len(ireq_tools(req)), 1, "req 1 tool");
+    vec_push(InferenceRequest_tools(req), td);
+    assert_eq(vec_len(InferenceRequest_tools(req)), 1, "req 1 tool");
     # response
     var resp = inference_response_new(str_from("claude-3"));
-    assert_eq(str_eq(iresp_model(resp), str_from("claude-3")), 1, "resp model");
-    assert_eq(iresp_finish_reason(resp), FINISH_STOP, "resp default stop");
-    assert(iresp_usage(resp) != 0, "resp has usage");
-    iresp_set_id(resp, str_from("msg_123"));
-    assert_eq(str_eq(iresp_id(resp), str_from("msg_123")), 1, "resp set id");
-    iresp_set_finish_reason(resp, FINISH_TOOL_USE);
-    assert_eq(iresp_finish_reason(resp), FINISH_TOOL_USE, "resp set tool_use");
+    assert_eq(str_eq(InferenceResponse_model(resp), str_from("claude-3")), 1, "resp model");
+    assert_eq(InferenceResponse_finish_reason(resp), FINISH_STOP, "resp default stop");
+    assert(InferenceResponse_usage(resp) != 0, "resp has usage");
+    InferenceResponse_set_id(resp, str_from("msg_123"));
+    assert_eq(str_eq(InferenceResponse_id(resp), str_from("msg_123")), 1, "resp set id");
+    InferenceResponse_set_finish_reason(resp, FINISH_TOOL_USE);
+    assert_eq(InferenceResponse_finish_reason(resp), FINISH_TOOL_USE, "resp set tool_use");
     return 0;
 }
 
@@ -399,24 +399,24 @@ fn test_llm_content_blocks() {
 # Test: ModelCapabilities model id/provider and the context-window and max-output setters.
 fn test_llm_model_capabilities() {
     var mc = model_capabilities_new(str_from("claude-3-opus"), LLM_ANTHROPIC);
-    assert_eq(str_eq(mcap_model_id(mc), str_from("claude-3-opus")), 1, "mc model_id");
-    assert_eq(mcap_provider(mc), LLM_ANTHROPIC, "mc provider");
-    assert_eq(mcap_context_window(mc), 0, "mc default ctx 0");
-    mcap_set_context_window(mc, 200000);
-    assert_eq(mcap_context_window(mc), 200000, "mc set ctx 200k");
-    mcap_set_max_output(mc, 4096);
-    assert_eq(mcap_max_output(mc), 4096, "mc set max_output");
+    assert_eq(str_eq(ModelCapabilities_model_id(mc), str_from("claude-3-opus")), 1, "mc model_id");
+    assert_eq(ModelCapabilities_provider(mc), LLM_ANTHROPIC, "mc provider");
+    assert_eq(ModelCapabilities_context_window(mc), 0, "mc default ctx 0");
+    ModelCapabilities_set_context_window(mc, 200000);
+    assert_eq(ModelCapabilities_context_window(mc), 200000, "mc set ctx 200k");
+    ModelCapabilities_set_max_output(mc, 4096);
+    assert_eq(ModelCapabilities_max_output(mc), 4096, "mc set max_output");
     return 0;
 }
 
 # Test: a fresh RateLimitInfo has every limit, remaining and reset field at 0.
 fn test_llm_rate_limit() {
     var rli = rate_limit_info_new();
-    assert_eq(rli_limit_requests(rli), 0, "rli default limit_req");
-    assert_eq(rli_remaining_requests(rli), 0, "rli default remain_req");
-    assert_eq(rli_limit_tokens(rli), 0, "rli default limit_tok");
-    assert_eq(rli_remaining_tokens(rli), 0, "rli default remain_tok");
-    assert_eq(rli_reset_seconds(rli), 0, "rli default reset");
+    assert_eq(RateLimitInfo_limit_requests(rli), 0, "rli default limit_req");
+    assert_eq(RateLimitInfo_remaining_requests(rli), 0, "rli default remain_req");
+    assert_eq(RateLimitInfo_limit_tokens(rli), 0, "rli default limit_tok");
+    assert_eq(RateLimitInfo_remaining_tokens(rli), 0, "rli default remain_tok");
+    assert_eq(RateLimitInfo_reset_seconds(rli), 0, "rli default reset");
     return 0;
 }
 

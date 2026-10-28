@@ -31,7 +31,7 @@ fn env_profile_parse(s: Str) {
     elif (str_eq_cstr(s, "Edge") == 1) { return Ok(ENV_EDGE); }
     return stik_err_invalid_argument(str_from("unknown EnvironmentProfile name"));
 }
-# An AgnosConfig. 40 bytes, all 8-byte slots, read through the acfg_*
+# An AgnosConfig. 40 bytes, all 8-byte slots, read through the AgnosConfig_*
 # accessors:
 #   +0 profile, +8 hostname, +16 components, +24 generation, +32 content_hash.
 # profile starts ENV_DEVELOPMENT, hostname an empty Str, components an empty
@@ -46,23 +46,23 @@ fn agnos_config_new() {
     return c;
 }
 # EnvironmentProfile in effect, ENV_DEVELOPMENT by default.
-fn acfg_profile(c)      { return load64(c); }
+fn AgnosConfig_profile(c)      { return load64(c); }
 # Hostname Str, empty by default.
-fn acfg_hostname(c)     { return load64(c + 8); }
+fn AgnosConfig_hostname(c)     { return load64(c + 8); }
 # Components map (map_new, cstr keys), created empty at construction.
-fn acfg_components(c)   { return load64(c + 16); }
-# Generation number; 0 at construction until acfg_set_generation.
-fn acfg_generation(c)   { return load64(c + 24); }
-# Set the value acfg_generation reads, stored as given (not validated). Returns 0.
-fn acfg_set_generation(c, v) { store64(c + 24, v); return 0; }
-# Content-hash slot; 0 at construction until acfg_set_content_hash.
-fn acfg_content_hash(c) { return load64(c + 32); }
-# Set the value acfg_content_hash reads, stored as given (not validated). Returns 0.
-fn acfg_set_content_hash(c, v) { store64(c + 32, v); return 0; }
+fn AgnosConfig_components(c)   { return load64(c + 16); }
+# Generation number; 0 at construction until AgnosConfig_set_generation.
+fn AgnosConfig_generation(c)   { return load64(c + 24); }
+# Set the value AgnosConfig_generation reads, stored as given (not validated). Returns 0.
+fn AgnosConfig_set_generation(c, v) { store64(c + 24, v); return 0; }
+# Content-hash slot; 0 at construction until AgnosConfig_set_content_hash.
+fn AgnosConfig_content_hash(c) { return load64(c + 32); }
+# Set the value AgnosConfig_content_hash reads, stored as given (not validated). Returns 0.
+fn AgnosConfig_set_content_hash(c, v) { store64(c + 32, v); return 0; }
 # Set the EnvironmentProfile. Stored without validation. Returns 0.
-fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
+fn AgnosConfig_set_profile(c, v)  { store64(c, v); return 0; }
 # Set the hostname Str. Not validated. Returns 0.
-fn acfg_set_hostname(c, v: Str) { store64(c + 8, v); return 0; }
+fn AgnosConfig_set_hostname(c, v: Str) { store64(c + 8, v); return 0; }
 struct EdgeResourceOverrides {
     max_memory: i64; max_cpu_time: i64; max_agents: i64;
 }
@@ -121,7 +121,7 @@ fn EdgeResourceOverrides_from_json_str(json) {
 # An EdgeResourceOverrides: resource-limit overrides a ProfileDefinition can
 # carry. 24 bytes, the EdgeResourceOverrides struct's three i64 fields:
 #   +0 max_memory, +8 max_cpu_time, +16 max_agents.
-# All start at 0; the eovr_set_* setters (v1.11.0) change them.
+# All start at 0; the EdgeResourceOverrides_set_* setters (v1.11.0) change them.
 fn edge_overrides_new() {
     var e = _stik_alloc(24);
     store64(e, 0);
@@ -130,23 +130,23 @@ fn edge_overrides_new() {
     return e;
 }
 # Maximum-memory override (the max_memory field), 0 at construction.
-fn eovr_max_memory(e) { return load64(e); }
-# Set the value eovr_max_memory reads, stored as given (not validated). Returns 0.
-fn eovr_set_max_memory(e, v) { store64(e, v); return 0; }
+fn EdgeResourceOverrides_max_memory(e) { return load64(e); }
+# Set the value EdgeResourceOverrides_max_memory reads, stored as given (not validated). Returns 0.
+fn EdgeResourceOverrides_set_max_memory(e, v) { store64(e, v); return 0; }
 # Maximum-CPU-time override (the max_cpu_time field), 0 at construction.
-fn eovr_max_cpu(e)    { return load64(e + 8); }
-# Set the value eovr_max_cpu reads, stored as given (not validated). Returns 0.
-fn eovr_set_max_cpu(e, v) { store64(e + 8, v); return 0; }
+fn EdgeResourceOverrides_max_cpu_time(e)    { return load64(e + 8); }
+# Set the value EdgeResourceOverrides_max_cpu_time reads, stored as given (not validated). Returns 0.
+fn EdgeResourceOverrides_set_max_cpu_time(e, v) { store64(e + 8, v); return 0; }
 # Maximum-agent-count override (the max_agents field), 0 at construction.
-fn eovr_max_agents(e) { return load64(e + 16); }
-# Set the value eovr_max_agents reads, stored as given (not validated). Returns 0.
-fn eovr_set_max_agents(e, v) { store64(e + 16, v); return 0; }
+fn EdgeResourceOverrides_max_agents(e) { return load64(e + 16); }
+# Set the value EdgeResourceOverrides_max_agents reads, stored as given (not validated). Returns 0.
+fn EdgeResourceOverrides_set_max_agents(e, v) { store64(e + 16, v); return 0; }
 # A ProfileDefinition: a named environment profile. 40 bytes, all 8-byte
-# slots, read through the profdef_* accessors:
+# slots, read through the ProfileDefinition_* accessors:
 #   +0 name (a Str), +8 profile (an EnvironmentProfile), +16 inherits_from,
 #   +24 edge_overrides, +32 settings.
 # inherits_from starts at -1, edge_overrides at 0 (none), and settings is an
-# empty cstr-keyed map. profdef_set_inherits_from and profdef_set_edge_overrides
+# empty cstr-keyed map. ProfileDefinition_set_inherits_from and ProfileDefinition_set_edge_overrides
 # (v1.11.0) set the two scalars.
 fn profile_definition_new(name: Str, profile) {
     var p = _stik_alloc(40);
@@ -158,21 +158,21 @@ fn profile_definition_new(name: Str, profile) {
     return p;
 }
 # Profile name Str, as passed.
-fn profdef_name(p)           { return load64(p); }
+fn ProfileDefinition_name(p)           { return load64(p); }
 # EnvironmentProfile the definition describes, as passed.
-fn profdef_profile(p)        { return load64(p + 8); }
+fn ProfileDefinition_profile(p)        { return load64(p + 8); }
 # Profile this one inherits from; -1 at construction until
-# profdef_set_inherits_from.
-fn profdef_inherits_from(p)  { return load64(p + 16); }
-# Set the value profdef_inherits_from reads, stored as given (not validated). Returns 0.
-fn profdef_set_inherits_from(p, v) { store64(p + 16, v); return 0; }
+# ProfileDefinition_set_inherits_from.
+fn ProfileDefinition_inherits_from(p)  { return load64(p + 16); }
+# Set the value ProfileDefinition_inherits_from reads, stored as given (not validated). Returns 0.
+fn ProfileDefinition_set_inherits_from(p, v) { store64(p + 16, v); return 0; }
 # EdgeResourceOverrides pointer; 0 (none) at construction and never set by
 # this module.
-fn profdef_edge_overrides(p) { return load64(p + 24); }
-# Set the value profdef_edge_overrides reads, stored as given (not validated). Returns 0.
-fn profdef_set_edge_overrides(p, v) { store64(p + 24, v); return 0; }
+fn ProfileDefinition_edge_overrides(p) { return load64(p + 24); }
+# Set the value ProfileDefinition_edge_overrides reads, stored as given (not validated). Returns 0.
+fn ProfileDefinition_set_edge_overrides(p, v) { store64(p + 24, v); return 0; }
 # Settings map (map_new, cstr keys), created empty at construction.
-fn profdef_settings(p)       { return load64(p + 32); }
+fn ProfileDefinition_settings(p)       { return load64(p + 32); }
 # A FleetConfig. 16 bytes: +0 profiles (a vec, starts empty), +8 default
 # (starts at 0).
 fn fleet_config_new() {
@@ -182,8 +182,8 @@ fn fleet_config_new() {
     return f;
 }
 # vec of the fleet's profiles, created empty; push to it directly.
-fn fleet_profiles(f)     { return load64(f); }
-# Default-profile slot; 0 at construction until fleet_set_default.
-fn fleet_default(f)      { return load64(f + 8); }
-# Set the value fleet_default reads, stored as given (not validated). Returns 0.
-fn fleet_set_default(f, v) { store64(f + 8, v); return 0; }
+fn FleetConfig_profiles(f)     { return load64(f); }
+# Default-profile slot; 0 at construction until FleetConfig_set_default.
+fn FleetConfig_default(f)      { return load64(f + 8); }
+# Set the value FleetConfig_default reads, stored as given (not validated). Returns 0.
+fn FleetConfig_set_default(f, v) { store64(f + 8, v); return 0; }

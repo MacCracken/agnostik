@@ -35,8 +35,8 @@ fn _b_version_roundtrip() { var ver_t, ver = version_from_str(_bench_vs); versio
 fn _b_traceparent() { tctx_to_traceparent(trace_context_new()); return 0; }
 fn _b_inference_request() {
     var r = inference_request_new(str_from("llama3"));
-    ireq_set_max_tokens(r, 1024);
-    vec_push(ireq_messages(r), message_text(ROLE_USER, str_from("hello")));
+    InferenceRequest_set_max_tokens(r, 1024);
+    vec_push(InferenceRequest_messages(r), message_text(ROLE_USER, str_from("hello")));
     return 0;
 }
 fn _b_audit_entry() {
@@ -45,20 +45,20 @@ fn _b_audit_entry() {
 }
 fn _b_accel_device() {
     var d = accelerator_device_new(0, str_from("RTX 4090"), VENDOR_NVIDIA, DEV_GPU);
-    adev_set_vram_total(d, 24576);
+    AcceleratorDevice_set_vram_total(d, 24576);
     return 0;
 }
 fn _b_token_usage() {
     var u = token_usage_new();
-    tusage_set_prompt(u, 100);
-    tusage_set_completion(u, 50);
-    tusage_set_total(u, 150);
+    TokenUsage_set_prompt_tok(u, 100);
+    TokenUsage_set_completion_tok(u, 50);
+    TokenUsage_set_total_tok(u, 150);
     return 0;
 }
 fn _b_security_context() {
     var ctx = security_context_new(agent_id_new());
-    vec_push(secctx_permissions(ctx), PERM_FILE_READ);
-    vec_push(secctx_permissions(ctx), PERM_NETWORK_ACCESS);
+    vec_push(SecurityContext_permissions(ctx), PERM_FILE_READ);
+    vec_push(SecurityContext_permissions(ctx), PERM_NETWORK_ACCESS);
     return 0;
 }
 fn _b_message_build() {
@@ -111,38 +111,38 @@ fn _b_metric_otlp() {
 # Builds the OTLP fixtures the tier5 rows encode; returns 0.
 fn _bench_otlp_fixtures() {
     var sp = span_new(str_from("GET /api/v1/agents"), trace_id_new(), span_id_new());
-    span_set_kind(sp, SPAN_SERVER);
-    span_set_duration_ms(sp, 12);
-    map_set(span_attributes(sp), "http.method", any_string(str_from("GET")));
-    map_set(span_attributes(sp), "http.status_code", any_int(200));
-    map_set(span_attributes(sp), "net.peer.name", any_string(str_from("agnos.local")));
+    Span_set_kind(sp, SPAN_SERVER);
+    Span_set_duration_ms(sp, 12);
+    map_set(Span_attributes(sp), "http.method", any_string(str_from("GET")));
+    map_set(Span_attributes(sp), "http.status_code", any_int(200));
+    map_set(Span_attributes(sp), "net.peer.name", any_string(str_from("agnos.local")));
     var e1 = span_event_new(str_from("auth.checked"));
-    map_set(sevt_attributes(e1), "outcome", any_string(str_from("allow")));
-    vec_push(span_events(sp), e1);
-    vec_push(span_events(sp), span_event_new(str_from("db.query")));
+    map_set(SpanEvent_attributes(e1), "outcome", any_string(str_from("allow")));
+    vec_push(Span_events(sp), e1);
+    vec_push(Span_events(sp), span_event_new(str_from("db.query")));
     var l1 = span_link_new(trace_id_new(), span_id_new());
-    map_set(slink_attributes(l1), "link.kind", any_string(str_from("follows_from")));
-    vec_push(span_links(sp), l1);
-    span_set_status(sp, SPAN_OK);
+    map_set(SpanLink_attributes(l1), "link.kind", any_string(str_from("follows_from")));
+    vec_push(Span_links(sp), l1);
+    Span_set_status(sp, SPAN_OK);
     _bench_span_full = sp;
     _bench_span_min = span_new(str_from("op"), trace_id_new(), span_id_new());
     var lr = log_record_new(LOG_WARN, str_from("disk usage above 90%"));
-    map_set(logrec_attributes(lr), "mount", any_string(str_from("/var")));
-    map_set(logrec_attributes(lr), "used_pct", any_int(93));
-    logrec_set_trace_id(lr, trace_id_new());
-    logrec_set_span_id(lr, span_id_new());
+    map_set(LogRecord_attributes(lr), "mount", any_string(str_from("/var")));
+    map_set(LogRecord_attributes(lr), "used_pct", any_int(93));
+    LogRecord_set_trace_id(lr, trace_id_new());
+    LogRecord_set_span_id(lr, span_id_new());
     _bench_log = lr;
     _bench_metric_desc = instrument_descriptor_new(str_from("http.server.requests"), str_from("Requests served"),
       str_from("{request}"), METRIC_COUNTER);
     var p1 = metric_data_point_new(str_from("http.server.requests"), metric_int(1042));
-    map_set(mdp_attributes(p1), "route", any_string(str_from("/api/v1/agents")));
+    map_set(MetricDataPoint_attributes(p1), "route", any_string(str_from("/api/v1/agents")));
     var p2 = metric_data_point_new(str_from("http.server.requests"), metric_int(17));
-    map_set(mdp_attributes(p2), "route", any_string(str_from("/health")));
+    map_set(MetricDataPoint_attributes(p2), "route", any_string(str_from("/health")));
     _bench_metric_points = vec_new();
     vec_push(_bench_metric_points, p1);
     vec_push(_bench_metric_points, p2);
     var res = resource_new(str_from("agnos-api"), str_from("1.12.0"), str_from("node-7"));
-    map_set(res_attributes(res), "host.name", any_string(str_from("agnos-01")));
+    map_set(Resource_attributes(res), "host.name", any_string(str_from("agnos-01")));
     _bench_resource = res;
     _bench_scope = instrumentation_scope_new(str_from("agnostik"), str_from("1.12.0"));
     _bench_spans3 = vec_new();
@@ -150,16 +150,16 @@ fn _bench_otlp_fixtures() {
     vec_push(_bench_spans3, sp);
     vec_push(_bench_spans3, sp);
     var h = histogram_value_new();
-    vec_push(hval_bounds(h), 0x4024000000000000);
-    vec_push(hval_bounds(h), 0x4059000000000000);
-    vec_push(hval_bucket_counts(h), 7);
-    vec_push(hval_bucket_counts(h), 12);
-    vec_push(hval_bucket_counts(h), 3);
-    hval_set_count(h, 22);
-    hval_set_sum(h, 0x4097700000000000);
+    vec_push(HistogramValue_bounds(h), 0x4024000000000000);
+    vec_push(HistogramValue_bounds(h), 0x4059000000000000);
+    vec_push(HistogramValue_bucket_counts(h), 7);
+    vec_push(HistogramValue_bucket_counts(h), 12);
+    vec_push(HistogramValue_bucket_counts(h), 3);
+    HistogramValue_set_count(h, 22);
+    HistogramValue_set_sum(h, 0x4097700000000000);
     var hp = metric_data_point_new(str_from("http.server.duration"), metric_histogram(h));
-    map_set(mdp_attributes(hp), "route", any_string(str_from("/api/v1/agents")));
-    vec_push(mdp_exemplars(hp), exemplar_new(trace_id_new(), span_id_new(), 0x4040000000000000));
+    map_set(MetricDataPoint_attributes(hp), "route", any_string(str_from("/api/v1/agents")));
+    vec_push(MetricDataPoint_exemplars(hp), exemplar_new(trace_id_new(), span_id_new(), 0x4040000000000000));
     _bench_hist_desc = instrument_descriptor_new(str_from("http.server.duration"), str_from("Request latency"),
       str_from("ms"), METRIC_HISTOGRAM);
     _bench_hist_points = vec_new();
@@ -175,26 +175,26 @@ fn _b_rl_to_json() { _ser(resource_limits_new(), &ResourceLimits_to_json); retur
 fn _b_rl_from_json() { ResourceLimits_from_json_str(str_data(_bench_rl_json)); return 0; }
 fn _b_tu_to_json() {
     var u = token_usage_new();
-    tusage_set_prompt(u, 100);
-    tusage_set_completion(u, 50);
-    tusage_set_total(u, 150);
+    TokenUsage_set_prompt_tok(u, 100);
+    TokenUsage_set_completion_tok(u, 50);
+    TokenUsage_set_total_tok(u, 150);
     _ser(u, &TokenUsage_to_json);
     return 0;
 }
 fn _b_tu_from_json() { TokenUsage_from_json_str(str_data(_bench_tu_json)); return 0; }
 fn _b_af_to_json() {
     var f = accelerator_flags_new();
-    aflags_set_cuda(f, 1);
-    aflags_set_vulkan(f, 1);
+    AcceleratorFlags_set_cuda_available(f, 1);
+    AcceleratorFlags_set_vulkan_available(f, 1);
     _ser(f, &AcceleratorFlags_to_json);
     return 0;
 }
 fn _b_af_from_json() { AcceleratorFlags_from_json_str(str_data(_bench_af_json)); return 0; }
 fn _b_is_to_json() {
     var s = injection_scores_new();
-    iscore_set_sql(s, 85);
-    iscore_set_xss(s, 10);
-    iscore_set_prompt_injection(s, 95);
+    InjectionScores_set_sql(s, 85);
+    InjectionScores_set_xss(s, 10);
+    InjectionScores_set_prompt_injection(s, 95);
     _ser(s, &InjectionScores_to_json);
     return 0;
 }
@@ -259,13 +259,13 @@ fn main() {
     # Pre-generate JSON for from_json benchmarks
     _bench_rl_json = _ser(resource_limits_new(), &ResourceLimits_to_json);
     var _tu = token_usage_new();
-    tusage_set_prompt(_tu, 100); tusage_set_completion(_tu, 50); tusage_set_total(_tu, 150);
+    TokenUsage_set_prompt_tok(_tu, 100); TokenUsage_set_completion_tok(_tu, 50); TokenUsage_set_total_tok(_tu, 150);
     _bench_tu_json = _ser(_tu, &TokenUsage_to_json);
     var _af = accelerator_flags_new();
-    aflags_set_cuda(_af, 1); aflags_set_vulkan(_af, 1);
+    AcceleratorFlags_set_cuda_available(_af, 1); AcceleratorFlags_set_vulkan_available(_af, 1);
     _bench_af_json = _ser(_af, &AcceleratorFlags_to_json);
     var _is = injection_scores_new();
-    iscore_set_sql(_is, 85); iscore_set_xss(_is, 10); iscore_set_prompt_injection(_is, 95);
+    InjectionScores_set_sql(_is, 85); InjectionScores_set_xss(_is, 10); InjectionScores_set_prompt_injection(_is, 95);
     _bench_is_json = _ser(_is, &InjectionScores_to_json);
     var _as = agent_stats_new();
     store64(_as, 999); store64(_as + 8, 50000); store64(_as + 16, 86400);
