@@ -2,6 +2,48 @@
 
 ## [Unreleased]
 
+### Fixed — CI's bench gate compares on one host
+
+**The bug:** CI's bench gate failed intermittently on unchanged code.
+- It ran `scripts/bench-regression.sh`, which compares one bench run against the latest rows in
+  `docs/benchmarks/history.csv`. Those rows are recorded on the release host.
+- A GitHub runner is a different CPU, and which one a job gets varies. The 1.12.1 release run on `f6ed4cf` read 7
+  "regressions": compute-bound rows about 2× slower, `getrandom`-bound rows flat, and `audit_entry_full` 38%
+  faster.
+- Minutes earlier, CI had passed on the same commit. It had also failed on `07720f0` and `8b8d449` (2026-10-14,
+  cyrius 6.7.9).
+- The failed release run means the 1.12.1 GitHub release was not created.
+
+**The fix:** CI now runs **`scripts/bench-paired.sh`**, a paired, interleaved A/B on the runner itself.
+- **Base:** the last release tag before HEAD (or a ref given as argument). Its tree is built on its own cyrius pin,
+  so a pin move is measured too. A missing pin is fetched and verified by `scripts/ci-install-cyrius.sh
+  --alongside`, a new mode that installs a version without switching the active toolchain. The cyrius wrapper
+  dispatches to it by manifest pin, and the script checks that the dispatch happened.
+- **Method:** both bench binaries are compiled once and run in 9 rounds, alternating which goes first. Each row's
+  verdict is the median of its per-round ratios of the `min=` figure. The fastest window is less exposed to a
+  preempted window than the mean.
+- **Threshold:** a row fails above +50% *and* 50 ns, the same catastrophe-only bar as before. Rows new in HEAD are
+  listed, not gated. `[bench-regression-ack]` still skips the gate.
+- **Nothing to compare:** when `src/`, the bench, `cyrius.cyml` and `cyrius.lock` are unchanged since the tag, it
+  passes with a notice. A shallow clone fails instead of passing on missing tags; the CI checkout now fetches full
+  history (`fetch-depth: 0`).
+
+`scripts/bench-regression.sh` stays the local release gate on the host that records `history.csv`. CLAUDE.md,
+CONTRIBUTING (the contributor checklist ran the history gate, which on a contributor's machine measures the
+machine), README and state.md say which gate runs where.
+
+**Checked:**
+- **1.12.1 against 1.12.0** (6.7.18 vs 6.7.9, this host): 31 rows, 0 regressions, about 7 s. The five derived
+  `*_from_json` rows read +11.6% to +27.5%, every other row within ±6.3%. That matches the release's hand-run
+  15-round A/B within about a point.
+- **Injected regression:** a 400-iteration spin added to `version_to_str` fails exactly the two rows that call it,
+  `version_to_str` (+250%) and `version_roundtrip` (+114%), in 9 of 9 rounds. Exit 1.
+- **CI conditions:** a toolchain home holding only 6.7.18 from the verified tarball, with `gawk --posix` standing
+  in for a runner's awk. 6.7.9 was fetched, signature-verified and installed alongside, with the active toolchain
+  still 6.7.18. The base built on 6.7.9, and the result matched.
+- **Edge cases:** no change since the tag gives the notice and exit 0; the ack gives skip and exit 0; a
+  `--depth 1` clone gives exit 2.
+
 ## [1.12.1] - 2026-10-28
 
 **Toolchain-refresh patch:** cyrius `6.7.9` → **`6.7.18`**, the last 1.x refresh before v2.0.0. No source or API

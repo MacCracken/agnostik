@@ -92,7 +92,8 @@ cyrius deps                                           # add its transitive inclu
 cyrius build src/main.cyr build/agnostik              # compile the test harness
 cyrius test tests                                     # every .tcyr under tests/ (counts in state.md)
 cyrius bench tests/bcyr/agnostik.bcyr                 # 31 benchmarks
-scripts/bench-regression.sh                           # vs baseline in history.csv
+scripts/bench-regression.sh                           # vs baseline in history.csv (release host only)
+scripts/bench-paired.sh                               # paired A/B vs the last release tag, any host (CI's gate)
 scripts/api-surface.sh check                          # diff vs committed snapshot
 scripts/doc-debt.sh check                             # every fn in src/ documented
 scripts/consumer-sweep.sh                             # build + test every consumer against this tree

@@ -43,10 +43,12 @@
    ```sh
    scripts/api-surface.sh check       # if intentional: scripts/api-surface.sh update
    ```
-10. Bench-regression gate (catches catastrophic perf regressions):
+10. Bench gate (catches catastrophic perf regressions; CI runs the same):
     ```sh
-    scripts/bench-regression.sh        # ack via [bench-regression-ack] in commit message
+    scripts/bench-paired.sh            # paired A/B vs the last release tag, on your machine; ack via [bench-regression-ack]
     ```
+    `scripts/bench-regression.sh` compares against `docs/benchmarks/history.csv`, whose rows come from the
+    maintainer's release host, so on another machine it measures the machine, not your change.
 11. Regenerate the dist bundle (CI verifies in-sync):
     ```sh
     cyrius distlib

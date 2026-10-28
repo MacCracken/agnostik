@@ -830,6 +830,18 @@ for full release notes.
   `scripts/bench-regression.sh` parses `avg` only. The supplementary
   `[per op in ps: …]` lines start with `[` and carry no ` avg`, so both bench
   parsers skip them.
+- **Two bench gates.** `scripts/bench-regression.sh` compares one run against
+  `docs/benchmarks/history.csv`, whose rows come from the release host (the
+  maintainer's laptop). It is the release gate there and nowhere else: on a
+  GitHub runner the runner's CPU reads as code, and through 1.12.1 CI failed
+  it intermittently (`07720f0` and `8b8d449` on 2026-10-14; the 1.12.1 release
+  run on `f6ed4cf`, whose CI run had passed minutes earlier). Since then CI runs
+  `scripts/bench-paired.sh`. It builds the last release tag's bench on that
+  tag's own pin, installing the pin alongside if needed, and this tree's on
+  its pin. It runs them in 9 interleaved rounds on the same host and gates
+  each row's median paired delta of the `min=` figures (> +50% and > 50 ns).
+  It takes about 7 s locally. Its 1.12.1-vs-1.12.0 run matches the release's
+  hand-run 15-round A/B within about a point.
 - **Locally installed vs released**: the wrapper dispatches to the
   manifest-pinned toolchain when that version is installed, and `cyrius
   --version` prints `manifest-pin: X` alongside it, flagging drift. Keep the

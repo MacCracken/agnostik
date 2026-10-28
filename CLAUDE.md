@@ -47,7 +47,8 @@ cyrius lint src/*.cyr                                  # static checks
 cyrius fmt --check src/types.cyr                       # format check, one file; drift is reported by exit code only
 CYRIUS_DCE=1 cyrius build src/main.cyr build/agnostik  # release build (dead code eliminated)
 cyrius distlib                                         # regenerate dist/agnostik.cyr (CI fails when it is stale)
-bash scripts/bench-regression.sh                       # benchmark gate — mandatory before every release
+bash scripts/bench-regression.sh                       # benchmark gate vs history.csv — mandatory before every release, on the host that records history.csv
+bash scripts/bench-paired.sh                           # CI's bench gate: paired, interleaved A/B against the last release tag, each tree on its own pin
 bash scripts/api-surface.sh check                      # public-API snapshot gate (`update` after an intentional API change)
 bash scripts/doc-debt.sh check                         # doc gate: every fn in src/ has a doc comment
 bash scripts/consumer-sweep.sh                         # build + test every [deps.agnostik] consumer against this working tree, on its own pin
@@ -142,7 +143,10 @@ results are recorded.
    per-op averages against the most recent committed baseline in
    `docs/benchmarks/history.csv` and **fails on any regression** beyond
    threshold (50% ns-bracket / 80% us-bracket, with absolute floors for
-   jitter). The release is blocked while the gate fails.
+   jitter). The release is blocked while the gate fails. Its baselines
+   are absolute numbers from the host that records `history.csv`, so it
+   is only meaningful there. On any other machine (a GitHub runner, a
+   contributor's laptop) use `scripts/bench-paired.sh`, which CI runs.
 2. **Record the deltas** — the full delta table (baseline → current,
    delta%, regressions count) goes in the CHANGELOG **Performance**
    section for the release. "0 regressions" alone is not enough — note
@@ -157,7 +161,10 @@ results are recorded.
    the gate catches catastrophes, not drift. For claimed micro-wins,
    run benches multiple times and report the median, not one sample.
    To isolate a code change from host drift, interleave runs of the old
-   and new tree rather than comparing against an older baseline.
+   and new tree rather than comparing against an older baseline:
+   `BENCH_PAIRED_ROUNDS=15 bash scripts/bench-paired.sh [REF]` does that
+   against the last release tag (or REF), each tree on its own pin, and
+   prints the per-row paired median and how many rounds were slower.
 
 Numbers or it didn't happen — every performance claim in the CHANGELOG
 cites benchmark figures from this gate.
@@ -222,7 +229,7 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
 - **Version-verify gate**: release asserts `VERSION == cyrius.cyml version == git tag` before building. Mismatch fails the run.
 - **Lint step**: CI runs `cyrius lint` per source file. Warnings fail.
 - **Workflow layout**:
-  - `.github/workflows/ci.yml` — stdlib sync, fmt, lint, vet, DCE build, type-check, API-surface snapshot, documentation debt, dist-bundle sync, aarch64 cross-build, tests, the suite again on aarch64 under qemu-user, bench + bench-regression gate, security scan (including no raw `syscall(` and `_stik_`-prefixed private helpers), required-docs and version checks; reusable via `workflow_call`
+  - `.github/workflows/ci.yml` — stdlib sync, fmt, lint, vet, DCE build, type-check, API-surface snapshot, documentation debt, dist-bundle sync, aarch64 cross-build, tests, the suite again on aarch64 under qemu-user, bench + the paired bench gate against the last release tag (`scripts/bench-paired.sh`; the checkout fetches full history for the tags), security scan (including no raw `syscall(` and `_stik_`-prefixed private helpers), required-docs and version checks; reusable via `workflow_call`
   - `.github/workflows/release.yml` — version gate → CI gate → DCE builds (x86_64, aarch64) → artifacts (source tarball, bundled `.cyr`, DCE binaries, `cyrius.lock` when one exists, SHA256SUMS)
 - **Concurrency**: CI uses `cancel-in-progress: true` keyed on workflow + ref — only the latest push is tested.
 

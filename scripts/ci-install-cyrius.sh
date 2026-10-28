@@ -14,13 +14,20 @@
 # signed SHA256SUMS since 6.2.31, and its own installers refuse a stripped
 # signature since 6.6.20 (CYRIUS-2026-0035); this keeps CI to that bar.
 #
-# Usage: scripts/ci-install-cyrius.sh [VERSION]
+# Usage: scripts/ci-install-cyrius.sh [--alongside] [VERSION]
 #   VERSION defaults to $CYRIUS_VERSION, else the `cyrius = "X.Y.Z"` pin in
 #   cyrius.cyml (the single source of truth — never hardcode it in YAML).
+#   --alongside installs versions/<VERSION> only and leaves ~/.cyrius/{bin,lib},
+#   `current` and the GitHub path/env alone, so the active toolchain does not
+#   change. The cyrius wrapper dispatches to an installed version by manifest
+#   pin, which is how scripts/bench-paired.sh builds a release tree on its own pin.
 # Environment: CYRIUS_HOME (default ~/.cyrius). Under GitHub Actions the bin
 # dir is appended to $GITHUB_PATH and CYRIUS_HOME to $GITHUB_ENV.
 
 set -euo pipefail
+
+ALONGSIDE=0
+if [ "${1:-}" = "--alongside" ]; then ALONGSIDE=1; shift; fi
 
 # The cyrius release-signing key (Ed25519, raw 32 bytes as hex). Provenance:
 # byte-identical in three places at pinning time (2026-10-14, cyrius 6.6.20):
@@ -84,6 +91,10 @@ mkdir -p "$VERSIONED/bin" "$VERSIONED/lib"
 cp "$SRC/bin/"* "$VERSIONED/bin/"
 cp -r "$SRC/lib/"* "$VERSIONED/lib/"
 chmod +x "$VERSIONED/bin/"*
+if [ "$ALONGSIDE" = 1 ]; then
+    echo "installed alongside: $VERSIONED ($(ls "$VERSIONED/bin" | wc -l) tools); active toolchain unchanged"
+    exit 0
+fi
 ln -sfn "$VERSIONED/bin" "$CYRIUS_HOME/bin"
 ln -sfn "$VERSIONED/lib" "$CYRIUS_HOME/lib"
 echo "$VERSION" > "$CYRIUS_HOME/current"
