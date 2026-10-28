@@ -37,15 +37,16 @@ Breaking changes are batched here so every consumer absorbs migration once. Work
   (`<Struct>_<field>` / `<Struct>_set_<field>`). Accessors that clamp, validate or lazily build keep hand-written
   bodies under the same new names. A consumer census found about 22 call sites to migrate (kybernet 19, mela 2,
   ark 1), and the cut ships a mechanical old-to-new map.
-- **`network_policy_*` stays,** and SandboxConfig gains accessors for it. The other dead helpers are removed
-  after a fresh census.
+- **`network_policy_*` stays,** and SandboxConfig gains accessors for it.
+- **Nothing else from the v1.3.0 "dead helper" list is removed either** ([ADR-010](../adr/010-unused-vocabulary-is-not-dead-code.md)).
+  A fresh census found no consumer using them, but each is part of agnostik's model.
 
 **Order.** Each step lands with its tests and gates:
-1. `_stik_json_int` returns a Result (private; no consumer impact).
-2. Check that `#derive(accessors)`'s code matches agnostik's layouts (narrow fields, gaps, typed fields) before
+1. ✅ `_stik_json_int` returns a Result (private; no consumer impact).
+2. ✅ Check that `#derive(accessors)`'s code matches agnostik's layouts (narrow fields, gaps, typed fields) before
    relying on it.
-3. The accessor rename, one module at a time.
-4. The dead-helper removal.
+3. ✅ The accessor rename (3a, 706 names) and the derive (3b, 61 structs).
+4. ✅ The dead-helper review: nothing removed (ADR-010).
 5. The items deferred from v1.12.3, each written in the new names.
 6. The closeout: the migration map, a Breaking section, and the consumer sweep, where every consumer's failures
    must be exactly the mapped renames.
@@ -78,21 +79,6 @@ setters. agnostik's convention is `<prefix>_<field>` (`AgentMessage_*`, `AuditEn
 `SecurityContext_*`). About 470 hand-written one-line accessors could become derive
 markers, either by renaming to the derive shape (a consumer-visible break) or
 by upstream derive-with-prefix support. v2.0.0 absorbs the rename.
-
-### Remove dead and vestigial public helpers
-
-🔧 The v1.3.0 review found public helpers with no consumer. Removing them is
-breaking, and was gated on the cross-consumer sweep proving that no consumer
-uses them. v1.7.0 delivers the sweep; this slot acts on its census:
-
-- `security.cyr`: `seccomp_errno` / `seccomp_trace`, the `SeccompArg`
-  cluster, `id_mapping_*`, `network_policy_*`
-- `llm.cyr`: `stream_usage`
-- `agent.cyr`: `AgentInfo_from_json`. Its round-trip was fixed in v1.6.3 and
-  it now has a test, so it is a keep-or-remove call rather than dead weight.
-
-Context: [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
-§Deferred.
 
 ---
 

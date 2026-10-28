@@ -71,3 +71,4 @@ consumer sweeps green.
 - [ADR-007 — An allocation failure fails by name; the error constructor never fails](007-allocation-failure-fails-by-name.md)
 - [ADR-008 — The seven value structs' serde is hand-written, bounded and range-checked](008-value-struct-serde-is-hand-written.md)
 - [ADR-009 — Accessors are named `<Struct>_<field>`; only uniquely named, all-plain structs are derived](009-accessors-take-struct-names.md)
+- [ADR-010 — Vocabulary no consumer calls yet is not dead code; the v1.3.0 removal list stays](010-unused-vocabulary-is-not-dead-code.md)
