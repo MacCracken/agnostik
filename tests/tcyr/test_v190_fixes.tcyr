@@ -128,7 +128,7 @@ fn test_json_strings_are_escaped() {
     assert(str_eq_cstr(js, "{\"enabled\":1,\"sample_rate\":1000,\"export_endpoint\":\"http://h\\\"x\\\\y\\nz\"}") == 1,
       "endpoint escaped");
     var back = TelemetryConfig_from_json(js);
-    assert(str_eq(TelemetryConfig_endpoint(back), ep) == 1, "endpoint round-trips");
+    assert(str_eq(TelemetryConfig_export_endpoint(back), ep) == 1, "endpoint round-trips");
     assert_eq(TelemetryConfig_sample_rate(back), 1000, "a field after the endpoint still parses");
     # An agent name crafted to inject a key stays one string value.
     var nm = str_from("x\",\"status\":\"Failed");

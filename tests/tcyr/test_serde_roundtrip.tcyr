@@ -127,7 +127,7 @@ fn test_telemetry_config_roundtrip() {
     var tc2 = TelemetryConfig_from_json(j);
     assert_eq(TelemetryConfig_enabled(tc2), 1, "tc enabled rt");
     assert_eq(TelemetryConfig_sample_rate(tc2), 1000, "tc rate rt");
-    assert_eq(TelemetryConfig_endpoint(tc2), 0, "tc null ep rt");
+    assert_eq(TelemetryConfig_export_endpoint(tc2), 0, "tc null ep rt");
     return 0;
 }
 
@@ -182,7 +182,7 @@ fn test_agent_info_roundtrip() {
             var b = AgentInfo_from_json(_ser(a, &AgentInfo_to_json));
             assert_eq(agent_id_eq(AgentInfo_id(b), id), 1, "ai rt id");
             assert_eq(str_eq_cstr(AgentInfo_name(b), "agent-x"), 1, "ai rt name");
-            assert_eq(AgentInfo_type(b), t, "ai rt type");
+            assert_eq(AgentInfo_agent_type(b), t, "ai rt type");
             assert_eq(AgentInfo_status(b), s, "ai rt status");
             s = s + 1;
         }
@@ -222,7 +222,7 @@ fn test_agent_info_null_id() {
     var bsrc = _j2("{\"id\":\"not-a-uuid\",\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
     var bad = AgentInfo_from_json(bsrc);
     assert_eq(AgentInfo_id(bad), 0, "ai bad id -> 0");
-    assert_eq(AgentInfo_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
+    assert_eq(AgentInfo_agent_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
     var bwant = _j2("{\"id\":null,\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
     assert_eq(str_eq(_ser(bad, &AgentInfo_to_json), bwant), 1, "ai bad id reserializes");
     # Since 1.12.3 (F-039) a missing agent_type reads as User, not System, the
@@ -240,16 +240,16 @@ fn test_agent_info_legacy_ids() {
     var lsrc = _j2("{\"id\":\"11111111-2222-4333-8444-555555555555\",\"name\":\"legacy\",",
       "\"agent_type_id\":2,\"status_id\":8}");
     var l = AgentInfo_from_json(lsrc);
-    assert_eq(AgentInfo_type(l), AGENT_TYPE_SERVICE, "ai legacy type id");
+    assert_eq(AgentInfo_agent_type(l), AGENT_TYPE_SERVICE, "ai legacy type id");
     assert_eq(AgentInfo_status(l), AGENT_FAILED, "ai legacy status id");
     # ... a recognised name wins over them ...
     var both = AgentInfo_from_json(_j2("{\"agent_type\":\"User\",\"agent_type_id\":2,",
         "\"status\":\"Paused\",\"status_id\":8}"));
-    assert_eq(AgentInfo_type(both), AGENT_TYPE_USER, "ai name beats type id");
+    assert_eq(AgentInfo_agent_type(both), AGENT_TYPE_USER, "ai name beats type id");
     assert_eq(AgentInfo_status(both), AGENT_PAUSED, "ai name beats status id");
     # ... and an unrecognised name falls back to them (0 when absent).
     var unk = AgentInfo_from_json(str_from("{\"agent_type\":\"Bogus\",\"agent_type_id\":2,\"status\":\"Nope\"}"));
-    assert_eq(AgentInfo_type(unk), AGENT_TYPE_SERVICE, "ai unknown type name -> id");
+    assert_eq(AgentInfo_agent_type(unk), AGENT_TYPE_SERVICE, "ai unknown type name -> id");
     assert_eq(AgentInfo_status(unk), AGENT_PENDING, "ai unknown status name -> 0");
     return 0;
 }

@@ -70,6 +70,16 @@ Plain struct names, decided with the maintainer on 2026-10-28.
   the guards. The lasting fix is those libraries using agnostik's types, which is agnostik's purpose.
 - **History keeps the old names:** the CHANGELOG, audits and earlier ADRs are not rewritten.
 
+## Step 3b outcome (2026-10-28)
+
+- **Derived:** 61 structs, replacing 250 getters and 118 setters and adding 132 setters. 36 stay hand-written.
+- **Field names that had to change:**
+  - Serialized structs take their JSON keys: `AgentInfo_agent_type`, `TelemetryConfig_export_endpoint`.
+  - `default` is a reserved word: `FleetConfig_default_profile`.
+- **Pre-cut changes:** the map and the migration script carry these renames. They changed 3a's names before any
+  release, so no consumer saw the earlier ones.
+- **The layout test** checks every derived field against the hand-written offsets it replaced.
+
 ## Verification
 
 - `scripts/api-surface.sh`: 1,122 = 1,122; the map applied to the old snapshot equals the new one exactly.

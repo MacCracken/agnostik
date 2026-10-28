@@ -442,8 +442,8 @@ fn test_setters_round_trip() {
     if (ProfileDefinition_edge_overrides(o13) == 7131) { ok = ok + 1; }
     n = n + 1;
     var o14 = fleet_config_new();
-    FleetConfig_set_default(o14, 7140);
-    if (FleetConfig_default(o14) == 7140) { ok = ok + 1; }
+    FleetConfig_set_default_profile(o14, 7140);
+    if (FleetConfig_default_profile(o14) == 7140) { ok = ok + 1; }
     n = n + 1;
     var o15 = sampling_params_new();
     SamplingParams_set_freq_penalty(o15, 7150);
@@ -576,12 +576,12 @@ fn test_setters_round_trip() {
     var o29 = telemetry_config_new();
     TelemetryConfig_set_enabled(o29, 7290);
     TelemetryConfig_set_sample_rate(o29, 7291);
-    TelemetryConfig_set_endpoint(o29, 7292);
+    TelemetryConfig_set_export_endpoint(o29, 7292);
     if (TelemetryConfig_enabled(o29) == 7290) { ok = ok + 1; }
     n = n + 1;
     if (TelemetryConfig_sample_rate(o29) == 7291) { ok = ok + 1; }
     n = n + 1;
-    if (TelemetryConfig_endpoint(o29) == 7292) { ok = ok + 1; }
+    if (TelemetryConfig_export_endpoint(o29) == 7292) { ok = ok + 1; }
     n = n + 1;
     var o30 = crash_report_new(agent_id_new(), str_from("e"));
     CrashReport_set_backtrace(o30, 7300);
@@ -625,11 +625,12 @@ fn test_setters_round_trip() {
     assert_eq(SandboxConfig_selinux(sb), se, "SandboxConfig_selinux reads SandboxConfig_set_selinux");
     # A value set through a setter reaches the serializers and encoders.
     var cfg = telemetry_config_new();
-    TelemetryConfig_set_endpoint(cfg, str_from("http://collector:4318"));
+    TelemetryConfig_set_export_endpoint(cfg, str_from("http://collector:4318"));
     var jb = str_builder_new();
     TelemetryConfig_to_json(cfg, jb);
     var back = TelemetryConfig_from_json(str_builder_build(jb));
-    assert(str_eq_cstr(TelemetryConfig_endpoint(back), "http://collector:4318") == 1, "endpoint set and serialized");
+    var ep = TelemetryConfig_export_endpoint(back);
+    assert(str_eq_cstr(ep, "http://collector:4318") == 1, "endpoint set and serialized");
     return 0;
 }
 

@@ -160,7 +160,7 @@ fn test_find_value_structure() {
     var tj = "{\"x\":{\"enabled\":1,\"export_endpoint\":\"http://evil\"},\"enabled\":0}";
     var t = TelemetryConfig_from_json(str_from(tj));
     assert_eq(TelemetryConfig_enabled(t), 0, "TelemetryConfig: nested enabled ignored");
-    assert_eq(TelemetryConfig_endpoint(t), 0, "TelemetryConfig: nested endpoint ignored");
+    assert_eq(TelemetryConfig_export_endpoint(t), 0, "TelemetryConfig: nested endpoint ignored");
     assert_eq(json_int0(str_from("{\"a\":{\"a\":5},\"a\":7}"), str_from("a")), 7, "json_int: top-level, last");
     assert_eq(json_int0(str_from("{\"b\":{\"a\":5}}"), str_from("a")), 0, "json_int: nested only reads 0");
     return 0;
@@ -467,7 +467,7 @@ fn test_version_range() {
 # ─── F-039: AgentInfo_from_json does not default to the most privileged type ────
 
 # The agent_type AgentInfo_from_json reads from C string `c`.
-fn ai_type(c) { return AgentInfo_type(AgentInfo_from_json(str_from(c))); }
+fn ai_type(c) { return AgentInfo_agent_type(AgentInfo_from_json(str_from(c))); }
 # The status AgentInfo_from_json reads from C string `c`.
 fn ai_status(c) { return AgentInfo_status(AgentInfo_from_json(str_from(c))); }
 # Missing or invalid types read as User; explicit System still parses.

@@ -69,8 +69,9 @@ agnostik, so this change no longer needs a major and could move to any minor.
 ### `#derive(accessors)` migration with prefix rename
 
 ✅ **Step 3a done under `[Unreleased]`:** 706 accessors renamed to `<Struct>_<field>` (ADR-009), with
-`docs/migration/2.0.0-renames.tsv` and `scripts/migrate-2.0.0.sh`. 🔧 **Step 3b next:** derive the uniquely named,
-all-plain structs. The original note:
+`docs/migration/2.0.0-renames.tsv` and `scripts/migrate-2.0.0.sh`. ✅ **Step 3b done:** 61 structs
+derived (132 setters added), 36 hand-written with reasons; `tests/tcyr/test_v200_derived_layout.tcyr` checks every
+offset. The original note:
 
 🔧 Cyrius's `#derive(accessors)` generates `<Struct>_<field>` getters and
 setters. agnostik's convention is `<prefix>_<field>` (`AgentMessage_*`, `AuditEntry_*`,
