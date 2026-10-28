@@ -2,6 +2,187 @@
 
 ## [Unreleased]
 
+## [1.12.1] - 2026-10-28
+
+**Toolchain-refresh patch:** cyrius `6.7.9` → **`6.7.18`**, the last 1.x refresh before v2.0.0. No source or API
+change: `src/` is untouched, the API stays at 1,122 fns, and `dist/agnostik.cyr` differs only in its version banner.
+24 test files, **2,307 assertions, 0 failures**, on x86_64 and aarch64; every file prints the same output on both
+pins. All five `[deps.agnostik]` consumers build and pass their tests against it.
+
+### Changed — toolchain
+
+- **Pin:** `cyrius.cyml` `cyrius = "6.7.18"`. The release tarball verifies against the cyrius key pinned in
+  `scripts/ci-install-cyrius.sh`, unchanged. Its `lib/` and compilers are byte-identical to the local install.
+- **`lib/` re-vendored, `cyrius.lock` 32 → 41 files.**
+  - `bayan` 1.5.13 → 1.11.1 now includes `math`, `slice` and seven `lib/unicode/` files. The unicode tables came
+    with its 1.9.0 fold at cyrius 6.7.13, which added `bayan_markdown_*`.
+  - `string`, `hashmap`, `tagged`, `trait` and `assert` are byte-identical. The `alloc`, `fmt`, `fnptr` and
+    `hashseed` changes are comments only.
+  - `lib/hashmap_fast.cyr` stays. `lib sync` vendors it and a fresh checkout locks it; `deps` now prints a note
+    that it is outside the declared footprint (6.7.12).
+- **The pin-move procedure changed.** Since 6.7.13 a scoped `cyrius lib sync` refuses a pin move ("nothing was
+  copied") while `lib/` holds transitive leaves the new snapshot changed: here `args_agnos`, `args_macos` and
+  `hashseed`. `cyrius deps` alone re-vendors the declared closure at the new pin and re-locks, with no `--relock`.
+  A fresh checkout (`lib sync` + `deps` from an empty `lib/`) reproduces the lock byte for byte. CLAUDE.md's Quick
+  Start note says so.
+- **`.gitignore`: `lib/*.cyr` → `lib/**/*.cyr`.** The old pattern did not reach `lib/unicode/`, so the seven new
+  files showed as untracked and could have been committed.
+- **`cyrius tests` was removed at 6.7.12**; the verb is `cyrius test tests`. CI already ran `cyrius test <file>`.
+  CLAUDE.md and README named the old verb and now name the new one. CLAUDE.md also notes that `cyrius update` has
+  done a scoped `lib sync` since 6.7.12. The README's benchmark count is corrected from 25 to 31.
+
+### Changed — what the new pin does to agnostik's code
+
+- **Derived `T_from_json_str` skips each field's value whole (6.7.11, 6.7.13).**
+  - A field whose value is an object, an array or the wrong type used to stop the scan at its `{` / `[`. The
+    outer struct then read the inner keys as its own: `{"a":{"q":7,"b":9},"b":4}` decoded `b` as 9. It now reads
+    4.
+  - The change reaches agnostik's seven `#derive(Serialize)` structs, on malformed input or input with unknown
+    keys only. Well-formed input decodes as before.
+  - It costs the derived parsers 11–28% (see Performance).
+- **`bayan` is a real dependency.** state.md said `[deps] stdlib` listed `bayan` for a preamble reference.
+  It is the `#derive(Serialize)` expansion: since 6.7.17 `T_from_json_str` calls `bayan_json_get_by_str`. A build
+  without `bayan` warns that the fn is undefined. `src/` calls no `bayan_*` fn.
+- **Every other silent change in 6.7.10–6.7.18 was checked against `src/` and does not apply:**
+  - packed `u8`/`u16`/`u32`/`f32` fields: agnostik's narrow fields are `i8`, which is unchanged;
+  - struct values and operator fns;
+  - inline `Str` and typed `Str` methods;
+  - narrow parameter and global widths;
+  - zone constant folding.
+
+  The new hard errors and lint rules do not trigger: 0 build warnings, 0 lint warnings.
+
+### Build
+
+`CYRIUS_DCE=1` sizes, the same `src/` on both pins:
+
+| Target | 1.12.0 (6.7.9) | 1.12.1 (6.7.18) | Δ |
+|---|---:|---:|---:|
+| x86_64 | 134,976 B | **482,768 B** | +347,792 |
+| aarch64 | 896,712 B | **1,568,104 B** | +671,392 |
+| agnos | 135,328 B | **483,264 B** | +347,936 |
+| Windows | 920,576 B | **1,529,344 B** | +608,768 |
+| x86_64, plain | 778,048 B | 1,359,312 B | +581,264 |
+
+**The growth is data, not code.**
+- On x86_64, `.text` grows 1,096 B and `.bss` 1,704 B. `.rodata` grows **341,994 B**: the string-literal Unicode
+  tables (`_normalize_data`, `_casefold_data`, `_categories_data`) that `bayan` 1.11.1 includes.
+- DCE drops the fns that read those tables but keeps their literals.
+- `bayan` cannot be dropped (see above).
+- **For consumers:** a consumer resolves `bayan` at its own pin through `dist/agnostik.deps`, so it sees this
+  growth when its own pin reaches 6.7.13, whatever agnostik pins. anuenue and mela are on 6.7.9; aegis, ark and
+  kybernet are on 6.6.x.
+
+**The Windows size question (roadmap):**
+- **Observed:** the Windows DCE build grew 13.8, 14.8 and 16.4 KB at 1.10.0, 1.11.0 and 1.12.0, while x86_64 grew
+  tens to hundreds of bytes.
+- **Not the pin:** the 1.9.0–1.12.0 tags rebuilt on both pins grow the same way.
+
+  | Per-release growth | 1.9.0 → 1.10.0 | 1.10.0 → 1.11.0 | 1.11.0 → 1.12.0 |
+  |---|---:|---:|---:|
+  | Windows, 6.7.9 | +13,824 | +14,848 | +16,384 |
+  | Windows, 6.7.18 | +13,312 | +14,848 | +16,384 |
+  | x86_64, 6.7.9 | +272 | +192 | +56 |
+  | x86_64, 6.7.18 | +4,360 | +192 | +56 |
+
+- **Cause:** on PE, DCE only NOP-fills. Both pins print "compaction declined on PE: its import table is reached
+  through rip-relative disp32s this pass cannot repair", so a Windows `CYRIUS_DCE=1` build is byte-identical to a
+  plain one.
+- **What that means:** the Windows binary carries every new fn, including the encoders the harness never calls.
+  It tracks the plain x86_64 build (+8.5, +12.5, +12.3 KB over the same releases), not the DCE one.
+- **Verdict:** nothing survives DCE on Windows only, and there is nothing to fix in agnostik. aarch64 also
+  NOP-fills ("compaction declined on aarch64 ELF").
+
+`dist/agnostik.cyr` stays **345,519 B** (banner only); `dist/agnostik.deps` is unchanged at 13 compile-verified
+leaves.
+
+### Security
+
+The pre-release pass is recorded in [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md). **No
+findings.**
+- **Advisories:** CYRIUS-2026-0036..0050 were checked against agnostik's reach.
+  - Two sit in modules agnostik vendors, and agnostik calls neither: 0045 (the `bayan` PDF Flate guard) and 0047
+    (`io` `file_write_atomic`'s temp mode).
+  - 0046 and 0048 are fixes to the CLI itself, which agnostik's builds simply gain.
+  - The rest (TLS, DNS, sigil, HPACK, WebSocket, HTTP, PAM, `regression.cyr`, cyrius CI) are in code agnostik does
+    not vendor.
+- **Syscalls:** agnostik's three syscall wrappers (`sys_getrandom`, `sys_write`, `sys_exit`) are byte-identical to
+  6.7.9's on linux, agnos and Windows.
+- **Re-scan:** clean (no raw `syscall(`, no `sys_system`, no system-path literal, no 64 KB stack buffer), and the
+  private-helper gate passes. F-001..F-027 remain closed.
+
+### Performance
+
+**Release gate.** The host was quiet (load 0.63, no compiler running). `scripts/bench-regression.sh` against the
+1.12.0 baseline (taken at load 0.96) gave **31 checked, 0 new, 0 regressions**.
+
+**Paired A/B.** It separates the pin from the host: 15 interleaved rounds of the same tree on 6.7.9 and 6.7.18,
+run right after the gate. Each row is the median of the per-round paired ratios.
+
+| benchmark | 1.12.0 baseline | 1.12.1 gate | Δ gate | 6.7.9 → 6.7.18, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|
+| version_roundtrip | 242 | 243 | +0.4% | -6.2% | 0/15 |
+| accelerator_device_full | 95 | 97 | +2.1% | -3.2% | 1/15 |
+| injection_scores_to_json | 720 | 736 | +2.2% | -1.5% | 2/15 |
+| span_otlp_full | 4650 | 4028 | -13.4% | -1.3% | 4/15 |
+| trace_context_new | 1064 | 1123 | +5.5% | -1.2% | 5/15 |
+| agent_id_new | 518 | 552 | +6.6% | -0.9% | 7/15 |
+| agent_id_to_str | 675 | 726 | +7.6% | -0.9% | 5/15 |
+| log_record_otlp | 1515 | 1524 | +0.6% | -0.8% | 5/15 |
+| otlp_traces_request | 22333 | 19939 | -10.7% | -0.8% | 4/15 |
+| agent_id_roundtrip | 963 | 1024 | +6.3% | -0.7% | 2/15 |
+| resource_limits_to_json | 918 | 968 | +5.4% | -0.4% | 4/15 |
+| agent_stats_to_json | 626 | 650 | +3.8% | -0.3% | 5/15 |
+| histogram_otlp | 2375 | 2415 | +1.7% | -0.2% | 5/15 |
+| security_context_full | 623 | 667 | +7.1% | -0.2% | 6/15 |
+| inference_request_full | 355 | 366 | +3.1% | +0.0% | 6/15 |
+| sandbox_config_default | 22 | 22 | 0.0% | +0.0% | 6/15 |
+| token_usage_to_json | 818 | 853 | +4.3% | +0.0% | 7/15 |
+| token_usage_update | 31 | 32 | +3.2% | +0.0% | 3/15 |
+| version_to_str | 104 | 107 | +2.9% | +0.0% | 2/15 |
+| audit_entry_full | 2172 | 2240 | +3.1% | +0.1% | 9/15 |
+| trace_context_child | 527 | 562 | +6.6% | +0.2% | 8/15 |
+| accel_flags_to_json | 1521 | 1575 | +3.6% | +0.3% | 9/15 |
+| metric_otlp_sum | 1703 | 1674 | -1.7% | +0.5% | 9/15 |
+| traceparent_format | 1667 | 1796 | +7.7% | +0.7% | 11/15 |
+| span_otlp_min | 576 | 577 | +0.2% | +1.1% | 10/15 |
+| message_build_3turn | 339 | 371 | +9.4% | +3.3% | 14/15 |
+| token_usage_from_json | 381 | 439 | +15.2% | **+11.3%** | 15/15 |
+| resource_limits_from_json | 415 | 508 | +22.4% | **+15.6%** | 15/15 |
+| accel_flags_from_json | 642 | 789 | +22.9% | **+19.0%** | 15/15 |
+| agent_stats_from_json | 255 | 320 | +25.5% | **+20.8%** | 15/15 |
+| injection_scores_from_json | 279 | 367 | +31.5% | **+28.2%** | 15/15 |
+
+**One trade-off, the toolchain's: the five derived `*_from_json` rows are 11–28% slower in 15 of 15 rounds.**
+- **Where it comes from:** a 7-round paired run of 6.7.12 against 6.7.13 puts most of it in that one step: +7.5%
+  to +27.8%, slower in 7 of 7 rounds, while the median row moved +0.1%. 6.7.13 is where `T_from_json_str` began
+  skipping each value whole.
+- **Why it is accepted:** the old scanner misread nested values. It is under the gate's threshold, so no ack.
+- **The rest is neutral.** The median row is **+0.0%**, and every other row is within ±6.2%.
+  `message_build_3turn` +3.3% (14 of 15 rounds) is the one small consistent mover.
+- **Host, not code:** the gate's −13.4% (`span_otlp_full`) and −10.7% (`otlp_traces_request`) and its +2–9% on
+  the other rows are host drift since 1.12.0's baseline. The paired runs put all of them within ±1.3%.
+
+The release run is appended to `docs/benchmarks/history.csv` (31 rows, commit column `8b8d449`, HEAD at the time),
+taken at load 0.64. Binary sizes are under Build.
+
+### Verification
+
+- **Clean-room CI replay.**
+  - **Setup:** a fresh copy of the release tree, starting from an empty `lib/`, committed into a throwaway repo,
+    with the toolchain from the verified 6.7.18 release tarball.
+  - **The `ci.yml` steps passed:** `deps --verify` 41 verified / 0 failed; fmt, lint, vet and type-check clean;
+    API 1,122 = snapshot; documentation complete; `dist/` in sync; the aarch64 cross-build; 24 files and 2,307
+    assertions on x86_64 and under `qemu-aarch64`; the security scan and the private-helper gate.
+  - **Also there:** the bench and the bench gate passed (31 checked, 0 regressions); `git status` stayed clean
+    after `lib sync` + `deps`; `cyrius audit` exits 0.
+- **Same tree, both pins:** every test file's output is identical on 6.7.9 and 6.7.18.
+- **Builds:** DCE builds are warning-free on x86_64, aarch64, agnos and Windows. 6.7.9 reproduces 1.12.0's
+  recorded sizes exactly.
+- **Downstream:** `scripts/consumer-sweep.sh`: 5 of 5 green, 0 regressed, 0 agnostik-involved duplicate
+  definitions (aegis 428, anuenue 595, ark 392, kybernet 890, mela 979 assertions).
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.12.1.
+
 ## [1.12.0] - 2026-10-14
 
 **Minor:** the OTLP export envelopes and the fields that had no slot. A consumer can now build the exact request

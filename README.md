@@ -11,8 +11,8 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.12.0
-- **Toolchain**: Cyrius `6.7.9` (pinned in `cyrius.cyml`)
+- **Current**: 1.12.1
+- **Toolchain**: Cyrius `6.7.18` (pinned in `cyrius.cyml`)
 - **Tests**: 2,307 assertions across 24 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
   encoders byte-identical to protoc's encoding of the official schema;
@@ -28,8 +28,9 @@ against successive Cyrius type-system slots.
   no findings; v1.8.0 minor-cut pass — no findings; v1.9.0 minor-cut pass —
   F-026 JSON string escaping, fixed in v1.9.0; v1.10.0 minor-cut pass —
   F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
-  and v1.12.0 minor-cut passes — no findings).
-  Cadence: every minor cut, plus each P(-1) pass.
+  and v1.12.0 minor-cut passes — no findings), 2026-10-28 (v1.12.1 toolchain
+  refresh, cyrius 6.7.9 → 6.7.18 — no findings).
+  Cadence: every minor cut and toolchain refresh, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
 
@@ -89,8 +90,8 @@ ResourceLimits_to_json(rl, j);                        # `{"max_memory":268435456
 cyrius lib sync                                       # vendor the pinned stdlib's declared subset into lib/
 cyrius deps                                           # add its transitive includes (agnostik has no git deps)
 cyrius build src/main.cyr build/agnostik              # compile the test harness
-cyrius tests                                          # every .tcyr under tests/ (counts in state.md)
-cyrius bench tests/bcyr/agnostik.bcyr                 # 25 benchmarks
+cyrius test tests                                     # every .tcyr under tests/ (counts in state.md)
+cyrius bench tests/bcyr/agnostik.bcyr                 # 31 benchmarks
 scripts/bench-regression.sh                           # vs baseline in history.csv
 scripts/api-surface.sh check                          # diff vs committed snapshot
 scripts/doc-debt.sh check                             # every fn in src/ documented

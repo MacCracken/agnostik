@@ -80,6 +80,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.10.0 minor-cut pass (same report, sixth section): OTLP completion, the in-place protobuf buffer, the Status field fix | F-027 (LOW, defense in depth): the OTLP encoders could write out of bounds on a negative-length `Str` or read address 0 on null span fields; fixed in 1.10.0 | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.11.0 minor-cut pass (same report, seventh section): checked trait dispatch, argument-passing hand-offs, the UUID separator check, 91 setters, newer Landlock rights | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.12.0 minor-cut pass (same report, eighth section): the UTF-8 writer, Resource / Scope encoders, export requests, histograms, exemplars | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
+| 2026-10-28 | v1.12.1 toolchain refresh (cyrius 6.7.9 → 6.7.18): advisories CYRIUS-2026-0036..0050 against agnostik's reach, silent 6.7.10–6.7.18 changes, re-vendored stdlib, syscall wrappers on every target | No findings; 0045 (`bayan` PDF) and 0047 (`io` `file_write_atomic`) sit in vendored modules agnostik never calls | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

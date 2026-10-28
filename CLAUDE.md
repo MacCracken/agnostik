@@ -41,7 +41,7 @@ cyrius lib sync                                        # vendor the pinned stdli
 cyrius deps                                            # add those modules' transitive stdlib includes; resolves [deps.NAME] git deps (agnostik has none)
 cyrius deps --verify                                   # check lib/ against the committed cyrius.lock (CI runs it)
 cyrius build src/main.cyr build/agnostik               # build the test harness binary
-cyrius tests                                           # run every .tcyr under tests/ (one file: cyrius test tests/tcyr/<name>.tcyr)
+cyrius test tests                                      # run every .tcyr under tests/ (one file: cyrius test tests/tcyr/<name>.tcyr)
 cyrius bench tests/bcyr/agnostik.bcyr                  # benchmarks
 cyrius lint src/*.cyr                                  # static checks
 cyrius fmt --check src/types.cyr                       # format check, one file; drift is reported by exit code only
@@ -54,7 +54,7 @@ bash scripts/consumer-sweep.sh                         # build + test every [dep
 cyrius audit                                           # sweep: fmt / lint / docs / tests / bench — exits 0 since v1.9.0; a non-zero exit is a regression
 ```
 
-Refresh the vendored stdlib with `lib sync` + `deps`, **not** `cyrius update`, which copies the whole snapshot into `lib/`. `deps` rewrites `cyrius.lock`; commit it with the pin move. On a pin move with a committed lock, `lib sync` re-locks only the files it copies, so `deps` then refuses the transitive leaves it adds whose content changed ("DISAGREE under an unchanged pin"); run `cyrius deps --relock` to accept the new snapshot, then check that `cyrius deps --verify` passes and a fresh checkout reproduces the lock. Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius tests --aarch64` runs the suite under `qemu-aarch64` when it is installed.
+Refresh the vendored stdlib with `lib sync` + `deps`. (`cyrius update` has done the same `lib sync` since cyrius 6.7.12; never pass it or `lib sync` `--full`, which copies the whole snapshot into `lib/`.) `deps` rewrites `cyrius.lock`; commit it with the pin move. **On a pin move, run `cyrius deps` alone**, not `lib sync` first: since cyrius 6.7.13 a scoped `lib sync` refuses ("nothing was copied") while `lib/` holds transitive leaves outside the declared subset that the new snapshot changed, and `deps` re-vendors the declared closure at the new pin and re-locks. Then check that `cyrius deps --verify` passes and that a fresh checkout (`lib sync` + `deps` from an empty `lib/`) reproduces the lock byte for byte. `deps` notes `lib/hashmap_fast.cyr` as outside the declared footprint; `lib sync` vendors it and a fresh checkout locks it, so keep it. `cyrius deps --relock` is only for a snapshot that changed under an unchanged pin ("DISAGREE under an unchanged pin"). Cross targets: `cyrius build --aarch64` / `--agnos` / `--win`; `cyrius test --aarch64 tests` runs the suite under `qemu-aarch64` when it is installed.
 
 ## Key Principles
 
@@ -245,7 +245,7 @@ New quirks land in `docs/architecture/` as numbered items (`NNN-kebab-case.md`).
 
 **Not yet present**: the first-party documentation standard also expects `docs/guides/` (task-oriented how-tos) and `docs/examples/` (runnable examples); neither exists here yet. When earned: `docs/sources.md` (source citations), `docs/proposals/` (pre-ADR drafts), `docs/api/` (curated public-surface reference), `standards/`, `compliance/`, `faq.md`.
 
-**`.gitignore`**: the repo's own file is authoritative. `dist/` is **tracked** — `dist/agnostik.cyr` is the bundle consumers vendor, and CI fails when it drifts from `src/` — so the ecosystem template's `/dist/` line does not apply here. `lib/*.cyr` is ignored, all of it: `lib/` is vendored by `cyrius lib sync` + `cyrius deps`, and the committed `cyrius.lock` pins its hashes. (The template's `!lib/k*.cyr` exception kept an orphan `lib/keccak.cyr` tracked until 1.7.1.)
+**`.gitignore`**: the repo's own file is authoritative. `dist/` is **tracked** — `dist/agnostik.cyr` is the bundle consumers vendor, and CI fails when it drifts from `src/` — so the ecosystem template's `/dist/` line does not apply here. `lib/**/*.cyr` is ignored, all of it, subdirectories included (`bayan` has pulled in `lib/unicode/` since cyrius 6.7.13): `lib/` is vendored by `cyrius lib sync` + `cyrius deps`, and the committed `cyrius.lock` pins its hashes. (The template's `!lib/k*.cyr` exception kept an orphan `lib/keccak.cyr` tracked until 1.7.1.)
 
 ## CHANGELOG Format
 
