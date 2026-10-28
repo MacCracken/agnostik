@@ -48,8 +48,13 @@ Breaking changes are batched here so every consumer absorbs migration once. Work
 3. ✅ The accessor rename (3a, 706 names) and the derive (3b, 61 structs).
 4. ✅ The dead-helper review: nothing removed (ADR-010).
 5. The items deferred from v1.12.3, each written in the new names (✅, 5a–5g).
-6. The closeout: the migration map, a Breaking section, and the consumer sweep, where every consumer's failures
-   must be exactly the mapped renames. The Breaking section also covers step 5's output and behaviour changes:
+6. ✅ The closeout: the migration map, a Breaking section, and the consumer sweep, where every consumer's failures
+   must be exactly the mapped renames.
+   - **Map:** 1,122 → 1,295 fns, 706 mapped, 173 added, none lost.
+   - **Sweep:** unmigrated anuenue, kybernet and mela fail only on mapped names; migrated, all five pass.
+   - **Gate:** 0 regressions.
+   - **Left for the cut:** `scripts/version-bump.sh 2.0.0`, `scripts/bench-history.sh`, and the release identity in
+     README, SECURITY and this file's Status. Then this slot leaves the roadmap. The Breaking section also covers step 5's output and behaviour changes:
    - the explicit OTLP span kind;
    - IntegrityFields copying its Strs;
    - the U+FFFD JSON names;

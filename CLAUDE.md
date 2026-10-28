@@ -73,6 +73,8 @@ Refresh the vendored stdlib with `lib sync` + `deps`. (`cyrius update` has done 
 - Every fn gets a `#` doc comment directly above it — `scripts/doc-debt.sh` fails CI on any undocumented fn in `src/` (absolute since v1.9.0, when the grandfathered baseline reached zero). Test and bench fns get one too, which is what keeps `cyrius audit`'s docs phase green
 - All public enums must have `*_name()` (string representation) and `*_parse(s)` (roundtrip)
 - Every serializable struct must have a `*_to_json(ptr, sb)` function, hand-written: agnostik does not use `#derive(Serialize)` since 1.12.3 (ADR-008), because the generated decoders read past truncated input and wrapped out-of-range numbers
+- A JSON writer emits every Str through `_stik_json_text`, never the stdlib's `str_builder_add_json_str` directly, so the text is valid UTF-8 whatever the bytes (since 2.0.0; ADR-006's rule, shared with OTLP through `_stik_utf8_fix_into`)
+- `AuditEntry_to_canonical`'s format 1 is frozen: chains already hashed depend on its bytes. Adding an `AuditEntry` field or changing an encoding means format 2 with a new header, with format 1 kept decodable (ADR-011)
 - Zero panic in library code — use `Result` (`Ok` / `Err`) for fallible operations
 - Every parse function must have a roundtrip test
 
