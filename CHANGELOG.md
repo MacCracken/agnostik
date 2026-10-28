@@ -43,6 +43,177 @@ and the decisions: the accessor rename goes ahead, and `network_policy_*` stays 
 - **A pre-existing warning:** kybernet already warns that argonaut's 32-byte `ResourceLimits` takes agnostik's
   48-byte layout. That is safe while agnostik's comes first and is the larger.
 
+### Measured — step 5's cost (interim; the release gate runs at the closeout)
+
+`scripts/bench-paired.sh`, 15 interleaved rounds on a quiet host (load < 0.8, no compilers running). Both runs
+had 0 regressions out of 31 rows:
+- the step-5 tree against the committed step-4 tree, which isolates step 5;
+- the step-5 tree against 1.12.3.
+
+| Row | Step 4 → step 5 | Paired Δ | Slower | Cause |
+|---|---:|---:|---:|---|
+| `span_otlp_min` | 555 → 584 ns | +5.2% | 14/15 | the 2-byte kind field every default span now carries (5e) |
+| `sandbox_config_default` | 21 → 23 ns | +9.5% | 14/15 | 104 bytes and two more stores (5a) |
+| `accelerator_device_full` | 84 → 93 ns | +10.7% | 15/15 | not code on its path |
+| `security_context_full` | 621 → 622 ns | +0.2% | 11/15 | the flag word (5b) costs nothing measurable |
+| `audit_entry_full` | 2,145 → 2,142 ns | −0.2% | 3/15 | the genesis fields still take no copy (5d) |
+
+- **`accelerator_device_full`:** nothing it runs changed. `accelerator_device_new`, `str_from` and
+  `accelerator_flags_new` are byte-identical, and hardware.cyr changed only in enum members and name / parse
+  arms. The 9 ns is consistent with code layout shifting, but that is not proven; the closeout's gate re-measures
+  it.
+- **Against 1.12.3:** the whole of v2.0.0 so far moves `token_usage_update` −34.4% (32 → 21 ns, from 3b's
+  derive) and `version_to_str` −12.1%. The three rows above are the only ones slower by more than 2.1%.
+
+### Added — provider enum members (v2.0.0 step 5g)
+
+| Enum | New members (name) | Values |
+|---|---|---|
+| `BatchStatus` | `BATCH_VALIDATING` ("validating"), `BATCH_FINALIZING` ("finalizing"), `BATCH_CANCELLING` ("cancelling"): OpenAI's transitional batch states | 6, 7, 8 |
+| `MessageRole` | `ROLE_DEVELOPER` ("developer"): OpenAI's developer-instruction role | 4 |
+| `MemoryType` | `MEM_HBM3E` ("HBM3e", lower-case e like "HBM2e"), `MEM_GDDR7` ("GDDR7") | 12, 13 |
+
+- **Values are stable:** each new member is appended, so every existing member keeps its value. `MEM_UNKNOWN`
+  stays 11, and the new memory types follow it.
+- **Round-trips:** each `*_name` / `*_parse` pair handles the new spellings.
+- **Verified:** 18 assertions in `test_v200_contract.tcyr`. Every member of the three enums round-trips (9, 5 and
+  14), the spellings and values are pinned, and parsing stays case-sensitive.
+
+### Changed — JSON output is always valid UTF-8 (v2.0.0 step 5f)
+
+`AgentInfo_to_json` (the name) and `TelemetryConfig_to_json` (the endpoint) now write each maximal ill-formed
+UTF-8 subpart as U+FFFD, the rule ADR-006 set for OTLP. Through 1.12.x the stdlib escaper passed invalid bytes
+through, so the text was not valid JSON (RFC 8259 §8.1), and a strict parser rejected the whole document.
+- **Unchanged for valid input:** valid input comes out byte for byte as before. The fuzz below checks this
+  against the stdlib escaper.
+- **One rule, one implementation:** the replacement loop moved out of `_stik_pb_text` into the private
+  `_stik_utf8_fix_into`, so OTLP and JSON share it. The new private `_stik_json_text` applies it before the
+  stdlib's escaping.
+
+**Verified:** 11 assertions in `test_v200_contract.tcyr`.
+- **Goldens:** 7 golden vectors match Python's `json.dumps(b.decode("utf-8", "replace"), ensure_ascii=False)`,
+  covering overlongs, surrogates, values past U+10FFFF, truncations, quotes and controls. Both writers produce the
+  fixed text end to end.
+- **Fuzz:** 3,000 random byte strings, mostly invalid. Every output is one valid JSON string token in valid UTF-8,
+  checked by the test's own validators. Every valid input is unchanged, and every valid name reads back exactly
+  through `AgentInfo_from_json`.
+
+### Changed — OTLP spans write `SPAN_KIND_INTERNAL` explicitly (v2.0.0 step 5e)
+
+`Span_to_otlp_proto` (and the traces export request) now writes field 6 `kind = 1` for a `SPAN_INTERNAL` span.
+- **Why:** through 1.12.x it elided the kind as a proto3 default, so a collector read `SPAN_KIND_UNSPECIFIED`. The
+  proto says not to use that value; receivers may read it as INTERNAL, but need not.
+- **Output change:** every default-kind span is 2 bytes longer (`30 01` after the name), and its enclosing
+  lengths grow to match. A kind outside `SpanKind` still writes no field.
+
+**Golden vectors re-derived with protoc** (libprotoc 35.0, opentelemetry-proto v1.7.0, tarball SHA-256
+`11330d85…bb11bed`). For each of the six affected vectors, protoc decoded the 1.12.x golden; the decoded text
+re-encoded to the identical bytes. Each span without a kind then got `kind: SPAN_KIND_INTERNAL`, and protoc
+encoded the result. Every span grew by exactly 2 bytes; each request grew by 4, with two spans.
+- **protoc vectors:** `span_ok`, `span_status_msg`, `span_ok_msg_dropped`, `span_name_fffd`, `traces_req` and
+  `traces_req_two`.
+- **Hand-computed checks:** `test_v120_otlp`'s byte offsets move by 2, and gain an explicit kind check.
+  `test_v1100_otlp`'s 0-name vector gains `3001`.
+- **Out-of-range kind:** `test_v1123_hardening` now checks it byte for byte. The reference with its two kind bytes
+  cut out must equal the out-of-range span's encoding.
+
+### Added — a canonical encoding for the audit chain (v2.0.0 step 5d, ADR-011)
+
+**`AuditEntry_to_canonical(e, sb)`** appends the bytes a sink hashes for the next entry's `prev_hash`, and signs.
+Through 1.12.x each sink chose its own encoding, so two sinks could disagree, and a joined-text encoding collides.
+- **Format 1:** a 16-byte `agnostik:audit:1` header, then every field in a fixed order. Integers are 8-byte
+  big-endian; Strs, the agent id, tags, the version and the integrity fields each carry a presence byte, and
+  Strs and tags a length. Every field is self-delimiting, so the encoding is injective, and an empty Str differs
+  from no Str. ADR-011 specifies it byte by byte.
+- **Excluded:** the signature, which is computed over these bytes.
+- **Returns** Ok(the bytes appended), or an invalid-argument Err that leaves `sb` unchanged when a Str has a
+  negative length.
+- **agnostik computes no hash:** the hash function is the sink's choice.
+
+**`AuditEntry_set_timestamp(e, ns)`** restores a stored time when a sink rebuilds an entry; the constructor stamps
+the current time.
+
+**IntegrityFields keeps its own copies** of the signature and `prev_hash`: `integrity_fields_new`,
+`integrity_fields_genesis`, `IntegrityFields_set_signature` and `IntegrityFields_set_prev_hash` all copy.
+- **The bug:** through 1.12.x they stored the caller's Str, so a sink that computed each hash into one reused
+  buffer rewrote every link it had already made.
+- **Off the derive:** the setters now copy, so `IntegrityFields` returns to hand-written accessors under the same
+  names. 60 structs stay derived, and the layout test drops to 494 checks.
+- **Cost:** two allocations for each chained entry. `audit_entry_new` skips the copy for its own empty
+  signature.
+
+The API grows 1,293 → 1,295.
+
+**Verified:** 27 assertions in `test_v200_contract.tcyr`.
+- **Golden:** a 288-byte golden entry matches bytes from a separate Python encoder written from the ADR's text,
+  and a fresh entry ends in the genesis integrity bytes.
+- **Collisions:** each of 12 single-field changes alters the encoding; adjacent-field, empty-versus-none and
+  `[a, b]`-versus-`[ab]` inputs differ; the signature does not.
+- **Errors:** a negative length in any of four places is an Err with `sb` unchanged.
+- **Copies:** links survive the caller rewriting its buffer.
+
+### Added — `secret_matches`: a constant-time secret check (v2.0.0 step 5c)
+
+`secret_matches(s, candidate)` returns 1 when a presented password, API key or token equals a stored `Secret`.
+It takes time that depends only on the two lengths. `str_eq` returns at the first differing byte, so its timing
+tells an attacker how much of a guess was right.
+- **Empty matches nothing:** an empty or destroyed secret matches nothing, not even an empty candidate, so an unset
+  key cannot authenticate anyone. A 0 candidate matches nothing.
+- **Lengths are public,** as in the stdlib's `ct_eq_bytes_lens`, whose contract the private `_stik_ct_eq` copies.
+- **No new stdlib module:** agnostik keeps its own eight-line copy rather than calling `lib/ct.cyr`. Calling it
+  would give every consumer without that module an undefined-fn warning on each build, and a build error once it
+  called `secret_matches` (checked on 6.6.2, 6.7.9 and 6.7.18).
+
+**Timing** (4 KiB secret, three runs of 5 × 20,000 calls on a quiet host, load 0.3):
+
+| Compare | Differs at byte 0 | Differs at byte 4095 | Equal |
+|---|---:|---:|---:|
+| `secret_matches` | 6.71 / 6.73 / 6.78 µs | 6.73 / 6.70 / 6.77 µs | 6.68 / 6.69 / 6.68 µs |
+| `str_eq` (reference) | 34 / 36 / 33 ns | 6.82 / 6.80 / 6.77 µs | — |
+
+`secret_matches` stays within about 1% wherever the difference is; `str_eq` varies 200×.
+
+**Verified:** 13 assertions in `test_v200_contract.tcyr`. Every one of 64 positions is rejected with a full-byte
+difference, a one-bit difference and a high-bit difference. All 70 wrong lengths are rejected, and bytes after a
+NUL are still compared. The empty, 0 and destroyed cases are covered too. The API grows 1,292 → 1,293.
+
+### Added — set flags tell "never set" from a stored 0 (v2.0.0 step 5b)
+
+`SecurityContext_run_as_user` / `_group` read 0 both when nothing was set and when root's id was. The cgroup
+limits had the same ambiguity: 0 meant both "inherit" and a literal `memory.max=0`. The Rust original used
+`Option<>` for all of them.
+- **SecurityContext** (56 → 64 bytes): a flag word at +56. `SecurityContext_has_run_as_user` /
+  `_has_run_as_group` read 1 once the matching setter has stored a value, even 0.
+- **CgroupLimits** (96 → 104 bytes): a flag word at +96, one bit per numeric field.
+  `CgroupLimits_has_<field>` exists for all ten: memory_max, memory_high, cpu_max, cpu_period, cpu_weight,
+  pids_max, io_weight, io_max_read_bps, io_max_write_bps and memory_swap_max.
+  - The two cpuset Strs need no flag: 0 is unset, and an empty Str is a value.
+- **Unchanged:** the getters still read 0 for an unset field, and the setters still return 0, so existing callers
+  behave as before. A launcher that treated 0 as "inherit" should test `_has_` instead.
+
+The API grows 1,280 → 1,292. **Verified:** 21 assertions in `test_v200_contract.tcyr`. Each of the ten cgroup
+setters, given 0, marks exactly its own bit; a stored uid 0 reads as set; the cpuset Strs never touch the flags.
+
+### Added — the sandbox fields the Rust port dropped (v2.0.0 step 5a)
+
+The Cyrius port kept the Rust original's layouts but gave some fields no accessor, and left out four. 26 accessors
+restore them; every existing offset stays where it was.
+
+| Struct | Restored | Layout |
+|---|---|---|
+| `SandboxConfig` | `network_policy` (+32), `encrypted_storage` (+56): get/set, 0 = none; `rlimits` (+88), `devices` (+96): vecs of `Rlimit` / `DeviceRule`, built empty on first access | 88 → 104 bytes |
+| `FilesystemRule` | `nosuid` (+32), `nodev` (+48): get/set, 0 by default | 48 → 56 bytes |
+| `CgroupLimits` | `cpu_period`, `io_weight`, `io_max_read_bps`, `io_max_write_bps`, `cpuset_cpus` (Str), `cpuset_mems` (Str), `memory_swap_max`: get/set, 0 by default | 96 bytes, unchanged |
+| `NetworkPolicy` | `enable_nat` (+24): get/set, 0 by default | 32 bytes, unchanged |
+
+- **What this connects:** `NetworkPolicy`, `EncryptedStorage`, `Rlimit` and `DeviceRule` existed, but no
+  SandboxConfig could hold one. This is the attachment the v2.0.0 `network_policy_*` decision called for.
+- **Additive:** the API grows 1,254 → 1,280, with nothing renamed or removed. Only a consumer that allocates these
+  structs itself, at the old size, is affected; none of the five does.
+
+**Verified:** `tests/tcyr/test_v200_contract.tcyr` (58 assertions) checks every new field's default and round
+trip, and sets every field of each struct to a distinct value at once, so a new slot overlapping an old one fails.
+
 ### Decided — the v1.3.0 "dead helper" list stays (v2.0.0 step 4, ADR-010)
 
 The roadmap planned to remove a set of public helpers the v1.3.0 review called vestigial, once a consumer census
@@ -61,7 +232,7 @@ The census is clean: no repo outside agnostik uses any of them. But each is part
 - `AgentInfo_from_json` is the tested reading half of its serde pair.
 
 ADR-010 records the rule: for a vocabulary library, a clean census is necessary for removing public API but not
-sufficient. `network_policy_*` stays as already decided, and attaches to SandboxConfig in a later step.
+sufficient. `network_policy_*` stays as already decided, and attaches to SandboxConfig in step 5a.
 
 ### Changed — 61 structs' accessors are generated by `#derive(accessors)` (v2.0.0 step 3b, ADR-009)
 

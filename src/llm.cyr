@@ -71,14 +71,19 @@ fn llm_provider_parse(s: Str) {
     elif (str_eq_cstr(s, "Custom") == 1) { return Ok(LLM_CUSTOM); }
     return stik_err_invalid_argument(str_from("unknown LlmProvider name"));
 }
-enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; }
-# MessageRole display name: "system", "user", "assistant" or "tool", and
-# "unknown" for a value outside the enum. message_role_parse is the inverse.
+# ROLE_DEVELOPER (since 2.0.0) is OpenAI's role for developer instructions,
+# which replaces "system" for its reasoning models. It is appended, so the
+# other members keep their values.
+enum MessageRole { ROLE_SYSTEM; ROLE_USER; ROLE_ASSISTANT; ROLE_TOOL; ROLE_DEVELOPER; }
+# MessageRole display name: "system", "user", "assistant", "tool" or
+# "developer", and "unknown" for a value outside the enum. message_role_parse
+# is the inverse.
 fn message_role_name(r) {
     if (r == ROLE_SYSTEM)        { return "system"; }
     elif (r == ROLE_USER)        { return "user"; }
     elif (r == ROLE_ASSISTANT)   { return "assistant"; }
     elif (r == ROLE_TOOL)        { return "tool"; }
+    elif (r == ROLE_DEVELOPER)   { return "developer"; }
     return "unknown";
 }
 # Inverse of message_role_name. Exact match on what message_role_name emits; an
@@ -90,6 +95,7 @@ fn message_role_parse(s: Str) {
     elif (str_eq_cstr(s, "user") == 1) { return Ok(ROLE_USER); }
     elif (str_eq_cstr(s, "assistant") == 1) { return Ok(ROLE_ASSISTANT); }
     elif (str_eq_cstr(s, "tool") == 1) { return Ok(ROLE_TOOL); }
+    elif (str_eq_cstr(s, "developer") == 1) { return Ok(ROLE_DEVELOPER); }
     return stik_err_invalid_argument(str_from("unknown MessageRole name"));
 }
 enum ContentBlockType {
@@ -357,9 +363,10 @@ fn stream_event_type_parse(s: Str) {
     return stik_err_invalid_argument(str_from("unknown StreamEventType name"));
 }
 # BatchStatus display name: "pending", "in_progress", "completed", "failed",
-# "cancelled" or "expired", and "Unknown" for a value outside the enum.
-# batch_status_parse is the inverse. Spelling: OpenAI's Batch API status
-# spelling (it has no "pending").
+# "cancelled", "expired", "validating", "finalizing" or "cancelling", and
+# "Unknown" for a value outside the enum. batch_status_parse is the inverse.
+# Spelling: OpenAI's Batch API status spelling (it has no "pending"). The
+# last three, OpenAI's transitional states, were added in 2.0.0.
 fn batch_status_name(s) {
     if (s == BATCH_PENDING)       { return "pending"; }
     elif (s == BATCH_IN_PROGRESS) { return "in_progress"; }
@@ -367,6 +374,9 @@ fn batch_status_name(s) {
     elif (s == BATCH_FAILED)      { return "failed"; }
     elif (s == BATCH_CANCELLED)   { return "cancelled"; }
     elif (s == BATCH_EXPIRED)     { return "expired"; }
+    elif (s == BATCH_VALIDATING)  { return "validating"; }
+    elif (s == BATCH_FINALIZING)  { return "finalizing"; }
+    elif (s == BATCH_CANCELLING)  { return "cancelling"; }
     return "Unknown";
 }
 # Parse a BatchStatus display name: exact, case-sensitive match. Returns
@@ -379,6 +389,9 @@ fn batch_status_parse(s: Str) {
     elif (str_eq_cstr(s, "failed") == 1) { return Ok(BATCH_FAILED); }
     elif (str_eq_cstr(s, "cancelled") == 1) { return Ok(BATCH_CANCELLED); }
     elif (str_eq_cstr(s, "expired") == 1) { return Ok(BATCH_EXPIRED); }
+    elif (str_eq_cstr(s, "validating") == 1) { return Ok(BATCH_VALIDATING); }
+    elif (str_eq_cstr(s, "finalizing") == 1) { return Ok(BATCH_FINALIZING); }
+    elif (str_eq_cstr(s, "cancelling") == 1) { return Ok(BATCH_CANCELLING); }
     return stik_err_invalid_argument(str_from("unknown BatchStatus name"));
 }
 enum ToolChoice { TOOL_AUTO; TOOL_NONE; TOOL_REQUIRED; TOOL_SPECIFIC; }
@@ -395,7 +408,20 @@ enum StreamEventType {
     STREAM_ERROR;
     STREAM_PING;
 }
-enum BatchStatus { BATCH_PENDING; BATCH_IN_PROGRESS; BATCH_COMPLETED; BATCH_FAILED; BATCH_CANCELLED; BATCH_EXPIRED; }
+# The batch job's state. BATCH_VALIDATING, BATCH_FINALIZING and BATCH_CANCELLING
+# (since 2.0.0) are OpenAI's transitional states. They are appended, so the
+# other members keep their values.
+enum BatchStatus {
+    BATCH_PENDING;
+    BATCH_IN_PROGRESS;
+    BATCH_COMPLETED;
+    BATCH_FAILED;
+    BATCH_CANCELLED;
+    BATCH_EXPIRED;
+    BATCH_VALIDATING;
+    BATCH_FINALIZING;
+    BATCH_CANCELLING;
+}
 # A Message: one turn of an LLM conversation. 24 bytes, all 8-byte slots:
 #   +0 role (MessageRole), +8 content (vec of content-block boxes, starts
 #   empty), +16 zeroed, with no accessor.

@@ -33,3 +33,9 @@ bash /path/to/agnostik/scripts/migrate-2.0.0.sh path/to/consumer
 It rewrites the `.cyr`, `.tcyr` and `.bcyr` files under each directory, skipping that directory's own top-level
 `lib/` and `build/` and any `agnostik.cyr`. Review the diff afterwards: an identifier of your own that equals an
 old accessor name is renamed too. Then move `[deps.agnostik]` to the 2.0.0 tag and run `cyrius deps`.
+
+**Order matters when a dependency also calls agnostik.** The script leaves vendored code in `lib/` alone, so a
+library you vendor must first ship a release on the 2.0.0 names. ark is the case today: its vendored `lib/mela.cyr`
+calls `amanifest_name` and `amanifest_description`. Against agnostik 2.0.0, ark builds with an "undefined
+function" warning for each, and the build fails once ark calls the mela fns that use them. Move mela to 2.0.0
+and release it, then move ark onto that mela and agnostik 2.0.0 together.

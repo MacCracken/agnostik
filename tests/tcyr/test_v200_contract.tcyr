@@ -1,0 +1,783 @@
+# tests/tcyr/test_v200_contract.tcyr
+#
+# v2.0.0 step 5: the contract items deferred from 1.12.3, one group per item
+# (roadmap §v2.0.0 "Deferred from 1.12.3"). Each slot test writes a distinct
+# value to every field of a struct and reads them all back, so two accessors
+# sharing a slot, or a new slot overlapping an old one, fails here.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# ─── 5a: fields the Rust port dropped ────
+
+# NetworkPolicy's NAT flag starts 0, round-trips, and leaves the three port and
+# host vecs in place.
+fn test_network_policy_nat() {
+    var p = network_policy_new();
+    assert_eq(NetworkPolicy_enable_nat(p), 0, "5a: enable_nat 0 in a fresh policy");
+    var outp = NetworkPolicy_outbound_ports(p);
+    var outh = NetworkPolicy_outbound_hosts(p);
+    var inp = NetworkPolicy_inbound_ports(p);
+    NetworkPolicy_set_enable_nat(p, 1);
+    assert_eq(NetworkPolicy_enable_nat(p), 1, "5a: enable_nat round-trips");
+    assert_eq(NetworkPolicy_outbound_ports(p), outp, "5a: enable_nat leaves outbound ports");
+    assert_eq(NetworkPolicy_outbound_hosts(p), outh, "5a: enable_nat leaves outbound hosts");
+    assert_eq(NetworkPolicy_inbound_ports(p), inp, "5a: enable_nat leaves inbound ports");
+    assert_eq(vec_len(outp) + vec_len(outh) + vec_len(inp), 0, "5a: the policy's vecs start empty");
+    return 0;
+}
+
+# A fresh SandboxConfig has no network policy or encrypted storage, and its
+# rlimits and devices vecs are created empty on first access, once.
+fn test_sandbox_new_defaults() {
+    var s = sandbox_config_new();
+    assert_eq(SandboxConfig_network_policy(s), 0, "5a: no network policy by default");
+    assert_eq(SandboxConfig_encrypted_storage(s), 0, "5a: no encrypted storage by default");
+    assert_eq(load64(s + 88), 0, "5a: rlimits not built until first access");
+    assert_eq(load64(s + 96), 0, "5a: devices not built until first access");
+    var rl = SandboxConfig_rlimits(s);
+    var dv = SandboxConfig_devices(s);
+    assert_nonnull(rl, "5a: rlimits vec created");
+    assert_nonnull(dv, "5a: devices vec created");
+    assert_neq(rl, dv, "5a: rlimits and devices are separate vecs");
+    assert_eq(vec_len(rl), 0, "5a: rlimits starts empty");
+    assert_eq(vec_len(dv), 0, "5a: devices starts empty");
+    assert_eq(SandboxConfig_rlimits(s), rl, "5a: rlimits is built once");
+    assert_eq(SandboxConfig_devices(s), dv, "5a: devices is built once");
+    assert_eq(SandboxConfig_net_access(s), NET_LOCALHOST_ONLY, "5a: net_access default unchanged");
+    assert_eq(SandboxConfig_isolate_net(s), 1, "5a: isolate_net default unchanged");
+    return 0;
+}
+
+# Every SandboxConfig slot holds its own value: the four new fields and the
+# nine old ones, all set at once, all read back.
+fn test_sandbox_slots_distinct() {
+    var s = sandbox_config_new();
+    var np = network_policy_new();
+    var es = encrypted_storage_new();
+    var aa = str_from("agnos-default");
+    var se = str_from("system_u:system_r:agnos_t:s0");
+    SandboxConfig_set_net_access(s, NET_RESTRICTED);
+    SandboxConfig_set_seccomp(s, 4242);
+    SandboxConfig_set_isolate_net(s, 0);
+    SandboxConfig_set_network_policy(s, np);
+    SandboxConfig_set_apparmor(s, aa);
+    SandboxConfig_set_selinux(s, se);
+    SandboxConfig_set_encrypted_storage(s, es);
+    var fs = SandboxConfig_fs_rules(s);
+    var mp = SandboxConfig_masked_paths(s);
+    var ro = SandboxConfig_readonly_paths(s);
+    var sc = SandboxConfig_sysctl(s);
+    var rl = SandboxConfig_rlimits(s);
+    var dv = SandboxConfig_devices(s);
+    vec_push(rl, rlimit_new(RLIM_NOFILE, 1024, 4096));
+    vec_push(dv, device_rule_new(1, DEV_CHAR, str_from("rwm")));
+    assert_eq(SandboxConfig_net_access(s), NET_RESTRICTED, "5a: net_access slot");
+    assert_eq(SandboxConfig_seccomp(s), 4242, "5a: seccomp slot");
+    assert_eq(SandboxConfig_isolate_net(s), 0, "5a: isolate_net slot");
+    assert_eq(SandboxConfig_network_policy(s), np, "5a: network_policy slot");
+    assert_eq(SandboxConfig_apparmor(s), aa, "5a: apparmor slot");
+    assert_eq(SandboxConfig_selinux(s), se, "5a: selinux slot");
+    assert_eq(SandboxConfig_encrypted_storage(s), es, "5a: encrypted_storage slot");
+    assert_eq(SandboxConfig_fs_rules(s), fs, "5a: fs_rules slot");
+    assert_eq(SandboxConfig_masked_paths(s), mp, "5a: masked_paths slot");
+    assert_eq(SandboxConfig_readonly_paths(s), ro, "5a: readonly_paths slot");
+    assert_eq(SandboxConfig_sysctl(s), sc, "5a: sysctl slot");
+    assert_eq(SandboxConfig_rlimits(s), rl, "5a: rlimits slot");
+    assert_eq(SandboxConfig_devices(s), dv, "5a: devices slot");
+    assert_eq(vec_len(SandboxConfig_rlimits(s)), 1, "5a: an rlimit was added");
+    assert_eq(Rlimit_hard(vec_get(SandboxConfig_rlimits(s), 0)), 4096, "5a: the rlimit reads back");
+    assert_eq(DeviceRule_type(vec_get(SandboxConfig_devices(s), 0)), DEV_CHAR, "5a: the device rule reads back");
+    SandboxConfig_set_network_policy(s, 0);
+    assert_eq(SandboxConfig_network_policy(s), 0, "5a: network_policy clears to 0");
+    return 0;
+}
+
+# FilesystemRule's nosuid and nodev start 0, round-trip, and stay apart from
+# noexec and propagation, the slots on either side.
+fn test_fs_rule_mount_flags() {
+    var r = filesystem_rule_new(str_from("/var/lib/agnos"), FS_READ_WRITE);
+    assert_eq(FilesystemRule_nosuid(r), 0, "5a: nosuid 0 in a fresh rule");
+    assert_eq(FilesystemRule_nodev(r), 0, "5a: nodev 0 in a fresh rule");
+    assert_eq(FilesystemRule_propagation(r), MOUNT_PRIVATE, "5a: propagation default unchanged");
+    FilesystemRule_set_readonly(r, 11);
+    FilesystemRule_set_noexec(r, 12);
+    FilesystemRule_set_nosuid(r, 13);
+    FilesystemRule_set_propagation(r, MOUNT_SLAVE);
+    FilesystemRule_set_nodev(r, 14);
+    assert_eq(FilesystemRule_access(r), FS_READ_WRITE, "5a: access slot");
+    assert_eq(FilesystemRule_readonly(r), 11, "5a: readonly slot");
+    assert_eq(FilesystemRule_noexec(r), 12, "5a: noexec slot");
+    assert_eq(FilesystemRule_nosuid(r), 13, "5a: nosuid slot");
+    assert_eq(FilesystemRule_propagation(r), MOUNT_SLAVE, "5a: propagation slot");
+    assert_eq(FilesystemRule_nodev(r), 14, "5a: nodev slot");
+    return 0;
+}
+
+# All twelve CgroupLimits fields start 0 and hold distinct values at once.
+fn test_cgroup_limits_slots() {
+    var c = cgroup_limits_new();
+    var sum = CgroupLimits_memory_max(c) + CgroupLimits_memory_high(c) + CgroupLimits_cpu_max(c);
+    sum = sum + CgroupLimits_cpu_period(c) + CgroupLimits_cpu_weight(c) + CgroupLimits_pids_max(c);
+    sum = sum + CgroupLimits_io_weight(c) + CgroupLimits_io_max_read_bps(c) + CgroupLimits_io_max_write_bps(c);
+    sum = sum + CgroupLimits_cpuset_cpus(c) + CgroupLimits_cpuset_mems(c) + CgroupLimits_memory_swap_max(c);
+    assert_eq(sum, 0, "5a: every cgroup limit 0 in a fresh struct");
+    var cpus = str_from("0-3");
+    var mems = str_from("0");
+    CgroupLimits_set_memory_max(c, 101);
+    CgroupLimits_set_memory_high(c, 102);
+    CgroupLimits_set_cpu_max(c, 103);
+    CgroupLimits_set_cpu_period(c, 104);
+    CgroupLimits_set_cpu_weight(c, 105);
+    CgroupLimits_set_pids_max(c, 106);
+    CgroupLimits_set_io_weight(c, 107);
+    CgroupLimits_set_io_max_read_bps(c, 108);
+    CgroupLimits_set_io_max_write_bps(c, 109);
+    CgroupLimits_set_cpuset_cpus(c, cpus);
+    CgroupLimits_set_cpuset_mems(c, mems);
+    CgroupLimits_set_memory_swap_max(c, 112);
+    assert_eq(CgroupLimits_memory_max(c), 101, "5a: memory_max slot");
+    assert_eq(CgroupLimits_memory_high(c), 102, "5a: memory_high slot");
+    assert_eq(CgroupLimits_cpu_max(c), 103, "5a: cpu_max slot");
+    assert_eq(CgroupLimits_cpu_period(c), 104, "5a: cpu_period slot");
+    assert_eq(CgroupLimits_cpu_weight(c), 105, "5a: cpu_weight slot");
+    assert_eq(CgroupLimits_pids_max(c), 106, "5a: pids_max slot");
+    assert_eq(CgroupLimits_io_weight(c), 107, "5a: io_weight slot");
+    assert_eq(CgroupLimits_io_max_read_bps(c), 108, "5a: io_max_read_bps slot");
+    assert_eq(CgroupLimits_io_max_write_bps(c), 109, "5a: io_max_write_bps slot");
+    assert_eq(CgroupLimits_cpuset_cpus(c), cpus, "5a: cpuset_cpus slot");
+    assert_eq(CgroupLimits_cpuset_mems(c), mems, "5a: cpuset_mems slot");
+    assert_eq(CgroupLimits_memory_swap_max(c), 112, "5a: memory_swap_max slot");
+    return 0;
+}
+
+# ─── 5b: unset versus zero ────
+
+# run_as_user / run_as_group start unset; setting 0 (root) marks them set, and
+# each setter marks only its own flag.
+fn test_secctx_set_flags() {
+    var ctx = security_context_new(agent_id_new());
+    assert_eq(SecurityContext_has_run_as_user(ctx), 0, "5b: uid unset in a fresh context");
+    assert_eq(SecurityContext_has_run_as_group(ctx), 0, "5b: gid unset in a fresh context");
+    assert_eq(SecurityContext_run_as_user(ctx), 0, "5b: an unset uid still reads 0");
+    SecurityContext_set_run_as_user(ctx, 0);
+    assert_eq(SecurityContext_has_run_as_user(ctx), 1, "5b: a stored uid 0 is set");
+    assert_eq(SecurityContext_has_run_as_group(ctx), 0, "5b: setting the uid leaves the gid unset");
+    assert_eq(SecurityContext_run_as_user(ctx), 0, "5b: the stored uid is root's");
+    SecurityContext_set_run_as_group(ctx, 1000);
+    assert_eq(SecurityContext_has_run_as_group(ctx), 1, "5b: gid set");
+    assert_eq(SecurityContext_run_as_group(ctx), 1000, "5b: gid reads back");
+    SecurityContext_set_run_as_user(ctx, 1001);
+    assert_eq(SecurityContext_run_as_user(ctx), 1001, "5b: uid overwrite reads back");
+    assert_eq(SecurityContext_has_run_as_user(ctx), 1, "5b: uid stays set");
+    assert_eq(SecurityContext_readonly_root(ctx), 0, "5b: the flags leave readonly_root");
+    assert_eq(SecurityContext_no_new_privs(ctx), 1, "5b: the flags leave no_new_privs");
+    var other = security_context_new(agent_id_new());
+    assert_eq(SecurityContext_has_run_as_user(other) + SecurityContext_has_run_as_group(other), 0,
+        "5b: a second context starts unset");
+    return 0;
+}
+
+# Calls the CgroupLimits setter for field `i` (0..9, the numeric fields in
+# layout order) with `v`.
+fn cglim_set_nth(c, i, v) {
+    if (i == 0) { return CgroupLimits_set_memory_max(c, v); }
+    if (i == 1) { return CgroupLimits_set_memory_high(c, v); }
+    if (i == 2) { return CgroupLimits_set_cpu_max(c, v); }
+    if (i == 3) { return CgroupLimits_set_cpu_period(c, v); }
+    if (i == 4) { return CgroupLimits_set_cpu_weight(c, v); }
+    if (i == 5) { return CgroupLimits_set_pids_max(c, v); }
+    if (i == 6) { return CgroupLimits_set_io_weight(c, v); }
+    if (i == 7) { return CgroupLimits_set_io_max_read_bps(c, v); }
+    if (i == 8) { return CgroupLimits_set_io_max_write_bps(c, v); }
+    return CgroupLimits_set_memory_swap_max(c, v);
+}
+
+# The CgroupLimits set flags as a 10-bit mask, bit i for numeric field i.
+fn cglim_has_mask(c) {
+    var m = CgroupLimits_has_memory_max(c) | (CgroupLimits_has_memory_high(c) << 1);
+    m = m | (CgroupLimits_has_cpu_max(c) << 2) | (CgroupLimits_has_cpu_period(c) << 3);
+    m = m | (CgroupLimits_has_cpu_weight(c) << 4) | (CgroupLimits_has_pids_max(c) << 5);
+    m = m | (CgroupLimits_has_io_weight(c) << 6) | (CgroupLimits_has_io_max_read_bps(c) << 7);
+    m = m | (CgroupLimits_has_io_max_write_bps(c) << 8) | (CgroupLimits_has_memory_swap_max(c) << 9);
+    return m;
+}
+
+# Every numeric CgroupLimits field starts unset; setting one to 0 marks that
+# field, and only that field, set. The Str fields stay outside the flags.
+fn test_cgroup_set_flags() {
+    assert_eq(cglim_has_mask(cgroup_limits_new()), 0, "5b: every limit unset in a fresh struct");
+    var i = 0;
+    var exact = 0;
+    while (i < 10) {
+        var c = cgroup_limits_new();
+        cglim_set_nth(c, i, 0);
+        if (cglim_has_mask(c) == (1 << i)) { exact = exact + 1; }
+        i = i + 1;
+    }
+    assert_eq(exact, 10, "5b: each setter, given 0, marks exactly its own field");
+    var all = cgroup_limits_new();
+    var j = 0;
+    while (j < 10) { cglim_set_nth(all, j, 500 + j); j = j + 1; }
+    assert_eq(cglim_has_mask(all), 1023, "5b: all ten flags set together");
+    assert_eq(CgroupLimits_memory_max(all), 500, "5b: memory_max value beside the flags");
+    assert_eq(CgroupLimits_memory_swap_max(all), 509, "5b: memory_swap_max value beside the flags");
+    CgroupLimits_set_cpuset_cpus(all, str_from("0-1"));
+    CgroupLimits_set_cpuset_mems(all, str_from("0"));
+    assert_eq(cglim_has_mask(all), 1023, "5b: the Str fields do not touch the flags");
+    var fresh = cgroup_limits_new();
+    CgroupLimits_set_cpuset_cpus(fresh, str_from(""));
+    assert_eq(cglim_has_mask(fresh), 0, "5b: a cpuset Str leaves every numeric limit unset");
+    assert_neq(CgroupLimits_cpuset_cpus(fresh), 0, "5b: an empty cpuset Str is a value, not unset");
+    return 0;
+}
+
+# ─── 5c: constant-time secret comparison ────
+
+# A Str of `n` bytes of 'k' with byte `at` set to `ch` (at < 0: none changed).
+fn k_str(n, at, ch) {
+    var b = alloc(n + 1);
+    memset(b, 107, n);
+    if (at >= 0) { store8(b + at, ch); }
+    store8(b + n, 0);
+    return str_new(b, n);
+}
+
+# secret_matches answers as plain equality would, for a match, every single
+# differing position, a one-bit difference, and every length mismatch.
+fn test_secret_matches_oracle() {
+    var s = secret_new(k_str(64, 0 - 1, 0));
+    assert_eq(secret_matches(s, k_str(64, 0 - 1, 0)), 1, "5c: equal bytes match");
+    assert_eq(secret_matches(s, secret_expose(s)), 1, "5c: the secret's own view matches");
+    var i = 0;
+    var rejected = 0;
+    while (i < 64) {
+        if (secret_matches(s, k_str(64, i, 120)) == 0) { rejected = rejected + 1; }
+        if (secret_matches(s, k_str(64, i, 107 ^ 1)) == 0) { rejected = rejected + 1; }
+        if (secret_matches(s, k_str(64, i, 107 ^ 128)) == 0) { rejected = rejected + 1; }
+        i = i + 1;
+    }
+    assert_eq(rejected, 192, "5c: a difference at any position, even one bit, is rejected");
+    var n = 0;
+    var len_rejected = 0;
+    while (n <= 70) {
+        if (n != 64) {
+            if (secret_matches(s, k_str(n, 0 - 1, 0)) == 0) { len_rejected = len_rejected + 1; }
+        }
+        n = n + 1;
+    }
+    assert_eq(len_rejected, 70, "5c: a prefix or an extension is rejected");
+    var nul = secret_new(str_new("a\0b", 3));
+    assert_eq(secret_matches(nul, str_new("a\0b", 3)), 1, "5c: bytes after a NUL are compared");
+    assert_eq(secret_matches(nul, str_new("a\0c", 3)), 0, "5c: a difference after a NUL is caught");
+    return 0;
+}
+
+# An empty or destroyed secret matches nothing, and a 0 candidate matches
+# nothing, so an unset key cannot authenticate an empty credential.
+fn test_secret_matches_empty() {
+    var e = secret_new(str_from(""));
+    assert_eq(secret_matches(e, str_from("")), 0, "5c: an empty secret does not match an empty candidate");
+    assert_eq(secret_matches(e, str_from("x")), 0, "5c: an empty secret matches nothing");
+    var z = secret_new(0);
+    assert_eq(secret_matches(z, str_from("")), 0, "5c: a secret built from 0 matches nothing");
+    var s = secret_new(str_from("hunter2"));
+    assert_eq(secret_matches(s, 0), 0, "5c: a 0 candidate matches nothing");
+    assert_eq(secret_matches(s, str_from("hunter2")), 1, "5c: the live secret matches");
+    secret_destroy(s);
+    assert_eq(secret_matches(s, str_from("hunter2")), 0, "5c: a destroyed secret matches nothing");
+    assert_eq(secret_matches(s, str_from("")), 0, "5c: a destroyed secret does not match an empty candidate");
+    return 0;
+}
+
+# ─── 5d: audit chain ────
+
+# Lower-case hex of Str `s`'s bytes, as a new Str.
+fn hex_of(s) {
+    var n = str_len(s);
+    var d = str_data(s);
+    var out = alloc(2 * n + 1);
+    var lut = "0123456789abcdef";
+    var i = 0;
+    while (i < n) {
+        var c = load8(d + i);
+        store8(out + 2 * i, load8(lut + (c >> 4)));
+        store8(out + 2 * i + 1, load8(lut + (c & 15)));
+        i = i + 1;
+    }
+    store8(out + 2 * n, 0);
+    return str_new(out, 2 * n);
+}
+
+# Entry `e`'s canonical bytes as a Str, or 0 on Err.
+fn canon(e) {
+    var sb = str_builder_new();
+    var t, n = AuditEntry_to_canonical(e, sb);
+    if (is_err_result(t) == 1) { return 0; }
+    return str_builder_build(sb);
+}
+
+# 1 when two entries' canonical encodings differ, else 0.
+fn canon_differs(a, b) {
+    if (str_eq(canon(a), canon(b)) == 1) { return 0; }
+    return 1;
+}
+
+# The entry the golden bytes describe: every kind of field set, one Str left 0.
+fn golden_entry() {
+    var t, aid = agent_id_from_str(str_from("0af76519-16cd-43dd-8448-eb211c80319c"));
+    var e = audit_entry_new(str_from("evt-1"), aid, str_from("read"), AUDIT_ERROR);
+    AuditEntry_set_timestamp(e, 1700000000123456789);
+    AuditEntry_set_result(e, AUDIT_DENIED);
+    AuditEntry_set_details(e, str_from("{\"k\":1}"));
+    AuditEntry_set_user_id(e, str_from("alice"));
+    AuditEntry_set_target_resource(e, str_from("/etc/hosts"));
+    AuditEntry_set_duration_ms(e, 42);
+    vec_push(AuditEntry_tags(e), str_from("sec"));
+    vec_push(AuditEntry_tags(e), str_from("fs"));
+    var v = version_new(1, 2, 3);
+    Version_set_prerelease(v, str_from("rc.1"));
+    var h = str_from("abababababababababababababababababababababababababababababababab");
+    AuditEntry_set_integrity(e, integrity_fields_new(v, str_from("sig"), h));
+    return e;
+}
+
+# AuditEntry_set_timestamp writes the timestamp slot and nothing else.
+fn test_audit_set_timestamp() {
+    var e = audit_entry_new(str_from("id"), agent_id_new(), str_from("act"), AUDIT_INFO);
+    var act = AuditEntry_action(e);
+    AuditEntry_set_timestamp(e, 1234567890);
+    assert_eq(AuditEntry_timestamp(e), 1234567890, "5d: the timestamp round-trips");
+    AuditEntry_set_timestamp(e, 0 - 5);
+    assert_eq(AuditEntry_timestamp(e), 0 - 5, "5d: a timestamp is stored as given");
+    assert_eq(AuditEntry_action(e), act, "5d: set_timestamp leaves the action");
+    assert_eq(AuditEntry_severity(e), AUDIT_INFO, "5d: set_timestamp leaves the severity");
+    return 0;
+}
+
+# IntegrityFields copies its Strs: a sink that reuses one buffer for every hash
+# no longer rewrites the links it already made.
+fn test_integrity_copies() {
+    var buf = alloc(65);
+    memset(buf, 97, 64);
+    store8(buf + 64, 0);
+    var h = str_new(buf, 64);
+    var f = integrity_fields_new(version_default(), h, h);
+    memset(buf, 98, 64);
+    assert_eq(load8(str_data(IntegrityFields_prev_hash(f))), 97, "5d: prev_hash is a copy");
+    assert_eq(load8(str_data(IntegrityFields_signature(f))), 97, "5d: the signature is a copy");
+    assert_eq(str_len(IntegrityFields_prev_hash(f)), 64, "5d: the copy keeps the length");
+    assert_neq(IntegrityFields_prev_hash(f), h, "5d: the Str header is not the caller's");
+    IntegrityFields_set_prev_hash(f, h);
+    IntegrityFields_set_signature(f, h);
+    memset(buf, 99, 64);
+    assert_eq(load8(str_data(IntegrityFields_prev_hash(f))), 98, "5d: set_prev_hash copies");
+    assert_eq(load8(str_data(IntegrityFields_signature(f))), 98, "5d: set_signature copies");
+    var g = integrity_fields_genesis(h);
+    memset(buf, 100, 64);
+    assert_eq(load8(str_data(IntegrityFields_signature(g))), 99, "5d: the genesis signature is a copy");
+    assert_eq(integrity_is_genesis(g), 1, "5d: genesis fields are still genesis");
+    IntegrityFields_set_prev_hash(f, 0);
+    assert_eq(IntegrityFields_prev_hash(f), 0, "5d: a 0 prev_hash stays 0");
+    IntegrityFields_set_prev_hash(f, str_new(buf, 0 - 5));
+    assert_eq(str_len(IntegrityFields_prev_hash(f)), 0, "5d: a negative-length Str copies as empty");
+    return 0;
+}
+
+# The golden entry encodes to the bytes a separate implementation of the format
+# (a Python script written from the ADR-011 text) produced: 288 bytes.
+fn test_canonical_golden() {
+    var want = str_builder_new();
+    str_builder_add_cstr(want, "61676e6f7374696b3a61756469743a310100000000000000056576742d310017");
+    str_builder_add_cstr(want, "979cfe3d85cd15010af7651916cd43dd");
+    str_builder_add_cstr(want, "8448eb211c80319c010000000000000004726561640000000000000003000000");
+    str_builder_add_cstr(want, "00000000020100000000000000077b22");
+    str_builder_add_cstr(want, "6b223a317d010000000000000005616c6963650001000000000000000a2f6574");
+    str_builder_add_cstr(want, "632f686f737473000000000000002a01");
+    str_builder_add_cstr(want, "0000000000000002010000000000000003736563010000000000000002667301");
+    str_builder_add_cstr(want, "01000000000000000100000000000000");
+    str_builder_add_cstr(want, "02000000000000000301000000000000000472632e3100010000000000000040");
+    str_builder_add_cstr(want, "61626162616261626162616261626162");
+    str_builder_add_cstr(want, "6162616261626162616261626162616261626162616261626162616261626162");
+    str_builder_add_cstr(want, "61626162616261626162616261626162");
+    var e = golden_entry();
+    var sb = str_builder_new();
+    str_builder_add_cstr(sb, "prefix");
+    var t, n = AuditEntry_to_canonical(e, sb);
+    assert_eq(is_ok(t), 1, "5d: the golden entry encodes");
+    assert_eq(n, 288, "5d: Ok carries the byte count");
+    var all = str_builder_build(sb);
+    assert_eq(str_len(all), 294, "5d: the bytes are appended after what sb held");
+    var got = str_new(str_data(all) + 6, 288);
+    assert_eq(str_eq(hex_of(got), str_builder_build(want)), 1, "5d: golden bytes match the independent encoder");
+    assert_eq(str_eq(canon(e), canon(golden_entry())), 1, "5d: the encoding is deterministic");
+    var fresh = canon(audit_entry_new(str_from("x"), agent_id_new(), str_from("y"), AUDIT_INFO));
+    var tail = str_new(str_data(fresh) + str_len(fresh) - 101, 101);
+    var gt = str_builder_new();
+    str_builder_add_cstr(gt, "0101000000000000000000000000000000000000000000000000000001000000");
+    str_builder_add_cstr(gt, "00000000403030303030303030303030");
+    str_builder_add_cstr(gt, "3030303030303030303030303030303030303030303030303030303030303030");
+    str_builder_add_cstr(gt, "30303030303030303030303030303030");
+    str_builder_add_cstr(gt, "3030303030");
+    assert_eq(str_eq(hex_of(tail), str_builder_build(gt)), 1, "5d: a fresh entry ends with genesis integrity");
+    return 0;
+}
+
+# Entries that differ anywhere encode differently, including where a
+# delimiter-based encoding would collide; the signature is not encoded.
+fn test_canonical_distinct() {
+    var aid = agent_id_new();
+    var a = audit_entry_new(str_from("ab"), aid, str_from("c"), AUDIT_INFO);
+    var b = audit_entry_new(str_from("a"), aid, str_from("bc"), AUDIT_INFO);
+    AuditEntry_set_timestamp(b, AuditEntry_timestamp(a));
+    assert_eq(canon_differs(a, b), 1, "5d: bytes moved between adjacent fields change the encoding");
+    var c = golden_entry();
+    var d = golden_entry();
+    AuditEntry_set_correlation_id(d, str_from(""));
+    assert_eq(canon_differs(c, d), 1, "5d: an empty Str differs from a 0 Str");
+    var t1 = golden_entry();
+    var t2 = golden_entry();
+    vec_push(AuditEntry_tags(t1), str_from("a"));
+    vec_push(AuditEntry_tags(t1), str_from("b"));
+    vec_push(AuditEntry_tags(t2), str_from("ab"));
+    assert_eq(canon_differs(t1, t2), 1, "5d: tags [a, b] differ from [ab]");
+    var changed = 0;
+    var k = 0;
+    while (k < 12) {
+        var m = golden_entry();
+        if (k == 0) { AuditEntry_set_timestamp(m, 1700000000123456790); }
+        if (k == 1) { AuditEntry_set_correlation_id(m, str_from("c")); }
+        if (k == 2) { AuditEntry_set_result(m, AUDIT_FAILURE); }
+        if (k == 3) { AuditEntry_set_details(m, str_from("{\"k\":2}")); }
+        if (k == 4) { AuditEntry_set_user_id(m, str_from("alicf")); }
+        if (k == 5) { AuditEntry_set_source_ip(m, str_from("10.0.0.1")); }
+        if (k == 6) { AuditEntry_set_target_resource(m, 0); }
+        if (k == 7) { AuditEntry_set_duration_ms(m, 43); }
+        if (k == 8) { vec_push(AuditEntry_tags(m), str_from("x")); }
+        if (k == 9) { IntegrityFields_set_prev_hash(AuditEntry_integrity(m), str_from("cd")); }
+        if (k == 10) { Version_set_patch(IntegrityFields_version(AuditEntry_integrity(m)), 4); }
+        if (k == 11) { AuditEntry_set_integrity(m, 0); }
+        changed = changed + canon_differs(m, golden_entry());
+        k = k + 1;
+    }
+    assert_eq(changed, 12, "5d: changing any one field changes the encoding");
+    var s = golden_entry();
+    IntegrityFields_set_signature(AuditEntry_integrity(s), str_from("another signature"));
+    assert_eq(canon_differs(s, golden_entry()), 0, "5d: the signature is not part of the encoding");
+    return 0;
+}
+
+# A Str with a negative length anywhere in the entry is an Err that leaves the
+# builder unchanged.
+fn test_canonical_err() {
+    var bad = str_new("x", 0 - 1);
+    var hit = 0;
+    var k = 0;
+    while (k < 4) {
+        var e = golden_entry();
+        if (k == 0) { AuditEntry_set_user_id(e, bad); }
+        if (k == 1) { vec_push(AuditEntry_tags(e), bad); }
+        if (k == 2) { Version_set_build(IntegrityFields_version(AuditEntry_integrity(e)), bad); }
+        if (k == 3) { store64(AuditEntry_integrity(e) + 16, bad); }
+        var sb = str_builder_new();
+        str_builder_add_cstr(sb, "kept");
+        var t, n = AuditEntry_to_canonical(e, sb);
+        if (is_err_result(t) == 1) {
+            if (str_eq_cstr(str_builder_build(sb), "kept") == 1) { hit = hit + 1; }
+        }
+        k = k + 1;
+    }
+    assert_eq(hit, 4, "5d: a negative-length Str is an Err and sb is unchanged");
+    var z = golden_entry();
+    store64(z + 24, 0);
+    AuditEntry_set_integrity(z, 0);
+    assert_neq(canon(z), 0, "5d: a 0 agent id and no integrity still encode");
+    return 0;
+}
+
+# ─── 5f: JSON text is valid UTF-8 ────
+
+# Str of the bytes given as hex text `hx` (even length, lower case).
+fn unhex(hx) {
+    var n = strlen(hx) / 2;
+    var out = alloc(n + 1);
+    var i = 0;
+    while (i < n) {
+        var hi = load8(hx + 2 * i);
+        var lo = load8(hx + 2 * i + 1);
+        if (hi >= 97) { hi = hi - 87; } else { hi = hi - 48; }
+        if (lo >= 97) { lo = lo - 87; } else { lo = lo - 48; }
+        store8(out + i, hi * 16 + lo);
+        i = i + 1;
+    }
+    store8(out + n, 0);
+    return str_new(out, n);
+}
+
+# 1 when Str `needle` text (a cstr) occurs in Str `hay`, else 0.
+fn str_has(hay, needle) {
+    var n = strlen(needle);
+    var hn = str_len(hay);
+    var i = 0;
+    var found = 0;
+    while (i + n <= hn) {
+        if (memeq(str_data(hay) + i, needle, n) == 1) { found = 1; i = hn; }
+        i = i + 1;
+    }
+    return found;
+}
+
+# _stik_json_text of `s`, as a Str.
+fn json_text(s) {
+    var sb = str_builder_new();
+    _stik_json_text(sb, s);
+    return str_builder_build(sb);
+}
+
+# 1 when `n` bytes at p are well-formed UTF-8 (RFC 3629 §4), else 0.
+fn utf8_ok(p, n) {
+    var i = 0;
+    var ok = 1;
+    while (i < n) {
+        var c = load8(p + i);
+        var need = 0;
+        var lo = 0x80;
+        var hi = 0xBF;
+        if (c >= 0x80) {
+            need = 0 - 1;
+            if (c >= 0xC2 && c <= 0xDF) { need = 1; }
+            if (c == 0xE0) { need = 2; lo = 0xA0; }
+            if ((c >= 0xE1 && c <= 0xEC) || c == 0xEE || c == 0xEF) { need = 2; }
+            if (c == 0xED) { need = 2; hi = 0x9F; }
+            if (c == 0xF0) { need = 3; lo = 0x90; }
+            if (c >= 0xF1 && c <= 0xF3) { need = 3; }
+            if (c == 0xF4) { need = 3; hi = 0x8F; }
+        }
+        if (need < 0) { ok = 0; }
+        if (i + need > n - 1) { ok = 0; }
+        var k = 1;
+        while (ok == 1 && k <= need) {
+            var d = load8(p + i + k);
+            var l = 0x80;
+            var h = 0xBF;
+            if (k == 1) { l = lo; h = hi; }
+            if (d < l || d > h) { ok = 0; }
+            k = k + 1;
+        }
+        if (ok == 0) { i = n; } else { i = i + need + 1; }
+    }
+    return ok;
+}
+
+# 1 when `s` is one JSON string token: quoted, no raw control byte, and every
+# backslash starts a valid escape (RFC 8259 §7), else 0.
+fn json_string_ok(s) {
+    var p = str_data(s);
+    var n = str_len(s);
+    if (n < 2) { return 0; }
+    if (load8(p) != 34 || load8(p + n - 1) != 34) { return 0; }
+    var ok = 1;
+    var i = 1;
+    while (i < n - 1) {
+        var c = load8(p + i);
+        var step = 1;
+        if (c < 32 || c == 34) { ok = 0; }
+        if (c == 92) {
+            var e = load8(p + i + 1);
+            step = 2;
+            if (e == 117) {
+                step = 6;
+                if (i + 5 >= n - 1) { ok = 0; }
+            } elif (e != 34 && e != 92 && e != 47 && e != 98 && e != 102 && e != 110 && e != 114 && e != 116) {
+                ok = 0;
+            }
+        }
+        if (ok == 0) { i = n; } else { i = i + step; }
+    }
+    if (i != n - 1 && ok == 1) { ok = 0; }
+    return ok;
+}
+
+# Each input's JSON text equals Python's json.dumps(b.decode("utf-8",
+# "replace"), ensure_ascii=False), an encoder independent of this one.
+fn test_json_text_golden() {
+    var ins = vec_new();
+    var outs = vec_new();
+    vec_push(ins, "61eda08062");
+    vec_push(outs, "2261efbfbdefbfbdefbfbd6222");
+    vec_push(ins, "c0af");
+    vec_push(outs, "22efbfbdefbfbd22");
+    vec_push(ins, "f4908080");
+    vec_push(outs, "22efbfbdefbfbdefbfbdefbfbd22");
+    vec_push(ins, "e282");
+    vec_push(outs, "22efbfbd22");
+    vec_push(ins, "6f6b20ff2271220a");
+    vec_push(outs, "226f6b20efbfbd5c22715c225c6e22");
+    vec_push(ins, "f09f9880f09f98");
+    vec_push(outs, "22f09f9880efbfbd22");
+    vec_push(ins, "636166c3a95c01");
+    vec_push(outs, "22636166c3a95c5c5c753030303122");
+    var i = 0;
+    var hits = 0;
+    while (i < vec_len(ins)) {
+        if (str_eq(hex_of(json_text(unhex(vec_get(ins, i)))), str_from(vec_get(outs, i))) == 1) { hits = hits + 1; }
+        i = i + 1;
+    }
+    assert_eq(hits, 7, "5f: every golden matches Python's encoder");
+    assert_eq(str_eq_cstr(json_text(str_new(0, 4)), "\"\""), 1, "5f: 0 data writes an empty string");
+    assert_eq(str_eq_cstr(json_text(str_new("abc", 0 - 3)), "\"\""), 1, "5f: a negative length writes an empty string");
+    var info = agent_info_new(0, unhex("61eda08062"), AGENT_TYPE_USER, AGENT_PENDING);
+    var sb = str_builder_new();
+    AgentInfo_to_json(info, sb);
+    var js = str_builder_build(sb);
+    assert_eq(utf8_ok(str_data(js), str_len(js)), 1, "5f: AgentInfo JSON is valid UTF-8");
+    assert_eq(str_has(hex_of(js), "2261efbfbdefbfbdefbfbd6222"), 1, "5f: AgentInfo writes the fixed name");
+    var tc = telemetry_config_new();
+    TelemetryConfig_set_export_endpoint(tc, unhex("687474703a2f2fc0af"));
+    var sb2 = str_builder_new();
+    TelemetryConfig_to_json(tc, sb2);
+    var tj = str_builder_build(sb2);
+    assert_eq(utf8_ok(str_data(tj), str_len(tj)), 1, "5f: TelemetryConfig JSON is valid UTF-8");
+    assert_eq(str_has(hex_of(tj), "22687474703a2f2fefbfbdefbfbd22"), 1,
+        "5f: TelemetryConfig writes the fixed endpoint");
+    return 0;
+}
+
+var _fz = 0x9E3779B97F4A7C15;
+# Next value of a xorshift64 generator (deterministic, so failures reproduce).
+fn fz_next() {
+    _fz = _fz ^ (_fz << 13);
+    _fz = _fz ^ ((_fz >> 7) & 0x01FFFFFFFFFFFFFF);
+    _fz = _fz ^ (_fz << 17);
+    return _fz;
+}
+
+# 3,000 random byte strings, mostly high bytes: the JSON text is always one
+# valid JSON string in valid UTF-8; valid input comes out exactly as the stdlib
+# escaper wrote it through 1.12.x and reads back unchanged through AgentInfo.
+fn test_json_text_fuzz() {
+    var good = 0;
+    var same = 0;
+    var valid_in = 0;
+    var named = 0;
+    var back = 0;
+    var r = 0;
+    while (r < 3000) {
+        var n = fz_next() & 31;
+        var b = alloc(n + 1);
+        var i = 0;
+        while (i < n) {
+            var v = fz_next() & 0xFF;
+            if ((v & 3) == 0) { v = v & 0x7F; }
+            store8(b + i, v);
+            i = i + 1;
+        }
+        store8(b + n, 0);
+        var s = str_new(b, n);
+        var out = json_text(s);
+        if (utf8_ok(str_data(out), str_len(out)) == 1 && json_string_ok(out) == 1) { good = good + 1; }
+        if (utf8_ok(b, n) == 1) {
+            valid_in = valid_in + 1;
+            var ref = str_builder_new();
+            str_builder_add_json_str(ref, s);
+            if (str_eq(out, str_builder_build(ref)) == 1) { same = same + 1; }
+            if (n > 0) {
+                named = named + 1;
+                var info = agent_info_new(agent_id_new(), s, AGENT_TYPE_USER, AGENT_PENDING);
+                var sb = str_builder_new();
+                AgentInfo_to_json(info, sb);
+                var rd = AgentInfo_from_json(str_builder_build(sb));
+                if (AgentInfo_name(rd) != 0) {
+                    if (str_eq(AgentInfo_name(rd), s) == 1) { back = back + 1; }
+                }
+            }
+        }
+        r = r + 1;
+    }
+    assert_eq(good, 3000, "5f: every output is a valid JSON string in valid UTF-8");
+    assert_eq(same, valid_in, "5f: valid input is written exactly as before");
+    assert_gt(valid_in, 100, "5f: the generator produced valid inputs too");
+    assert_eq(back, named, "5f: every valid name reads back unchanged through AgentInfo_from_json");
+    return 0;
+}
+
+# ─── 5g: provider enum members ────
+
+# The six new members name and parse round-trip with the providers' spellings,
+# and every existing member keeps its 1.12.x value.
+fn test_provider_enums() {
+    assert_eq(str_eq_cstr(str_from(batch_status_name(BATCH_VALIDATING)), "validating"), 1, "5g: validating spelling");
+    assert_eq(str_eq_cstr(str_from(batch_status_name(BATCH_FINALIZING)), "finalizing"), 1, "5g: finalizing spelling");
+    assert_eq(str_eq_cstr(str_from(batch_status_name(BATCH_CANCELLING)), "cancelling"), 1, "5g: cancelling spelling");
+    assert_eq(str_eq_cstr(str_from(message_role_name(ROLE_DEVELOPER)), "developer"), 1, "5g: developer spelling");
+    assert_eq(str_eq_cstr(str_from(memory_type_name(MEM_HBM3E)), "HBM3e"), 1, "5g: HBM3e spelling");
+    assert_eq(str_eq_cstr(str_from(memory_type_name(MEM_GDDR7)), "GDDR7"), 1, "5g: GDDR7 spelling");
+    var ok = 0;
+    var b = BATCH_PENDING;
+    while (b <= BATCH_CANCELLING) {
+        var bt, bv = batch_status_parse(str_from(batch_status_name(b)));
+        if (is_ok(bt) == 1 && bv == b) { ok = ok + 1; }
+        b = b + 1;
+    }
+    assert_eq(ok, 9, "5g: all nine BatchStatus members round-trip");
+    var r = ROLE_SYSTEM;
+    ok = 0;
+    while (r <= ROLE_DEVELOPER) {
+        var rt, rv = message_role_parse(str_from(message_role_name(r)));
+        if (is_ok(rt) == 1 && rv == r) { ok = ok + 1; }
+        r = r + 1;
+    }
+    assert_eq(ok, 5, "5g: all five MessageRole members round-trip");
+    var m = MEM_GDDR5;
+    ok = 0;
+    while (m <= MEM_GDDR7) {
+        var mt, mv = memory_type_parse(str_from(memory_type_name(m)));
+        if (is_ok(mt) == 1 && mv == m) { ok = ok + 1; }
+        m = m + 1;
+    }
+    assert_eq(ok, 14, "5g: all fourteen MemoryType members round-trip");
+    assert_eq(BATCH_EXPIRED, 5, "5g: BATCH_EXPIRED keeps its value");
+    assert_eq(BATCH_VALIDATING, 6, "5g: BATCH_VALIDATING is appended");
+    assert_eq(BATCH_CANCELLING, 8, "5g: BATCH_CANCELLING is last");
+    assert_eq(ROLE_TOOL, 3, "5g: ROLE_TOOL keeps its value");
+    assert_eq(ROLE_DEVELOPER, 4, "5g: ROLE_DEVELOPER is appended");
+    assert_eq(MEM_UNKNOWN, 11, "5g: MEM_UNKNOWN keeps its value");
+    assert_eq(MEM_HBM3E, 12, "5g: MEM_HBM3E is appended after MEM_UNKNOWN");
+    assert_eq(MEM_GDDR7, 13, "5g: MEM_GDDR7 is last");
+    var bad_t, bad = batch_status_parse(str_from("Validating"));
+    assert_eq(is_err_result(bad_t), 1, "5g: parsing is case-sensitive");
+    return 0;
+}
+
+# Test-file entry: runs every step 5 group.
+fn main() {
+    println("--- v2.0.0 contract (step 5) ---");
+    test_network_policy_nat();
+    test_sandbox_new_defaults();
+    test_sandbox_slots_distinct();
+    test_fs_rule_mount_flags();
+    test_cgroup_limits_slots();
+    test_secctx_set_flags();
+    test_cgroup_set_flags();
+    test_secret_matches_oracle();
+    test_secret_matches_empty();
+    test_audit_set_timestamp();
+    test_integrity_copies();
+    test_canonical_golden();
+    test_canonical_distinct();
+    test_canonical_err();
+    test_json_text_golden();
+    test_json_text_fuzz();
+    test_provider_enums();
+    return assert_summary();
+}

@@ -755,7 +755,7 @@ fn AnyValue_to_otlp_proto(v, sb) {
 #   3 trace_state                       not stored, never written
 #   4 parent_span_id (8 bytes)          only when set
 #   5 name, 7 start_time_unix_nano      always written (a 0 name as empty)
-#   6 kind                              only when not SPAN_INTERNAL
+#   6 kind                              always (SPAN_INTERNAL as 1, since 2.0.0)
 #   8 end_time_unix_nano                start + duration_ms × 1,000,000
 #   9 attributes (KeyValue)             the span's map, keys sorted
 #  10 / 12 / 14 dropped counts          only when non-zero
@@ -827,12 +827,12 @@ fn _stik_otlp_span(b, ptr, path) {
     if (parent != 0) { _stik_pb_bytes(b, 4, parent, 8); }
     # field 5: name
     _stik_pb_string(b, 5, name);
-    # field 6: kind (default SPAN_INTERNAL → 1; emit only if non-default
-    # to match canonical OTLP encoders that elide default-value scalars).
-    # A kind outside SpanKind maps to 0 and is omitted, not written as an
-    # explicit 0 (F-043, 1.12.3).
+    # field 6: kind. SPAN_INTERNAL is written as 1 since 2.0.0: through 1.12.x
+    # it was elided as a default, so collectors read SPAN_KIND_UNSPECIFIED,
+    # which the proto says not to use. A kind outside SpanKind maps to 0 and
+    # is omitted, not written as an explicit 0 (F-043, 1.12.3).
     var okind = _stik_span_kind_to_otlp(kind);
-    if (kind != SPAN_INTERNAL && okind != 0) { _stik_pb_int64(b, 6, okind); }
+    if (okind != 0) { _stik_pb_int64(b, 6, okind); }
     # field 7: start_time_unix_nano
     _stik_pb_fixed64(b, 7, start_ns);
     # field 8: end_time_unix_nano = start + duration_ms × 1_000_000. A negative
@@ -916,7 +916,8 @@ fn Span_to_otlp_proto(ptr, sb) {
 struct TelemetryConfig { enabled; sample_rate; export_endpoint; }
 # Append the config to `sb` as compact JSON,
 # {"enabled":N,"sample_rate":N,"export_endpoint":"..."}, with null for a 0
-# endpoint. The endpoint is JSON-escaped (since 1.9.0). Returns 0.
+# endpoint. The endpoint is JSON-escaped (since 1.9.0), and since 2.0.0
+# invalid UTF-8 in it becomes U+FFFD, so the output is valid JSON. Returns 0.
 fn TelemetryConfig_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. The Str
     # field with null-for-0 handling prevents derive adoption (cyrius
@@ -930,8 +931,8 @@ fn TelemetryConfig_to_json(ptr, sb) {
     var ep = load64(ptr + 16);
     if (ep != 0) {
         # Escaped: a quote, backslash or control character in the endpoint
-        # must not end the string or inject keys.
-        str_builder_add_json_str(sb, ep);
+        # must not end the string or inject keys; invalid UTF-8 becomes U+FFFD.
+        _stik_json_text(sb, ep);
     } else {
         str_builder_add_cstr(sb, "null");
     }

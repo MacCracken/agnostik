@@ -553,7 +553,15 @@ fn test_span_wire_ranges() {
     var ref = enc_span(base);
     var k = fixed_span();
     Span_set_kind(k, 99);
-    assert(str_eq(enc_span(k), ref) == 1, "a kind outside SpanKind is omitted, not written as 0");
+    # The reference writes kind INTERNAL (since 2.0.0) at bytes 31-32, after
+    # trace_id (18), span_id (10) and name "s" (3); the out-of-range kind must
+    # leave exactly those two bytes out.
+    var rd = str_data(ref);
+    assert(load8(rd + 31) == 0x30 && load8(rd + 32) == 1, "the reference span writes kind INTERNAL");
+    var nokind = str_builder_new();
+    str_builder_add(nokind, str_new(rd, 31));
+    str_builder_add(nokind, str_new(rd + 33, str_len(ref) - 33));
+    assert(str_eq(enc_span(k), str_builder_build(nokind)) == 1, "a kind outside SpanKind writes no kind field, not 0");
     var d = fixed_span();
     Span_set_duration_ms(d, 0 - 5000);
     assert(str_eq(enc_span(d), ref) == 1, "a negative duration ends at the start");

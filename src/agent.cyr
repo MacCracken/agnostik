@@ -439,7 +439,8 @@ struct AgentEvent {
 struct AgentInfo { id; name; agent_type; status; }
 # Serialize an AgentInfo as compact JSON: `{"id":"<uuid>","name":"<name>",
 # "agent_type":"<AgentType name>","status":"<AgentStatus name>"}`. An id or
-# name of 0 is written as null; the name is JSON-escaped (since 1.9.0).
+# name of 0 is written as null; the name is JSON-escaped (since 1.9.0), and
+# since 2.0.0 invalid UTF-8 in it becomes U+FFFD, so the output is valid JSON.
 # AgentInfo_from_json reads the output back.
 fn AgentInfo_to_json(ptr, sb) {
     # ADR-002: compact byte format for library uniformity. Custom
@@ -462,8 +463,8 @@ fn AgentInfo_to_json(ptr, sb) {
     var name = load64(ptr + 8);
     if (name != 0) {
         # Escaped: a quote, backslash or control character in the name must
-        # not end the string or inject keys.
-        str_builder_add_json_str(sb, name);
+        # not end the string or inject keys; invalid UTF-8 becomes U+FFFD.
+        _stik_json_text(sb, name);
     } else {
         str_builder_add_cstr(sb, "null");
     }

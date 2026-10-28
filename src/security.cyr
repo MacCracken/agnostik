@@ -150,9 +150,10 @@ enum RlimitType {
     RLIM_SIGPENDING;
     RLIM_MSGQUEUE;
 }
-# A NetworkPolicy: outbound port and host lists and an inbound port list.
-# 32 bytes, all 8-byte slots: +0 outbound ports, +8 outbound hosts, +16 inbound
-# ports (three empty vecs), +24 zeroed with no accessor.
+# A NetworkPolicy: outbound port and host lists, an inbound port list and a NAT
+# flag. 32 bytes, all 8-byte slots: +0 outbound ports, +8 outbound hosts,
+# +16 inbound ports (three empty vecs), +24 enable_nat (0). The NAT flag is the
+# Rust original's `enable_nat`; it had no accessor before 2.0.0.
 fn network_policy_new() {
     var p = _stik_alloc(32);
     store64(p, vec_new());
@@ -167,38 +168,114 @@ fn NetworkPolicy_outbound_ports(p) { return load64(p); }
 fn NetworkPolicy_outbound_hosts(p) { return load64(p + 8); }
 # vec of inbound ports.
 fn NetworkPolicy_inbound_ports(p)  { return load64(p + 16); }
-# A CgroupLimits: resource limits for a cgroup. 96 bytes, zero-filled, so every
-# limit reads 0 until set. Accessed slots: +0 memory_max, +8 memory_high,
-# +16 cpu_max, +32 cpu_weight, +40 pids_max; +24 and +48..+88 have no accessor.
+# 1 to masquerade the sandbox's outbound traffic (NAT), else 0; 0 in a fresh
+# policy (since 2.0.0).
+fn NetworkPolicy_enable_nat(p)     { return load64(p + 24); }
+# Set the value NetworkPolicy_enable_nat reads. Returns 0.
+fn NetworkPolicy_set_enable_nat(p, v) { store64(p + 24, v); return 0; }
+# A CgroupLimits: resource limits for a cgroup v2. 104 bytes, zero-filled:
+# +0 memory_max, +8 memory_high, +16 cpu_max, +24 cpu_period, +32 cpu_weight,
+# +40 pids_max, +48 io_weight, +56 io_max_read_bps, +64 io_max_write_bps,
+# +72 cpuset_cpus (Str), +80 cpuset_mems (Str), +88 memory_swap_max, and +96
+# a set-flag word: bit off/8 is 1 once the numeric field at `off` was set. A
+# limit reads 0 until set, and 0 is also a real limit (memory.max=0), so
+# CgroupLimits_has_<field> tells "inherit" (never set) from a set 0. The Str
+# fields need no flag: 0 is unset, an empty Str is a value. The field layout is
+# the Rust original's, whose limits were Option<>; 2.0.0 added the flag word
+# and the accessors for the last seven fields.
 fn cgroup_limits_new() {
-    var c = _stik_alloc(96);
+    var c = _stik_alloc(104);
     var i = 0;
-    while (i < 96) { store64(c + i, 0); i = i + 8; }
+    while (i < 104) { store64(c + i, 0); i = i + 8; }
     return c;
 }
-# Maximum memory, in bytes; 0 in a fresh struct.
-fn CgroupLimits_memory_max(c)      { return load64(c); }
-# Memory high threshold, in bytes; 0 in a fresh struct.
-fn CgroupLimits_memory_high(c)     { return load64(c + 8); }
-# CPU max limit, stored as given (this module fixes no unit); 0 in a fresh struct.
-fn CgroupLimits_cpu_max(c)         { return load64(c + 16); }
-# CPU weight, stored as given; 0 in a fresh struct.
-fn CgroupLimits_cpu_weight(c)      { return load64(c + 32); }
-# Maximum number of processes (pids); 0 in a fresh struct.
-fn CgroupLimits_pids_max(c)        { return load64(c + 40); }
-# Set memory_max, in bytes; returns 0.
-fn CgroupLimits_set_memory_max(c, v) { store64(c, v); return 0; }
-# Set pids_max; returns 0.
-fn CgroupLimits_set_pids_max(c, v)   { store64(c + 40, v); return 0; }
-# 1.5.1: the remaining three had accessors but no setters, so a consumer
-# populating cgroup_limits from config had to write raw store64 offsets into
-# its own source — the exact hazard the setters exist to prevent. kybernet's
-# per-service limits parser (1.5.5) uses all five.
-fn CgroupLimits_set_memory_high(c, v) { store64(c + 8, v); return 0; }
-# Set cpu_max; returns 0.
-fn CgroupLimits_set_cpu_max(c, v)     { store64(c + 16, v); return 0; }
-# Set cpu_weight; returns 0.
-fn CgroupLimits_set_cpu_weight(c, v)  { store64(c + 32, v); return 0; }
+# Store `v` in the CgroupLimits slot at `off` and mark that field set (bit
+# off/8 of the +96 flag word). Returns 0.
+fn _stik_cglim_put(c, off, v) {
+    store64(c + off, v);
+    store64(c + 96, load64(c + 96) | (1 << (off / 8)));
+    return 0;
+}
+# Maximum memory (memory.max), in bytes; 0 until set. Meaningful when
+# CgroupLimits_has_memory_max is 1.
+fn CgroupLimits_memory_max(c) { return load64(c); }
+# 1 once CgroupLimits_set_memory_max has stored a value, else 0 (inherit).
+fn CgroupLimits_has_memory_max(c) { return load64(c + 96) & 1; }
+# Set memory_max and mark it set; returns 0.
+fn CgroupLimits_set_memory_max(c, v) { return _stik_cglim_put(c, 0, v); }
+# Memory throttling threshold (memory.high), in bytes; 0 until set. Meaningful
+# when CgroupLimits_has_memory_high is 1.
+fn CgroupLimits_memory_high(c) { return load64(c + 8); }
+# 1 once CgroupLimits_set_memory_high has stored a value, else 0 (inherit).
+fn CgroupLimits_has_memory_high(c) { return (load64(c + 96) >> 1) & 1; }
+# Set memory_high and mark it set; returns 0.
+fn CgroupLimits_set_memory_high(c, v) { return _stik_cglim_put(c, 8, v); }
+# CPU quota for cpu.max's first field, stored as given (this module fixes no
+# unit); 0 until set. Meaningful when CgroupLimits_has_cpu_max is 1.
+fn CgroupLimits_cpu_max(c) { return load64(c + 16); }
+# 1 once CgroupLimits_set_cpu_max has stored a value, else 0 (inherit).
+fn CgroupLimits_has_cpu_max(c) { return (load64(c + 96) >> 2) & 1; }
+# Set cpu_max and mark it set; returns 0.
+fn CgroupLimits_set_cpu_max(c, v) { return _stik_cglim_put(c, 16, v); }
+# CPU period for cpu.max's second field, in microseconds; 0 until set.
+# Meaningful when CgroupLimits_has_cpu_period is 1.
+fn CgroupLimits_cpu_period(c) { return load64(c + 24); }
+# 1 once CgroupLimits_set_cpu_period has stored a value, else 0 (inherit) (since 2.0.0).
+fn CgroupLimits_has_cpu_period(c) { return (load64(c + 96) >> 3) & 1; }
+# Set cpu_period and mark it set; returns 0.
+fn CgroupLimits_set_cpu_period(c, v) { return _stik_cglim_put(c, 24, v); }
+# CPU weight (cpu.weight), stored as given; 0 until set. Meaningful when
+# CgroupLimits_has_cpu_weight is 1.
+fn CgroupLimits_cpu_weight(c) { return load64(c + 32); }
+# 1 once CgroupLimits_set_cpu_weight has stored a value, else 0 (inherit).
+fn CgroupLimits_has_cpu_weight(c) { return (load64(c + 96) >> 4) & 1; }
+# Set cpu_weight and mark it set; returns 0.
+fn CgroupLimits_set_cpu_weight(c, v) { return _stik_cglim_put(c, 32, v); }
+# Maximum number of processes (pids.max); 0 until set. Meaningful when
+# CgroupLimits_has_pids_max is 1.
+fn CgroupLimits_pids_max(c) { return load64(c + 40); }
+# 1 once CgroupLimits_set_pids_max has stored a value, else 0 (inherit).
+fn CgroupLimits_has_pids_max(c) { return (load64(c + 96) >> 5) & 1; }
+# Set pids_max and mark it set; returns 0.
+fn CgroupLimits_set_pids_max(c, v) { return _stik_cglim_put(c, 40, v); }
+# I/O weight (io.weight, 1..10000 in cgroup v2), stored as given; 0 until set.
+# Meaningful when CgroupLimits_has_io_weight is 1.
+fn CgroupLimits_io_weight(c) { return load64(c + 48); }
+# 1 once CgroupLimits_set_io_weight has stored a value, else 0 (inherit) (since 2.0.0).
+fn CgroupLimits_has_io_weight(c) { return (load64(c + 96) >> 6) & 1; }
+# Set io_weight and mark it set; returns 0.
+fn CgroupLimits_set_io_weight(c, v) { return _stik_cglim_put(c, 48, v); }
+# Read bandwidth limit for io.max, in bytes per second; 0 until set. Meaningful
+# when CgroupLimits_has_io_max_read_bps is 1.
+fn CgroupLimits_io_max_read_bps(c) { return load64(c + 56); }
+# 1 once CgroupLimits_set_io_max_read_bps has stored a value, else 0 (inherit) (since 2.0.0).
+fn CgroupLimits_has_io_max_read_bps(c) { return (load64(c + 96) >> 7) & 1; }
+# Set io_max_read_bps and mark it set; returns 0.
+fn CgroupLimits_set_io_max_read_bps(c, v) { return _stik_cglim_put(c, 56, v); }
+# Write bandwidth limit for io.max, in bytes per second; 0 until set. Meaningful
+# when CgroupLimits_has_io_max_write_bps is 1.
+fn CgroupLimits_io_max_write_bps(c) { return load64(c + 64); }
+# 1 once CgroupLimits_set_io_max_write_bps has stored a value, else 0 (inherit) (since 2.0.0).
+fn CgroupLimits_has_io_max_write_bps(c) { return (load64(c + 96) >> 8) & 1; }
+# Set io_max_write_bps and mark it set; returns 0.
+fn CgroupLimits_set_io_max_write_bps(c, v) { return _stik_cglim_put(c, 64, v); }
+# Swap limit (memory.swap.max), in bytes; 0 until set. Meaningful when
+# CgroupLimits_has_memory_swap_max is 1.
+fn CgroupLimits_memory_swap_max(c) { return load64(c + 88); }
+# 1 once CgroupLimits_set_memory_swap_max has stored a value, else 0 (inherit) (since 2.0.0).
+fn CgroupLimits_has_memory_swap_max(c) { return (load64(c + 96) >> 11) & 1; }
+# Set memory_swap_max and mark it set; returns 0.
+fn CgroupLimits_set_memory_swap_max(c, v) { return _stik_cglim_put(c, 88, v); }
+# CPUs the cgroup may run on (cpuset.cpus, a Str such as "0-3"), or 0 when
+# unset (since 2.0.0).
+fn CgroupLimits_cpuset_cpus(c) { return load64(c + 72); }
+# Set cpuset_cpus (a Str); returns 0.
+fn CgroupLimits_set_cpuset_cpus(c, v: Str) { store64(c + 72, v); return 0; }
+# Memory nodes the cgroup may use (cpuset.mems, a Str), or 0 when unset (since
+# 2.0.0).
+fn CgroupLimits_cpuset_mems(c) { return load64(c + 80); }
+# Set cpuset_mems (a Str); returns 0.
+fn CgroupLimits_set_cpuset_mems(c, v: Str) { store64(c + 80, v); return 0; }
 # A NamespaceConfig: one flag per Linux namespace type, nonzero to enable that
 # namespace. 64 bytes, eight zeroed slots: +0 pid, +8 net, +16 mount, +24 user,
 # +32 uts, +40 ipc, +48 cgroup, +56 time. Only pid, net, mount and user have
@@ -230,21 +307,24 @@ struct NamespaceConfig {
     cgroup;
     time;
 }
-# A SandboxConfig: the isolation settings for a sandbox. 88 bytes, 11 8-byte
+# A SandboxConfig: the isolation settings for a sandbox. 104 bytes, 13 8-byte
 # slots: +0 fs_rules (vec, lazy), +8 net_access (NetworkAccess, default
 # NET_LOCALHOST_ONLY), +16 seccomp (0 = none), +24 isolate_net (default 1),
-# +40 AppArmor profile (Str), +48 SELinux label (Str), +64 masked_paths (vec,
-# lazy), +72 readonly_paths (vec, lazy), +80 sysctl (map, lazy). Every other
-# slot starts 0; +32 and +56 have no accessor. Since v1.11.0 the AppArmor and
-# SELinux slots have getters and isolate_net has a setter.
+# +32 network_policy (a NetworkPolicy, 0 = none), +40 AppArmor profile (Str),
+# +48 SELinux label (Str), +56 encrypted_storage (an EncryptedStorage, 0 =
+# none), +64 masked_paths (vec, lazy), +72 readonly_paths (vec, lazy),
+# +80 sysctl (map, lazy), +88 rlimits (vec of Rlimit, lazy), +96 devices (vec
+# of DeviceRule, lazy). The layout is the Rust original's: 2.0.0 gave
+# network_policy and encrypted_storage accessors (the slots were reserved) and
+# added rlimits and devices (88 -> 104 bytes).
 fn sandbox_config_new() {
-    # 88 bytes = 11 u64 slots. Unrolled: store the two live fields with
-    # their values and zero the other nine directly — no loop counter /
+    # 104 bytes = 13 u64 slots. Unrolled: store the two live fields with
+    # their values and zero the other eleven directly — no loop counter /
     # compare / branch per slot. The old `while (i<88) store64(0)` loop
     # zeroed all 11 then overwrote two; this is a hot constructor, so the
     # unroll gives the bench real headroom against runner noise (the
     # 6.3.x codegen shift left it hugging the regression floor).
-    var s = _stik_alloc(88);
+    var s = _stik_alloc(104);
     store64(s + 0,  0);
     store64(s + 8,  NET_LOCALHOST_ONLY);
     store64(s + 16, 0);
@@ -256,6 +336,8 @@ fn sandbox_config_new() {
     store64(s + 64, 0);
     store64(s + 72, 0);
     store64(s + 80, 0);
+    store64(s + 88, 0);
+    store64(s + 96, 0);
     return s;
 }
 # Lazy-collection helper: return the vec held in the 8-byte slot at `ptr`,
@@ -305,13 +387,29 @@ fn SandboxConfig_apparmor(s) { return load64(s + 40); }
 # SELinux label (Str) set with SandboxConfig_set_selinux, or 0 when unset (added in
 # v1.11.0).
 fn SandboxConfig_selinux(s) { return load64(s + 48); }
+# The sandbox's NetworkPolicy (network_policy_new), or 0 for none (since 2.0.0).
+fn SandboxConfig_network_policy(s) { return load64(s + 32); }
+# Set the network policy (a NetworkPolicy, or 0 for none); returns 0.
+fn SandboxConfig_set_network_policy(s, v) { store64(s + 32, v); return 0; }
+# The sandbox's EncryptedStorage (encrypted_storage_new), or 0 for none (since
+# 2.0.0).
+fn SandboxConfig_encrypted_storage(s) { return load64(s + 56); }
+# Set the encrypted storage (an EncryptedStorage, or 0 for none); returns 0.
+fn SandboxConfig_set_encrypted_storage(s, v) { store64(s + 56, v); return 0; }
+# vec of Rlimit (rlimit_new) applied in the sandbox; created empty on first
+# access (since 2.0.0).
+fn SandboxConfig_rlimits(s) { return _stik_lazy_vec(s + 88); }
+# vec of DeviceRule (device_rule_new) for the sandbox; created empty on first
+# access (since 2.0.0).
+fn SandboxConfig_devices(s) { return _stik_lazy_vec(s + 96); }
 # A SecurityContext: an agent's permissions, sandbox and process identity.
-# 56 bytes: +0 agent_id (as given), +8 permissions (empty vec), +16 sandbox
+# 64 bytes: +0 agent_id (as given), +8 permissions (empty vec), +16 sandbox
 # (a fresh sandbox_config_new), +24 run_as_user 0, +32 run_as_group 0,
-# +40 readonly_root 0, +48 no_new_privs 1. The four scalars have SecurityContext_set_*
+# +40 readonly_root 0, +48 no_new_privs 1, +56 set flags 0 (bit 0 run_as_user,
+# bit 1 run_as_group; since 2.0.0). The four scalars have SecurityContext_set_*
 # setters since v1.11.0.
 fn security_context_new(agent_id) {
-    var ctx = _stik_alloc(56);
+    var ctx = _stik_alloc(64);
     store64(ctx, agent_id);
     store64(ctx + 8, vec_new());
     store64(ctx + 16, sandbox_config_new());
@@ -319,6 +417,7 @@ fn security_context_new(agent_id) {
     store64(ctx + 32, 0);
     store64(ctx + 40, 0);
     store64(ctx + 48, 1);
+    store64(ctx + 56, 0);
     return ctx;
 }
 # The agent's AgentId, as passed to security_context_new.
@@ -327,17 +426,33 @@ fn SecurityContext_agent_id(c)        { return load64(c); }
 fn SecurityContext_permissions(c)     { return load64(c + 8); }
 # The agent's SandboxConfig; sandbox_config_new defaults until changed.
 fn SecurityContext_sandbox(c)         { return load64(c + 16); }
-# User ID to run the agent's process as; 0 in a fresh context, meaning "not
-# set". 0 is also root's uid, so a launcher must treat 0 as "inherit" and
-# never setuid(0) from it; v1 has no separate set flag.
+# User ID to run the agent's process as; 0 until set. 0 is also root's uid, so
+# read it only when SecurityContext_has_run_as_user is 1; otherwise the
+# process inherits its launcher's uid.
 fn SecurityContext_run_as_user(c)     { return load64(c + 24); }
-# Set the value SecurityContext_run_as_user reads, stored as given (not validated). Returns 0.
-fn SecurityContext_set_run_as_user(c, v) { store64(c + 24, v); return 0; }
-# Group ID to run the agent's process as; 0 in a fresh context, meaning "not
-# set" (0 is also root's gid; see SecurityContext_run_as_user).
+# 1 once SecurityContext_set_run_as_user has stored a uid, else 0 (inherit;
+# since 2.0.0). Through 1.12.x a stored 0 and "not set" were the same value.
+fn SecurityContext_has_run_as_user(c) { return load64(c + 56) & 1; }
+# Set the uid SecurityContext_run_as_user reads, stored as given (not
+# validated), and mark it set. Returns 0.
+fn SecurityContext_set_run_as_user(c, v) {
+    store64(c + 24, v);
+    store64(c + 56, load64(c + 56) | 1);
+    return 0;
+}
+# Group ID to run the agent's process as; 0 until set. Read it only when
+# SecurityContext_has_run_as_group is 1 (0 is also root's gid).
 fn SecurityContext_run_as_group(c)    { return load64(c + 32); }
-# Set the value SecurityContext_run_as_group reads, stored as given (not validated). Returns 0.
-fn SecurityContext_set_run_as_group(c, v) { store64(c + 32, v); return 0; }
+# 1 once SecurityContext_set_run_as_group has stored a gid, else 0 (inherit;
+# since 2.0.0).
+fn SecurityContext_has_run_as_group(c) { return (load64(c + 56) >> 1) & 1; }
+# Set the gid SecurityContext_run_as_group reads, stored as given (not
+# validated), and mark it set. Returns 0.
+fn SecurityContext_set_run_as_group(c, v) {
+    store64(c + 32, v);
+    store64(c + 56, load64(c + 56) | 2);
+    return 0;
+}
 # Read-only root filesystem flag; 0 in a fresh context.
 fn SecurityContext_readonly_root(c)   { return load64(c + 40); }
 # Set the value SecurityContext_readonly_root reads, stored as given (not validated). Returns 0.
@@ -444,18 +559,20 @@ struct SeccompArg {
     value_two;
     op;
 }
-# A FilesystemRule: access and mount options for one path. 48 bytes: +0 path
-# (Str), +8 access (FsAccess), +16 readonly 0, +24 noexec 0, +32 zeroed with no
-# accessor, +40 propagation (MountPropagation, MOUNT_PRIVATE). Only readonly
-# and noexec have setters.
+# A FilesystemRule: access and mount options for one path. 56 bytes: +0 path
+# (Str), +8 access (FsAccess), +16 readonly 0, +24 noexec 0, +32 nosuid 0,
+# +40 propagation (MountPropagation, MOUNT_PRIVATE), +48 nodev 0. nosuid and
+# nodev are the Rust original's mount flags: 2.0.0 gave the reserved +32 slot
+# its accessors and added nodev (48 -> 56 bytes).
 fn filesystem_rule_new(path: Str, access) {
-    var r = _stik_alloc(48);
+    var r = _stik_alloc(56);
     store64(r, path);
     store64(r + 8, access);
     store64(r + 16, 0);
     store64(r + 24, 0);
     store64(r + 32, 0);
     store64(r + 40, MOUNT_PRIVATE);
+    store64(r + 48, 0);
     return r;
 }
 # Path the rule applies to (Str).
@@ -474,6 +591,15 @@ fn FilesystemRule_set_propagation(r, v) { store64(r + 40, v); return 0; }
 fn FilesystemRule_set_readonly(r, v) { store64(r + 16, v); return 0; }
 # Set the noexec flag; returns 0.
 fn FilesystemRule_set_noexec(r, v)   { store64(r + 24, v); return 0; }
+# nosuid mount flag (set-user-ID bits ignored); 0 in a fresh rule (since 2.0.0).
+fn FilesystemRule_nosuid(r)          { return load64(r + 32); }
+# Set the nosuid flag; returns 0.
+fn FilesystemRule_set_nosuid(r, v)   { store64(r + 32, v); return 0; }
+# nodev mount flag (device files not interpreted); 0 in a fresh rule (since
+# 2.0.0).
+fn FilesystemRule_nodev(r)           { return load64(r + 48); }
+# Set the nodev flag; returns 0.
+fn FilesystemRule_set_nodev(r, v)    { store64(r + 48, v); return 0; }
 # A SeccompRule: an action applied to a set of syscalls, optionally gated on
 # argument conditions. 24 bytes: +0 names (vec, lazy), +8 action (as given),
 # +16 args (vec, lazy).

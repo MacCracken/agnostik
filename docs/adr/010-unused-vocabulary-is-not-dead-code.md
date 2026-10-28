@@ -25,7 +25,7 @@ Checked against agnostik's own model, though, none of them is dead:
 | The `SeccompArg` cluster | `SeccompRule_args` is "a vec of SeccompArg conditions"; without it a rule cannot gate on syscall arguments. |
 | `stream_usage` | The constructor for the `STREAM_USAGE` member, beside `stream_delta`, `_done`, `_error` and `_ping`. Without it the member has no constructor. |
 | `IdMapping` | The user-namespace uid/gid mapping. A standalone type in the Rust original too, never attached to `NamespaceConfig`. |
-| `network_policy_*` | Kept by the v2.0.0 decision, and attached to SandboxConfig in a later step. |
+| `network_policy_*` | Kept by the v2.0.0 decision, and attached to SandboxConfig in step 5a (`SandboxConfig_network_policy`). |
 | `AgentInfo_from_json` | The reading half of `AgentInfo`'s serde pair. The v1.3.0 objection (it could not read its own output) was fixed in 1.6.3, and it is tested and was hardened in 1.12.3. |
 
 ## Options considered

@@ -73,3 +73,9 @@ The third option.
   - 20,000 longer, ASCII-heavy strings with invalid bytes mixed in, 12,336 of which reach the 8-byte path.
 - `tests/tcyr/test_v1120_otlp_envelopes.tcyr` pins the edge cases byte for byte, along with the `bytes_value`
   fallback for attribute values and the log body.
+
+## Later change (v2.0.0)
+
+The JSON writers (`AgentInfo_to_json`'s name, `TelemetryConfig_to_json`'s endpoint) apply the same rule through
+`_stik_json_text`. The replacement loop moved out of `_stik_pb_text` into `_stik_utf8_fix_into`, so OTLP and JSON
+share one implementation.

@@ -47,9 +47,15 @@ Breaking changes are batched here so every consumer absorbs migration once. Work
    relying on it.
 3. ✅ The accessor rename (3a, 706 names) and the derive (3b, 61 structs).
 4. ✅ The dead-helper review: nothing removed (ADR-010).
-5. The items deferred from v1.12.3, each written in the new names.
+5. The items deferred from v1.12.3, each written in the new names (✅, 5a–5g).
 6. The closeout: the migration map, a Breaking section, and the consumer sweep, where every consumer's failures
-   must be exactly the mapped renames.
+   must be exactly the mapped renames. The Breaking section also covers step 5's output and behaviour changes:
+   - the explicit OTLP span kind;
+   - IntegrityFields copying its Strs;
+   - the U+FFFD JSON names;
+   - the larger SandboxConfig, FilesystemRule, SecurityContext and CgroupLimits.
+
+   Consumer order: mela before ark, whose vendored mela calls agnostik's 1.x names (`docs/migration/README.md`).
 
 ### `_stik_json_int` Result return
 
@@ -88,29 +94,20 @@ v1.12.3 was the last v1 repair cycle. These are its findings that need new publi
 wait for the major. Each is described in [`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md)
 §"Deferred to v2.0.0".
 
-- 🔧 **Unset versus zero.**
-  - `SecurityContext_run_as_user` / `_group` use 0 for "not set", which is also root's id.
-  - The cgroup limits share the ambiguity: 0 is both "inherit" and a literal `memory.max=0`.
-  - Add set-flags, or make the fields optional.
-- 🔧 **The fields the Rust port dropped.**
-  - FilesystemRule nosuid / nodev.
-  - SandboxConfig network policy, encrypted storage, rlimits and devices: the +32 and +56 slots have no
-    accessors.
-  - CgroupLimits cpu_period and io_*.
-- 🔧 **A constant-time comparison** for secrets and tokens.
-- 🔧 **Audit chain:**
-  - a canonical byte encoding of an `AuditEntry` to hash;
-  - `aentry_set_timestamp`;
-  - copy `prev_hash` instead of aliasing it.
-- 🔧 **OTLP span kind.** Write `SPAN_KIND_INTERNAL` explicitly; it is elided today, so collectors read
-  UNSPECIFIED. This changes the protoc golden bytes of every default-kind span; regenerate them against
-  opentelemetry-proto.
-- 🔧 **JSON text is valid UTF-8.** Sanitize the JSON writers' strings (`AgentInfo` name, `TelemetryConfig`
-  endpoint) as ADR-006 does for OTLP.
-- 🔧 **Provider enums:**
-  - OpenAI batch statuses `validating`, `finalizing` and `cancelling`;
-  - `MessageRole` `developer`;
-  - `MemoryType` HBM3e and GDDR7.
+- ✅ **Unset versus zero** (step 5b, under `[Unreleased]`): set flags on SecurityContext's uid / gid and
+  CgroupLimits' ten numeric limits, read with `_has_<field>`.
+- ✅ **The fields the Rust port dropped** (step 5a, under `[Unreleased]`): FilesystemRule nosuid / nodev;
+  SandboxConfig network policy, encrypted storage, rlimits and devices; CgroupLimits cpu_period, io_*, cpuset_*
+  and memory_swap_max; NetworkPolicy enable_nat.
+- ✅ **A constant-time comparison** for secrets and tokens (step 5c, under `[Unreleased]`): `secret_matches`.
+- ✅ **Audit chain** (step 5d, under `[Unreleased]`, ADR-011): `AuditEntry_to_canonical` (format 1),
+  `AuditEntry_set_timestamp`, and IntegrityFields copies its signature and `prev_hash`.
+- ✅ **OTLP span kind** (step 5e, under `[Unreleased]`): `SPAN_KIND_INTERNAL` is written as 1; the protoc goldens
+  were re-derived against opentelemetry-proto v1.7.0.
+- ✅ **JSON text is valid UTF-8** (step 5f, under `[Unreleased]`): the AgentInfo name and TelemetryConfig endpoint
+  take ADR-006's U+FFFD rule.
+- ✅ **Provider enums** (step 5g, under `[Unreleased]`): BatchStatus validating / finalizing / cancelling,
+  MessageRole developer, MemoryType HBM3e and GDDR7, all appended.
 
 ## Working agreement
 

@@ -347,8 +347,8 @@ fn test_span_golden() {
     Span_set_status(s2, SPAN_OK);
     var out2 = enc_span(s2);
     var xp2 = str_builder_new();
-    str_builder_add_cstr(xp2, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a0178394d00000000000000");
-    str_builder_add_cstr(xp2, "414d000000000000007a021801");
+    str_builder_add_cstr(xp2, "0a10000102030405060708090a0b0c0d0e0f1208a0a1a2a3a4a5a6a72a01783001394d0000000000");
+    str_builder_add_cstr(xp2, "0000414d000000000000007a021801");
     assert(str_eq(to_hex(out2), str_builder_build(xp2)) == 1, "span_ok matches protoc");
     return 0;
 }
@@ -534,7 +534,7 @@ fn test_malformed_values() {
     var sp = span_new(0, 0, 0);
     store64(sp + 48, 77);
     var out = enc_span(sp);
-    assert(hex_is(out, "2a00394d00000000000000414d00000000000000") == 1, "0 name and ids: no fault");
+    assert(hex_is(out, "2a003001394d00000000000000414d00000000000000") == 1, "0 name and ids: no fault");
     assert_eq(load8(g + 15), 0x5A, "bytes beside the source untouched");
     return 0;
 }

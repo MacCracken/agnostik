@@ -79,6 +79,8 @@ Plain struct names, decided with the maintainer on 2026-10-28.
 - **Pre-cut changes:** the map and the migration script carry these renames. They changed 3a's names before any
   release, so no consumer saw the earlier ones.
 - **The layout test** checks every derived field against the hand-written offsets it replaced.
+- **Later change:** step 5d moved `IntegrityFields` back to hand-written accessors, because its Str setters copy
+  ([ADR-011](011-audit-entries-hash-a-length-prefixed-encoding.md)). That leaves 60 derived structs.
 
 ## Verification
 

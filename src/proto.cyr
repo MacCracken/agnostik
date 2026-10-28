@@ -330,7 +330,17 @@ fn _stik_pb_text(b, field_no, ptr, len) {
     _stik_pb_varint(b, fixed);
     _stik_pb_reserve(b, fixed);
     var at = load64(b + 8);
-    var d = load64(b) + at;
+    _stik_utf8_fix_into(load64(b) + at, ptr, len);
+    store64(b + 8, at + fixed);
+    return 0;
+}
+
+# Copy the `len` bytes at ptr to d, replacing each maximal ill-formed UTF-8
+# subpart with U+FFFD (EF BF BD). d must hold _stik_utf8_fixed_len(ptr, len)
+# bytes when that is not -1, else `len`. Shared by the OTLP string fields and,
+# since 2.0.0, the JSON writers (_stik_json_text), so both apply one rule.
+# Returns the number of bytes written.
+fn _stik_utf8_fix_into(d, ptr, len) {
     var i = 0;
     var o = 0;
     while (i < len) {
@@ -351,7 +361,33 @@ fn _stik_pb_text(b, field_no, ptr, len) {
             i = i - st;
         }
     }
-    store64(b + 8, at + fixed);
+    return o;
+}
+
+# Append Str `s` to `sb` as a JSON string that is always valid JSON text (RFC
+# 8259 §8.1 requires UTF-8). Each maximal ill-formed UTF-8 subpart becomes
+# U+FFFD, the rule ADR-006 set for OTLP strings; then `"`, `\` and control
+# characters are escaped by the stdlib's str_builder_add_json_str, so valid
+# input comes out exactly as it did through 1.12.x. A negative length or 0
+# data writes "". Returns 0 (since 2.0.0).
+fn _stik_json_text(sb, s: Str) {
+    var p = str_data(s);
+    var len = str_len(s);
+    if (len < 0) { len = 0; }
+    if (p == 0) { len = 0; }
+    if (len == 0) {
+        str_builder_add_cstr(sb, "\"\"");
+        return 0;
+    }
+    var fixed = _stik_utf8_fixed_len(p, len);
+    if (fixed < 0) {
+        str_builder_add_json_str(sb, s);
+        return 0;
+    }
+    var d = _stik_alloc(fixed + 1);
+    _stik_utf8_fix_into(d, p, len);
+    store8(d + fixed, 0);
+    str_builder_add_json_str(sb, str_new(d, fixed));
     return 0;
 }
 

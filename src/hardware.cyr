@@ -101,11 +101,14 @@ enum MemoryType {
     MEM_DDR4;
     MEM_DDR5;
     MEM_UNKNOWN;
+    MEM_HBM3E;
+    MEM_GDDR7;
 }
 # Display name of a MemoryType: "GDDR5", "GDDR6X", "HBM2e", "LPDDR5X", "DDR5"
-# and so on (note the lower-case e in "HBM2e"). MEM_UNKNOWN, and any value
-# outside the enum, is "Unknown", the fallthrough rather than an explicit arm.
-# memory_type_parse is the inverse.
+# and so on (note the lower-case e in "HBM2e" and "HBM3e"). MEM_UNKNOWN, and
+# any value outside the enum, is "Unknown", the fallthrough rather than an
+# explicit arm. MEM_HBM3E and MEM_GDDR7 were added in 2.0.0, after MEM_UNKNOWN,
+# so every earlier member keeps its value. memory_type_parse is the inverse.
 fn memory_type_name(t) {
     if (t == MEM_GDDR5)        { return "GDDR5"; }
     elif (t == MEM_GDDR6)      { return "GDDR6"; }
@@ -118,6 +121,8 @@ fn memory_type_name(t) {
     elif (t == MEM_LPDDR5X)    { return "LPDDR5X"; }
     elif (t == MEM_DDR4)       { return "DDR4"; }
     elif (t == MEM_DDR5)       { return "DDR5"; }
+    elif (t == MEM_HBM3E)      { return "HBM3e"; }
+    elif (t == MEM_GDDR7)      { return "GDDR7"; }
     return "Unknown";
 }
 # Inverse of memory_type_name. Exact match on what memory_type_name emits; an
@@ -138,6 +143,8 @@ fn memory_type_parse(s: Str) {
     elif (str_eq_cstr(s, "LPDDR5X") == 1) { return Ok(MEM_LPDDR5X); }
     elif (str_eq_cstr(s, "DDR4") == 1) { return Ok(MEM_DDR4); }
     elif (str_eq_cstr(s, "DDR5") == 1) { return Ok(MEM_DDR5); }
+    elif (str_eq_cstr(s, "HBM3e") == 1) { return Ok(MEM_HBM3E); }
+    elif (str_eq_cstr(s, "GDDR7") == 1) { return Ok(MEM_GDDR7); }
     elif (str_eq_cstr(s, "Unknown") == 1) { return Ok(MEM_UNKNOWN); }
     return stik_err_invalid_argument(str_from("unknown MemoryType name"));
 }

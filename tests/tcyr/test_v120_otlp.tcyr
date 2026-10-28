@@ -118,8 +118,8 @@ fn test_proto_string() {
 
 # ─── Span_to_otlp_proto ────
 
-# Test: Span_to_otlp_proto for a default span is the hand-computed 50 bytes (ids, name,
-# start/end times; default kind, status and drop counts omitted).
+# Test: Span_to_otlp_proto for a default span is the hand-computed 52 bytes (ids, name,
+# kind INTERNAL, start/end times; default status and drop counts omitted).
 fn test_span_otlp_minimal() {
     # Span with deterministic ids (allocate + fill explicit bytes) so
     # the encoded output is reproducible.
@@ -143,13 +143,13 @@ fn test_span_otlp_minimal() {
     # field 1 trace_id  : 0x0A 0x10 [16 bytes 01..10]                      = 18 bytes
     # field 2 span_id   : 0x12 0x08 [8 bytes A0..A7]                       = 10 bytes
     # field 5 name      : 0x2A 0x02 'o' 'p'                                =  4 bytes
-    # field 6 kind      : skipped (SPAN_INTERNAL is the default)
+    # field 6 kind      : 0x30 0x01 (SPAN_KIND_INTERNAL, written since 2.0.0) =  2 bytes
     # field 7 start     : 0x39 [8 bytes LE of 1234567890]                  =  9 bytes
     # field 8 end       : 0x41 [8 bytes LE of start + 0*1e6 = 1234567890]  =  9 bytes
     # status            : skipped (SPAN_UNSET)
     # dropped_*         : skipped (all zero)
-    # Total: 18 + 10 + 4 + 9 + 9 = 50 bytes
-    assert_eq(str_len(out), 50, "minimal span total bytes");
+    # Total: 18 + 10 + 4 + 2 + 9 + 9 = 52 bytes
+    assert_eq(str_len(out), 52, "minimal span total bytes");
 
     # field 1: trace_id
     assert_eq(load8(d + 0),  0x0A, "f1 tag");
@@ -169,18 +169,22 @@ fn test_span_otlp_minimal() {
     assert_eq(load8(d + 30), 111,  "name 'o'");
     assert_eq(load8(d + 31), 112,  "name 'p'");
 
+    # field 6: kind SPAN_KIND_INTERNAL (1), written explicitly since 2.0.0
+    assert_eq(load8(d + 32), 0x30, "f6 kind tag");
+    assert_eq(load8(d + 33), 0x01, "f6 kind=INTERNAL(1)");
+
     # field 7: start_time_unix_nano (fixed64 LE of 1234567890)
     # 1234567890 = 0x499602D2 → LE bytes: D2 02 96 49 00 00 00 00
-    assert_eq(load8(d + 32), 0x39, "f7 tag");
-    assert_eq(load8(d + 33), 0xD2, "start LE b0");
-    assert_eq(load8(d + 34), 0x02, "start LE b1");
-    assert_eq(load8(d + 35), 0x96, "start LE b2");
-    assert_eq(load8(d + 36), 0x49, "start LE b3");
-    assert_eq(load8(d + 37), 0,    "start LE b4");
+    assert_eq(load8(d + 34), 0x39, "f7 tag");
+    assert_eq(load8(d + 35), 0xD2, "start LE b0");
+    assert_eq(load8(d + 36), 0x02, "start LE b1");
+    assert_eq(load8(d + 37), 0x96, "start LE b2");
+    assert_eq(load8(d + 38), 0x49, "start LE b3");
+    assert_eq(load8(d + 39), 0,    "start LE b4");
 
     # field 8: end_time = start (since duration_ms = 0)
-    assert_eq(load8(d + 41), 0x41, "f8 tag");
-    assert_eq(load8(d + 42), 0xD2, "end LE b0");
+    assert_eq(load8(d + 43), 0x41, "f8 tag");
+    assert_eq(load8(d + 44), 0xD2, "end LE b0");
     return 0;
 }
 
@@ -236,9 +240,9 @@ fn test_span_otlp_parent_id() {
     var out = str_builder_build(sb);
     var d = str_data(out);
 
-    # f1 (18) + f2 (10) + f4 parent (10) + f5 name (3) + f7 (9) + f8 (9)
-    # = 59 bytes; f4 starts at offset 28.
-    assert_eq(str_len(out), 59, "parent span total");
+    # f1 (18) + f2 (10) + f4 parent (10) + f5 name (3) + f6 kind (2) + f7 (9)
+    # + f8 (9) = 61 bytes; f4 starts at offset 28.
+    assert_eq(str_len(out), 61, "parent span total");
     assert_eq(load8(d + 28), 0x22, "f4 parent tag");
     assert_eq(load8(d + 29), 0x08, "f4 parent len=8");
     assert_eq(load8(d + 30), 0xB0, "parent[0]");
@@ -262,10 +266,10 @@ fn test_span_otlp_dropped_counts() {
     var out = str_builder_build(sb);
     var d = str_data(out);
 
-    # Header (f1+f2+f5+f7+f8) is 49B for name "d"; then 6B of
-    # dropped fields (3 × tag+varint).
-    var dropped_offset = 49;
-    assert_eq(str_len(out), 55, "dropped counts total");
+    # Header (f1+f2+f5+f6+f7+f8) is 51B for name "d" (f6 is kind INTERNAL,
+    # 2B); then 6B of dropped fields (3 × tag+varint).
+    var dropped_offset = 51;
+    assert_eq(str_len(out), 57, "dropped counts total");
     assert_eq(load8(d + dropped_offset + 0), 0x50, "f10 tag");
     assert_eq(load8(d + dropped_offset + 1), 0x03, "dropped_attrs=3");
     assert_eq(load8(d + dropped_offset + 2), 0x60, "f12 tag");
