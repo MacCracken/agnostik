@@ -5,6 +5,15 @@
 
 ## Version
 
+**1.12.2** — CI patch. **The workflows move to the current stable actions and the Ubuntu 26.04 LTS runner**: checkout
+v4 → v7, upload-artifact v4 → v7, download-artifact v4 → v8 (now failing on a digest mismatch),
+action-gh-release v2 → v3, and `ubuntu-latest` (24.04) → `ubuntu-26.04` on all five jobs. ci.yml gains a read-only
+token. 26.04 ships no `xxd`, which `ci-install-cyrius.sh` required, so the installer builds the key bytes with
+`printf` (byte-identical DER) and the ELF check uses `od`; a 26.04 container replay of every ci.yml job passes. No
+source, API, stdlib or toolchain change; the bench binary is byte-identical to 1.12.1's. Bench gate 31 checked, 0
+regressions (median of 5 runs within −1.7% / +2.9%). No audit findings (the second section of
+[`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md)).
+
 **1.12.1** — Toolchain-refresh patch. **Cyrius pin `6.7.9` → `6.7.18`**, no source or API change (1,122 fns;
 `dist/agnostik.cyr` differs only in its banner). `lib/` re-vendored with `cyrius deps` alone, since a scoped `lib
 sync` now refuses a pin move while changed transitive leaves sit in `lib/`. `cyrius.lock` 32 → 41 files: `bayan`
@@ -940,7 +949,9 @@ and the `_hex_nibble` one noted at 1.6.5 (sigil) surfaced.
 
 ## Recent releases
 
-See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.12.1`**, a
+See [`CHANGELOG.md`](../../CHANGELOG.md). Most recent: **`1.12.2`**, a CI
+patch (current stable actions, the `ubuntu-26.04` runner, an `xxd`-free toolchain
+install, a read-only CI token). Prior: `1.12.1`, a
 toolchain refresh (Cyrius `6.7.9` → `6.7.18`; `cyrius.lock` 41 files; the
 derived-parser fix and cost; DCE binaries grow by `bayan`'s Unicode tables; the
 Windows size question answered). Prior: `1.12.0`, the
@@ -997,11 +1008,16 @@ or doc-sync — reconciled at 1.3.6); `1.3.4` (Cyrius `6.3.15` → `6.4.62`
   bench gate and `cyrius audit`, re-run from an empty `lib/` in a throwaway
   repo with the toolchain installed from the verified release tarball into a
   scratch `CYRIUS_HOME` (as at 1.6.5, when 19 / 19 build steps were green).
-- CI: `ubuntu-latest` (GitHub Actions)
+- CI: `ubuntu-26.04` (GitHub Actions) since 1.12.2; `ubuntu-latest` (24.04) before. The image has uutils
+  coreutils 0.10.0, mawk as `awk`, and no `xxd`. Actions in use: `actions/checkout@v7`,
+  `actions/upload-artifact@v7`, `actions/download-artifact@v8`, `softprops/action-gh-release@v3`.
+- Ubuntu 26.04 replay: at 1.12.2 every ci.yml job's `run:` steps, plus release.yml's build job, ran in an
+  `ubuntu:26.04` container as GitHub runs them (`bash -e`, `GITHUB_PATH` / `GITHUB_ENV` between steps).
 - CI cross: aarch64 is cross-built, and since 1.7.1 the whole suite also
   runs under `qemu-user` on the runner; that step fails rather than skips when
   the emulator or `cycc_aarch64` is missing. The build probe was `cc5_aarch64`
   through 1.6.1 and never matched a 6.x tarball, so aarch64 went unbuilt from
   1.2.3 until 1.6.2.
 - CI toolchain: installed by `scripts/ci-install-cyrius.sh` since 1.7.1, with
-  the release signature verified against a pinned key.
+  the release signature verified against a pinned key; no `xxd` needed since
+  1.12.2. `--alongside` installs a second pin for the paired bench gate.

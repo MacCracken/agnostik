@@ -11,7 +11,7 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.12.1
+- **Current**: 1.12.2
 - **Toolchain**: Cyrius `6.7.18` (pinned in `cyrius.cyml`)
 - **Tests**: 2,307 assertions across 24 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
@@ -29,7 +29,7 @@ against successive Cyrius type-system slots.
   F-026 JSON string escaping, fixed in v1.9.0; v1.10.0 minor-cut pass —
   F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
   and v1.12.0 minor-cut passes — no findings), 2026-10-28 (v1.12.1 toolchain
-  refresh, cyrius 6.7.9 → 6.7.18 — no findings).
+  refresh, cyrius 6.7.9 → 6.7.18, and v1.12.2 CI pass — no findings).
   Cadence: every minor cut and toolchain refresh, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.

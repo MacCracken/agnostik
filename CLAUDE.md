@@ -232,6 +232,8 @@ Rules below were checked against the pinned compiler; when an older note elsewhe
   - `.github/workflows/ci.yml` — stdlib sync, fmt, lint, vet, DCE build, type-check, API-surface snapshot, documentation debt, dist-bundle sync, aarch64 cross-build, tests, the suite again on aarch64 under qemu-user, bench + the paired bench gate against the last release tag (`scripts/bench-paired.sh`; the checkout fetches full history for the tags), security scan (including no raw `syscall(` and `_stik_`-prefixed private helpers), required-docs and version checks; reusable via `workflow_call`
   - `.github/workflows/release.yml` — version gate → CI gate → DCE builds (x86_64, aarch64) → artifacts (source tarball, bundled `.cyr`, DCE binaries, `cyrius.lock` when one exists, SHA256SUMS)
 - **Concurrency**: CI uses `cancel-in-progress: true` keyed on workflow + ref — only the latest push is tested.
+- **Runner and actions**: jobs name their runner image explicitly (`ubuntu-26.04` since 1.12.2), not `ubuntu-latest`, so an image move is a reviewed change. Actions are referenced by floating major tag. Move a major only after reading the release notes of every major crossed; the versions in use are in `docs/development/state.md`. ci.yml runs with `permissions: contents: read`, and only release.yml asks for `contents: write`.
+- **Portable CI scripts**: anything CI runs must work on the runner image as shipped. On Ubuntu 26.04 that means uutils coreutils (Rust), mawk as `awk`, and **no `xxd`**, which is why the installer builds the key bytes with `printf` and the ELF check uses `od`. Check a runner move by replaying the workflow steps in a container of the new image (`docker run ubuntu:<version>`), not only on the host.
 
 ## Docs
 

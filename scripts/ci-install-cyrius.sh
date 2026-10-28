@@ -46,7 +46,9 @@ CYRIUS_HOME="${CYRIUS_HOME:-$HOME/.cyrius}"
 TARBALL="cyrius-$VERSION-x86_64-linux.tar.gz"
 URL="https://github.com/$REPO/releases/download/$VERSION"
 
-for tool in curl openssl sha256sum xxd tar; do
+# No xxd: the Ubuntu 26.04 base image does not ship it and the GitHub runner
+# toolset does not list it. The key bytes come from bash's printf (step 1).
+for tool in curl openssl sha256sum tar sed; do
     command -v "$tool" > /dev/null || { echo "ci-install-cyrius: needs $tool" >&2; exit 2; }
 done
 
@@ -61,8 +63,14 @@ for f in "$TARBALL" SHA256SUMS SHA256SUMS.sig; do
 done
 
 # 1. Signature over SHA256SUMS, against the pinned key. The key is wrapped in
-#    the fixed SubjectPublicKeyInfo DER prefix for Ed25519 (RFC 8410).
-printf '%s' "302a300506032b6570032100$CYRIUS_RELEASE_PUBKEY" | xxd -r -p > release.pub.der
+#    the fixed SubjectPublicKeyInfo DER prefix for Ed25519 (RFC 8410), and the
+#    hex turned into bytes by printf's \xHH escapes: 12 + 32 = 44 bytes, the
+#    same file `xxd -r -p` wrote through 1.12.1.
+[[ "$CYRIUS_RELEASE_PUBKEY" =~ ^[0-9a-f]{64}$ ]] || {
+    echo "ci-install-cyrius: the pinned key is not 64 hex digits" >&2; exit 2; }
+printf '%b' "$(printf '%s' "302a300506032b6570032100$CYRIUS_RELEASE_PUBKEY" | sed 's/../\\x&/g')" > release.pub.der
+[ "$(wc -c < release.pub.der)" -eq 44 ] || {
+    echo "ci-install-cyrius: the public key DER is not 44 bytes" >&2; exit 1; }
 openssl pkey -pubin -inform DER -in release.pub.der -out release.pub.pem
 if ! openssl pkeyutl -verify -pubin -inkey release.pub.pem -rawin \
         -in SHA256SUMS -sigfile SHA256SUMS.sig > /dev/null 2>&1; then

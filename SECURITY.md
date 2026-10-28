@@ -81,6 +81,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.11.0 minor-cut pass (same report, seventh section): checked trait dispatch, argument-passing hand-offs, the UUID separator check, 91 setters, newer Landlock rights | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-14 | v1.12.0 minor-cut pass (same report, eighth section): the UTF-8 writer, Resource / Scope encoders, export requests, histograms, exemplars | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-28 | v1.12.1 toolchain refresh (cyrius 6.7.9 → 6.7.18): advisories CYRIUS-2026-0036..0050 against agnostik's reach, silent 6.7.10–6.7.18 changes, re-vendored stdlib, syscall wrappers on every target | No findings; 0045 (`bayan` PDF) and 0047 (`io` `file_write_atomic`) sit in vendored modules agnostik never calls | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
+| 2026-10-28 | v1.12.2 CI pass (same report, second section): actions checkout v7 / upload-artifact v7 / download-artifact v8 / action-gh-release v3, the `ubuntu-26.04` runner, the `xxd`-free installer, a read-only CI token | No findings; GHSA-cxww-7g56-2vh6 (download-artifact < 4.1.3) is out of range | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

@@ -2,54 +2,132 @@
 
 ## [Unreleased]
 
-### Fixed — CI's bench gate compares on one host
+## [1.12.2] - 2026-10-28
 
-**The bug:** CI's bench gate failed intermittently on unchanged code.
-- It ran `scripts/bench-regression.sh`, which compares one bench run against the latest rows in
-  `docs/benchmarks/history.csv`. Those rows are recorded on the release host.
-- A GitHub runner is a different CPU, and which one a job gets varies. The 1.12.1 release run on `f6ed4cf` read 7
-  "regressions": compute-bound rows about 2× slower, `getrandom`-bound rows flat, and `audit_entry_full` 38%
-  faster.
-- Minutes earlier, CI had passed on the same commit. It had also failed on `07720f0` and `8b8d449` (2026-10-14,
-  cyrius 6.7.9).
-- The failed release run means the 1.12.1 GitHub release was not created.
+**CI patch:** the workflows move to the current stable GitHub actions and to the **Ubuntu 26.04 LTS** runner. No
+source, API, stdlib or toolchain change: `src/`, `cyrius.cyml` and `cyrius.lock` are as in 1.12.1, the bench binary
+is byte-identical to 1.12.1's, and `dist/agnostik.cyr` differs only in its version banner.
 
-**The fix:** CI now runs **`scripts/bench-paired.sh`**, a paired, interleaved A/B on the runner itself.
-- **Base:** the last release tag before HEAD (or a ref given as argument). Its tree is built on its own cyrius pin,
-  so a pin move is measured too. A missing pin is fetched and verified by `scripts/ci-install-cyrius.sh
-  --alongside`, a new mode that installs a version without switching the active toolchain. The cyrius wrapper
-  dispatches to it by manifest pin, and the script checks that the dispatch happened.
-- **Method:** both bench binaries are compiled once and run in 9 rounds, alternating which goes first. Each row's
-  verdict is the median of its per-round ratios of the `min=` figure. The fastest window is less exposed to a
-  preempted window than the mean.
-- **Threshold:** a row fails above +50% *and* 50 ns, the same catastrophe-only bar as before. Rows new in HEAD are
-  listed, not gated. `[bench-regression-ack]` still skips the gate.
-- **Nothing to compare:** when `src/`, the bench, `cyrius.cyml` and `cyrius.lock` are unchanged since the tag, it
-  passes with a notice. A shallow clone fails instead of passing on missing tags; the CI checkout now fetches full
-  history (`fetch-depth: 0`).
+### Changed — CI and release workflows
 
-`scripts/bench-regression.sh` stays the local release gate on the host that records `history.csv`. CLAUDE.md,
-CONTRIBUTING (the contributor checklist ran the history gate, which on a contributor's machine measures the
-machine), README and state.md say which gate runs where.
+- **Actions**, still referenced by floating major tag. The audit records the commit each tag resolved to.
+
+  | Action | Was | Now |
+  |---|---|---|
+  | `actions/checkout` | v4 | **v7** (v7.0.1) |
+  | `actions/upload-artifact` | v4 | **v7** (v7.0.2) |
+  | `actions/download-artifact` | v4 | **v8** (v8.0.2) |
+  | `softprops/action-gh-release` | v2 | **v3** (v3.0.3) |
+
+  The release notes of every major crossed were read; none changes how agnostik uses the actions. All four now run
+  on Node 24. checkout v7 refuses fork PRs under `pull_request_target` / `workflow_run`, which agnostik does not
+  use. release.yml downloads its artifact by name, which download-artifact v5's path change does not touch.
+  download-artifact v8 now **fails** on a digest mismatch, where it used to warn.
+- **Runner:** `ubuntu-latest` (24.04) → **`ubuntu-26.04`** on all five jobs. The image has been GA since
+  actions/runner-images#14747, and `ubuntu-latest` moves to it in November 2026.
+- **`permissions: contents: read`** in ci.yml. Until now it declared none, so its token took the repository
+  default. Under release.yml's `workflow_call`, it narrows the caller's `contents: write`.
+
+### Fixed — the toolchain install needed `xxd`, which Ubuntu 26.04 lacks
+
+**What broke:** `scripts/ci-install-cyrius.sh` refused to run without `xxd`. Ubuntu 26.04's base image does not
+ship it, and the runner toolset does not list it. Run as written on 26.04, every CI job stops at its second step:
+a replay of the workflow in an `ubuntu:26.04` container printed `ci-install-cyrius: needs xxd`, and every step
+after it failed.
+
+**The fix:**
+- **Key bytes:** the installer builds the pinned key's SubjectPublicKeyInfo DER with bash's `printf` `\xHH`
+  escapes. It first checks that the key is 64 hex digits, then that the DER is 44 bytes. The file is byte-identical
+  to what `xxd -r -p` wrote.
+- **ELF check:** CI's "Verify ELF" step reads the magic with `od`.
 
 **Checked:**
-- **1.12.1 against 1.12.0** (6.7.18 vs 6.7.9, this host): 31 rows, 0 regressions, about 7 s. The five derived
-  `*_from_json` rows read +11.6% to +27.5%, every other row within ±6.3%. That matches the release's hand-run
-  15-round A/B within about a point.
-- **Injected regression:** a 400-iteration spin added to `version_to_str` fails exactly the two rows that call it,
-  `version_to_str` (+250%) and `version_roundtrip` (+114%), in 9 of 9 rounds. Exit 1.
-- **CI conditions:** a toolchain home holding only 6.7.18 from the verified tarball, with `gawk --posix` standing
-  in for a runner's awk. 6.7.9 was fetched, signature-verified and installed alongside, with the active toolchain
-  still 6.7.18. The base built on 6.7.9, and the result matched.
-- **Edge cases:** no change since the tag gives the notice and exit 0; the ack gives skip and exit 0; a
-  `--depth 1` clone gives exit 2.
+- A real 6.7.18 release still verifies, and installs binaries byte-identical to the local install.
+- With one nibble of the pinned key changed, the signature check fails closed and nothing is installed.
+
+### Security
+
+The release pass is the second section of [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md). **No
+findings.**
+- **Advisories:** the GitHub advisory database has one for these actions, GHSA-cxww-7g56-2vh6
+  (`download-artifact` >= 4.0.0, < 4.1.3). v8 is outside its range, as the floating `v4` already was.
+- **Gains:** download-artifact's digest check now fails closed, and ci.yml has a read-only token.
+
+### Performance
+
+**Release gate.** `scripts/bench-regression.sh` against the 1.12.1 baseline gave **31 checked, 0 new, 0
+regressions**, at load 0.37.
+- **The gate's movers are host noise.** Its single run read `security_context_full` +20.7%,
+  `message_build_3turn` +19.6% and `span_otlp_full` +14.6%. The bench binary is byte-identical to the 1.12.1 tag's,
+  so only the host could move them.
+- **Medians agree.** Over five runs every row is within −1.7% / +2.9% of its baseline, and the median row is
+  +0.3%. The gate's run was the slowest of the five for all three rows.
+- **Paired:** `scripts/bench-paired.sh 1.12.1` has nothing to compare, since `src/`, the bench, `cyrius.cyml` and
+  `cyrius.lock` are unchanged.
+
+| benchmark | 1.12.1 baseline | 1.12.2 gate | Δ gate | median of 5 runs | Δ median |
+|---|---:|---:|---:|---:|---:|
+| inference_request_full | 357 | 371 | +3.9% | 351 | -1.7% |
+| agent_stats_from_json | 318 | 319 | +0.3% | 314 | -1.3% |
+| security_context_full | 646 | 780 | +20.7% | 638 | -1.2% |
+| span_otlp_min | 576 | 584 | +1.4% | 571 | -0.9% |
+| audit_entry_full | 2205 | 2158 | -2.1% | 2189 | -0.7% |
+| trace_context_new | 1114 | 1049 | -5.8% | 1106 | -0.7% |
+| injection_scores_to_json | 736 | 754 | +2.4% | 733 | -0.4% |
+| trace_context_child | 561 | 558 | -0.5% | 559 | -0.4% |
+| span_otlp_full | 4039 | 4630 | +14.6% | 4030 | -0.2% |
+| accelerator_device_full | 93 | 96 | +3.2% | 93 | +0.0% |
+| message_build_3turn | 358 | 428 | +19.6% | 358 | +0.0% |
+| resource_limits_from_json | 487 | 508 | +4.3% | 487 | +0.0% |
+| sandbox_config_default | 22 | 23 | +4.5% | 22 | +0.0% |
+| token_usage_update | 32 | 34 | +6.2% | 32 | +0.0% |
+| accel_flags_from_json | 777 | 805 | +3.6% | 778 | +0.1% |
+| traceparent_format | 1717 | 1779 | +3.6% | 1722 | +0.3% |
+| agent_id_new | 552 | 541 | -2.0% | 554 | +0.4% |
+| accel_flags_to_json | 1562 | 1608 | +2.9% | 1568 | +0.4% |
+| metric_otlp_sum | 1657 | 1690 | +2.0% | 1666 | +0.5% |
+| injection_scores_from_json | 364 | 371 | +1.9% | 366 | +0.5% |
+| agent_stats_to_json | 638 | 640 | +0.3% | 642 | +0.6% |
+| agent_id_roundtrip | 978 | 1019 | +4.2% | 985 | +0.7% |
+| resource_limits_to_json | 931 | 985 | +5.8% | 938 | +0.8% |
+| token_usage_to_json | 825 | 848 | +2.8% | 832 | +0.8% |
+| agent_id_to_str | 697 | 735 | +5.5% | 703 | +0.9% |
+| token_usage_from_json | 430 | 445 | +3.5% | 435 | +1.2% |
+| histogram_otlp | 2376 | 2589 | +9.0% | 2410 | +1.4% |
+| otlp_traces_request | 19838 | 21625 | +9.0% | 20136 | +1.5% |
+| log_record_otlp | 1474 | 1451 | -1.6% | 1498 | +1.6% |
+| version_roundtrip | 232 | 240 | +3.4% | 238 | +2.6% |
+| version_to_str | 103 | 106 | +2.9% | 106 | +2.9% |
+
+The release run is appended to `docs/benchmarks/history.csv` (31 rows, commit column `7d322d6`, HEAD at the time),
+taken at load 0.76.
+
+### Verification
+
+- **Ubuntu 26.04 replay:**
+  - **Setup:** each workflow job's `run:` steps, executed as GitHub executes them (`bash -e`, with `GITHUB_PATH` /
+    `GITHUB_ENV` applied between steps). They ran in an `ubuntu:26.04` container: uutils coreutils 0.10.0, mawk,
+    no `xxd`. The repo was a full-history clone of the release tree.
+  - **ci.yml:** every job passes.
+    - Build & Test: 18 run steps; `deps --verify` 41 / 41; API 1,122; 24 files and 2,307 assertions on x86_64,
+      and again under `qemu-aarch64` from the 26.04 `qemu-user` 10.2.1.
+    - Security Scan and Documentation.
+  - **release.yml's build job,** with `GITHUB_REF_NAME=1.12.2`: 11 run steps, from version verify to the archive.
+    Its x86_64 and aarch64 binaries, source tarball and bundle check against the `SHA256SUMS` it wrote. The release
+    job's CHANGELOG extraction under mawk yields this entry as the release body.
+  - **Paired gate:** `scripts/bench-paired.sh 1.12.0` in the same container fetched and verified 6.7.9, installed it
+    alongside, and passed. Its derived-parser rows were within half a point of the host's.
+- **Lint:** actionlint 1.7.12 is clean, shellcheck of every `run:` block included. Its one complaint is that it
+  does not know the `ubuntu-26.04` label; its label list predates the image's GA.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.12.2.
 
 ## [1.12.1] - 2026-10-28
 
 **Toolchain-refresh patch:** cyrius `6.7.9` → **`6.7.18`**, the last 1.x refresh before v2.0.0. No source or API
 change: `src/` is untouched, the API stays at 1,122 fns, and `dist/agnostik.cyr` differs only in its version banner.
 24 test files, **2,307 assertions, 0 failures**, on x86_64 and aarch64; every file prints the same output on both
-pins. All five `[deps.agnostik]` consumers build and pass their tests against it.
+pins. All five `[deps.agnostik]` consumers build and pass their tests against it. The tag also carries CI's
+paired bench gate (Fixed, at the end of this entry).
 
 ### Changed — toolchain
 
@@ -224,6 +302,49 @@ taken at load 0.64. Binary sizes are under Build.
 - **Downstream:** `scripts/consumer-sweep.sh`: 5 of 5 green, 0 regressed, 0 agnostik-involved duplicate
   definitions (aegis 428, anuenue 595, ark 392, kybernet 890, mela 979 assertions).
 - **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.12.1.
+
+### Fixed — CI's bench gate compares on one host
+
+**The bug:** CI's bench gate failed intermittently on unchanged code.
+- It ran `scripts/bench-regression.sh`, which compares one bench run against the latest rows in
+  `docs/benchmarks/history.csv`. Those rows are recorded on the release host.
+- A GitHub runner is a different CPU, and which one a job gets varies. The 1.12.1 release run on `f6ed4cf` read 7
+  "regressions": compute-bound rows about 2× slower, `getrandom`-bound rows flat, and `audit_entry_full` 38%
+  faster.
+- Minutes earlier, CI had passed on the same commit. It had also failed on `07720f0` and `8b8d449` (2026-10-14,
+  cyrius 6.7.9).
+- That failed run did not create the 1.12.1 release. The `1.12.1` tag was then moved to `7d322d6`, which carries
+  this fix, and the release ran green there.
+
+**The fix:** CI now runs **`scripts/bench-paired.sh`**, a paired, interleaved A/B on the runner itself.
+- **Base:** the last release tag before HEAD (or a ref given as argument). Its tree is built on its own cyrius pin,
+  so a pin move is measured too. A missing pin is fetched and verified by `scripts/ci-install-cyrius.sh
+  --alongside`, a new mode that installs a version without switching the active toolchain. The cyrius wrapper
+  dispatches to it by manifest pin, and the script checks that the dispatch happened.
+- **Method:** both bench binaries are compiled once and run in 9 rounds, alternating which goes first. Each row's
+  verdict is the median of its per-round ratios of the `min=` figure. The fastest window is less exposed to a
+  preempted window than the mean.
+- **Threshold:** a row fails above +50% *and* 50 ns, the same catastrophe-only bar as before. Rows new in HEAD are
+  listed, not gated. `[bench-regression-ack]` still skips the gate.
+- **Nothing to compare:** when `src/`, the bench, `cyrius.cyml` and `cyrius.lock` are unchanged since the tag, it
+  passes with a notice. A shallow clone fails instead of passing on missing tags; the CI checkout now fetches full
+  history (`fetch-depth: 0`).
+
+`scripts/bench-regression.sh` stays the local release gate on the host that records `history.csv`. CLAUDE.md,
+CONTRIBUTING (the contributor checklist ran the history gate, which on a contributor's machine measures the
+machine), README and state.md say which gate runs where.
+
+**Checked:**
+- **1.12.1 against 1.12.0** (6.7.18 vs 6.7.9, this host): 31 rows, 0 regressions, about 7 s. The five derived
+  `*_from_json` rows read +11.6% to +27.5%, every other row within ±6.3%. That matches the release's hand-run
+  15-round A/B within about a point.
+- **Injected regression:** a 400-iteration spin added to `version_to_str` fails exactly the two rows that call it,
+  `version_to_str` (+250%) and `version_roundtrip` (+114%), in 9 of 9 rounds. Exit 1.
+- **CI conditions:** a toolchain home holding only 6.7.18 from the verified tarball, with `gawk --posix` standing
+  in for a runner's awk. 6.7.9 was fetched, signature-verified and installed alongside, with the active toolchain
+  still 6.7.18. The base built on 6.7.9, and the result matched.
+- **Edge cases:** no change since the tag gives the notice and exit 0; the ack gives skip and exit 0; a
+  `--depth 1` clone gives exit 2.
 
 ## [1.12.0] - 2026-10-14
 

@@ -2,7 +2,7 @@
 
 ## Status
 
-**v1.12.1** is the most recent stable release, on Cyrius `6.7.18`. It has 12
+**v1.12.2** is the most recent stable release, on Cyrius `6.7.18`. It has 12
 modules plus `src/proto.cyr` (the protobuf writer behind the OTLP encoders),
 1,122 public fns (every fn documented), and 2,307 test assertions across 24
 `.tcyr` files, passing on x86_64-linux and on aarch64 under `qemu-aarch64`.
@@ -10,11 +10,11 @@ There are 31 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
 `scripts/consumer-sweep.sh` builds and tests all of them against the working
 tree before each release. CI runs the suite on x86_64 and on aarch64 (under
-`qemu-user`), on a signature-verified toolchain.
+`qemu-user`), on a signature-verified toolchain, on the `ubuntu-26.04` runner.
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md) (the v1.12.1 toolchain refresh); the one before it,
+[`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md) (the v1.12.1 toolchain refresh and the v1.12.2 CI pass); the one before it,
 [`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md), holds the 1.6.5 and v1.7.0 through v1.12.0 passes.
 
 Every item below is pinned to a release. Shipped work leaves this file for the
