@@ -60,15 +60,13 @@
 - Zero panic in library code — use `Result` (`Ok` / `Err`) for fallible operations.
 - All public enums must have `*_name(t)` (string representation). Roundtrip
   (`*_parse(s)`) where the value is parsed from external input.
-- **Serde split** (per [ADR-002](docs/adr/002-derive-serialize-7-of-9.md)):
-  - Trivial all-int structs use `#derive(Serialize)` — cyrius emits
-    `<Struct>_to_json` + `<Struct>_from_json_str`. Add `: i64` (or narrower)
-    annotations to every field.
-  - Structs with custom shape (UUID stringification, enum-name lookup,
-    null-Str handling) keep hand-written `_to_json`/`_from_json` impls — the
-    cyrius derive codegen can't replicate those today.
-  - Either way, JSON output is **compact** (`{"k":v,"k":v}` no spaces) for
-    library uniformity.
+- **Serde is hand-written** (per [ADR-008](docs/adr/008-value-struct-serde-is-hand-written.md), which
+  superseded ADR-002 at 1.12.3). Do not add `#derive(Serialize)`: its generated `_from_json_str` scans past the
+  end of truncated input and its decoders wrap out-of-range numbers.
+  - An all-int struct follows the seven in `src/` (`TokenUsage` is one): `_to_json` writes one literal per member;
+    `_from_json_str` reads in one pass through `_stik_json_read_fields` and a field table; `_from_json(pairs)`
+    reads through `_stik_json_pair_int`.
+  - JSON output is **compact** (`{"k":v,"k":v}` no spaces) for library uniformity.
 - All parse functions must return `Result` and have roundtrip tests.
 - Every parser added under `src/` must also be wired into the fuzz harness at
   `tests/tcyr/test_v112_fuzz.tcyr` (deterministic xorshift64; survival
@@ -82,12 +80,13 @@
   every accessor + setter to use `load8`/`store8` (or the matching width)
   and search the codebase for direct `store64(s + N, v)` callers — those
   OOB-write the now-smaller alloc.
-- Heap allocation: `alloc()` (bump) for long-lived data, `fl_alloc()` /
-  `fl_free()` (freelist) for individual lifetimes.
-- Keep comments above a `#derive(Serialize)` directive, never inside the
-  struct body. Cyrius fixed the body-comment corruption at 6.6.7, but
-  consumers compile `dist/agnostik.cyr` under their own pins, and below 6.6.7
-  a `#` inside the body silently becomes a field name (see
+- Heap allocation: `_stik_alloc()`, never bare `alloc()`, in a shipped module
+  ([ADR-007](docs/adr/007-allocation-failure-fails-by-name.md)). It names an allocation failure and exits 71
+  instead of returning 0 for the next store to write through. `scripts/oom-probe.sh` checks the failure paths under
+  `prlimit`.
+- Keep comments outside a struct body. Through 1.12.2 seven structs carried `#derive(Serialize)`, whose codegen
+  below cyrius 6.6.7 read a `#` inside the body as a field name; consumers compile `dist/agnostik.cyr` under
+  their own pins (see
   [`docs/development/issues/archive/cyrius-derive-comments-in-struct-body-2026-05-10.md`](docs/development/issues/archive/cyrius-derive-comments-in-struct-body-2026-05-10.md)).
 
 ## Adding New Types

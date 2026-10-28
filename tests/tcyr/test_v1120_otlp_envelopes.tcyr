@@ -1038,13 +1038,17 @@ fn fuzz_logs(seed) {
 
 # A random histogram value; the global _H_GOOD says whether it is well formed.
 var _H_GOOD = 1;
-# Random histogram value box, sometimes deliberately malformed.
+# Random histogram value box, sometimes deliberately malformed. Bounds are
+# strictly increasing positive doubles by construction (positive doubles order
+# like their bits); since 1.12.3 a repeated bound or a NaN makes it malformed.
 fn gen_histogram() {
     var h = histogram_value_new();
     var nb = rng_below(4);
     var i = 0;
+    var bnd = 0x3FF0000000000000;
     while (i < nb) {
-        vec_push(hval_bounds(h), rng_next());
+        bnd = bnd + 1 + rng_below(0x7FFFFFFF);
+        vec_push(hval_bounds(h), bnd);
         i = i + 1;
     }
     var total = 0;
@@ -1060,8 +1064,15 @@ fn gen_histogram() {
     if (rng_below(2) == 1) { hval_set_min(h, rng_next()); }
     if (rng_below(2) == 1) { hval_set_max(h, rng_next()); }
     _H_GOOD = 1;
-    if (rng_below(6) == 0) {
+    var bad = rng_below(8);
+    if (bad == 0) {
         hval_set_count(h, total + 1);
+        _H_GOOD = 0;
+    } elif (bad == 1 && nb >= 2) {
+        vec_set(hval_bounds(h), 1, vec_get(hval_bounds(h), 0));
+        _H_GOOD = 0;
+    } elif (bad == 2 && nb >= 1) {
+        vec_set(hval_bounds(h), nb - 1, 0x7FF8000000000000);
         _H_GOOD = 0;
     }
     return metric_histogram(h);

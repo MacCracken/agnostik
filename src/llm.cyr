@@ -50,6 +50,7 @@ fn llm_provider_name(p) {
 # `Custom` is LLM_CUSTOM's canonical name (it is produced by
 # llm_provider_name's fallback, not by an explicit arm), so it maps back here.
 fn llm_provider_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Ollama") == 1) { return Ok(LLM_OLLAMA); }
     elif (str_eq_cstr(s, "LlamaCpp") == 1) { return Ok(LLM_LLAMA_CPP); }
     elif (str_eq_cstr(s, "OpenAI") == 1) { return Ok(LLM_OPENAI); }
@@ -84,6 +85,7 @@ fn message_role_name(r) {
 # unrecognised string is an error rather than a silent default, so
 # message_role_parse(message_role_name(v)) == v holds for every MessageRole member.
 fn message_role_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "system") == 1) { return Ok(ROLE_SYSTEM); }
     elif (str_eq_cstr(s, "user") == 1) { return Ok(ROLE_USER); }
     elif (str_eq_cstr(s, "assistant") == 1) { return Ok(ROLE_ASSISTANT); }
@@ -106,7 +108,7 @@ fn content_text(text: Str) { return tagged_new(CB_TEXT, text); }
 # Tool-use content block: a tagged box with tag CB_TOOL_USE whose payload is a
 # 24-byte record: +0 tool-use id, +8 tool name, +16 arguments, all Str.
 fn content_tool_use(tid: Str, tname: Str, targs: Str) {
-    var tu = alloc(24);
+    var tu = _stik_alloc(24);
     store64(tu, tid);
     store64(tu + 8, tname);
     store64(tu + 16, targs);
@@ -116,7 +118,7 @@ fn content_tool_use(tid: Str, tname: Str, targs: Str) {
 # is a 24-byte record: +0 id of the tool use it answers (Str), +8 result content
 # (Str), +16 is-error flag. tool_result_new builds the same record unboxed.
 fn content_tool_result(tuid: Str, tcontent: Str, tiserr) {
-    var tr = alloc(24);
+    var tr = _stik_alloc(24);
     store64(tr, tuid);
     store64(tr + 8, tcontent);
     store64(tr + 16, tiserr);
@@ -129,7 +131,7 @@ fn content_thinking(text: Str) { return tagged_new(CB_THINKING, text); }
 # record: +0 source (Str), +8 media type (Str, e.g. "image/png"), +16 is_url:
 # 1 when `source` is a URL, 0 when it holds the encoded (base64) image data.
 fn content_image(source: Str, media_type: Str, is_url) {
-    var img = alloc(24);
+    var img = _stik_alloc(24);
     store64(img, source);
     store64(img + 8, media_type);
     store64(img + 16, is_url);
@@ -139,7 +141,7 @@ fn content_image(source: Str, media_type: Str, is_url) {
 # whose payload is a 16-byte record: +0 source (Str), +8 media type (Str).
 # Unlike content_image there is no is_url flag.
 fn content_document(source: Str, media_type: Str) {
-    var doc = alloc(16);
+    var doc = _stik_alloc(16);
     store64(doc, source);
     store64(doc + 8, media_type);
     return tagged_new(CB_DOCUMENT, doc);
@@ -147,7 +149,7 @@ fn content_document(source: Str, media_type: Str) {
 # Audio content block: a tagged box with tag CB_AUDIO whose payload is a 16-byte
 # record: +0 source (Str), +8 media type (Str, e.g. "audio/wav").
 fn content_audio(source: Str, media_type: Str) {
-    var aud = alloc(16);
+    var aud = _stik_alloc(16);
     store64(aud, source);
     store64(aud + 8, media_type);
     return tagged_new(CB_AUDIO, aud);
@@ -155,7 +157,7 @@ fn content_audio(source: Str, media_type: Str) {
 # Citation content block: a tagged box with tag CB_CITATION whose payload is a
 # 16-byte record: +0 source (Str), +8 cited text (Str).
 fn content_citation(source: Str, text: Str) {
-    var cit = alloc(16);
+    var cit = _stik_alloc(16);
     store64(cit, source);
     store64(cit + 8, text);
     return tagged_new(CB_CITATION, cit);
@@ -190,6 +192,7 @@ fn finish_reason_name(r) {
 # unrecognised string is an error rather than a silent default, so
 # finish_reason_parse(finish_reason_name(v)) == v holds for every FinishReason member.
 fn finish_reason_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "stop") == 1) { return Ok(FINISH_STOP); }
     elif (str_eq_cstr(s, "length") == 1) { return Ok(FINISH_LENGTH); }
     elif (str_eq_cstr(s, "content_filter") == 1) { return Ok(FINISH_CONTENT_FILTER); }
@@ -216,6 +219,7 @@ fn content_block_type_name(t) {
 # Parse a ContentBlockType display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn content_block_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "text") == 1) { return Ok(CB_TEXT); }
     elif (str_eq_cstr(s, "image") == 1) { return Ok(CB_IMAGE); }
     elif (str_eq_cstr(s, "document") == 1) { return Ok(CB_DOCUMENT); }
@@ -236,6 +240,7 @@ fn cache_control_name(c) {
 # Parse a CacheControl display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn cache_control_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "ephemeral") == 1) { return Ok(CACHE_EPHEMERAL); }
     return stik_err_invalid_argument(str_from("unknown CacheControl name"));
 }
@@ -252,6 +257,7 @@ fn tool_choice_name(c) {
 # Parse a ToolChoice display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn tool_choice_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "auto") == 1) { return Ok(TOOL_AUTO); }
     elif (str_eq_cstr(s, "none") == 1) { return Ok(TOOL_NONE); }
     elif (str_eq_cstr(s, "required") == 1) { return Ok(TOOL_REQUIRED); }
@@ -270,6 +276,7 @@ fn response_format_name(f) {
 # Parse a ResponseFormat display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn response_format_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "text") == 1) { return Ok(RESP_TEXT); }
     elif (str_eq_cstr(s, "json_object") == 1) { return Ok(RESP_JSON_OBJECT); }
     elif (str_eq_cstr(s, "json_schema") == 1) { return Ok(RESP_JSON_SCHEMA); }
@@ -292,6 +299,7 @@ fn safety_category_name(c) {
 # Parse a SafetyCategory display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn safety_category_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "HARM_CATEGORY_HATE_SPEECH") == 1) { return Ok(SAFETY_HATE); }
     elif (str_eq_cstr(s, "HARM_CATEGORY_HARASSMENT") == 1) { return Ok(SAFETY_HARASSMENT); }
     elif (str_eq_cstr(s, "HARM_CATEGORY_SEXUALLY_EXPLICIT") == 1) { return Ok(SAFETY_SEXUAL); }
@@ -312,6 +320,7 @@ fn safety_probability_name(p) {
 # Parse a SafetyProbability display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn safety_probability_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "NEGLIGIBLE") == 1) { return Ok(SAFETY_NEGLIGIBLE); }
     elif (str_eq_cstr(s, "LOW") == 1) { return Ok(SAFETY_LOW); }
     elif (str_eq_cstr(s, "MEDIUM") == 1) { return Ok(SAFETY_MEDIUM); }
@@ -336,6 +345,7 @@ fn stream_event_type_name(t) {
 # Parse a StreamEventType display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn stream_event_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "content_block_start") == 1) { return Ok(STREAM_CONTENT_BLOCK_START); }
     elif (str_eq_cstr(s, "delta") == 1) { return Ok(STREAM_DELTA); }
     elif (str_eq_cstr(s, "tool_call_delta") == 1) { return Ok(STREAM_TOOL_CALL_DELTA); }
@@ -362,6 +372,7 @@ fn batch_status_name(s) {
 # Parse a BatchStatus display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn batch_status_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "pending") == 1) { return Ok(BATCH_PENDING); }
     elif (str_eq_cstr(s, "in_progress") == 1) { return Ok(BATCH_IN_PROGRESS); }
     elif (str_eq_cstr(s, "completed") == 1) { return Ok(BATCH_COMPLETED); }
@@ -390,7 +401,7 @@ enum BatchStatus { BATCH_PENDING; BATCH_IN_PROGRESS; BATCH_COMPLETED; BATCH_FAIL
 #   empty), +16 zeroed, with no accessor.
 # Add content by pushing content_* boxes onto msg_content.
 fn message_new(role) {
-    var m = alloc(24);
+    var m = _stik_alloc(24);
     store64(m, role);
     store64(m + 8, vec_new());
     store64(m + 16, 0);
@@ -410,7 +421,7 @@ fn msg_content(m) { return load64(m + 8); }
 #   +0 name (Str), +8 description (Str), +16 parameters (Str, may be 0),
 #   +24 zeroed, with no accessor.
 fn tool_definition_new(tname: Str, desc: Str, params: Str) {
-    var t = alloc(32);
+    var t = _stik_alloc(32);
     store64(t, tname);
     store64(t + 8, desc);
     store64(t + 16, params);
@@ -426,7 +437,7 @@ fn tooldef_params(t) { return load64(t + 16); }
 # A ToolCall: a model's request to invoke a tool. 24 bytes, all 8-byte slots:
 #   +0 call id, +8 tool name, +16 arguments, all Str.
 fn tool_call_new(tid: Str, tname: Str, targs: Str) {
-    var tc = alloc(24);
+    var tc = _stik_alloc(24);
     store64(tc, tid);
     store64(tc + 8, tname);
     store64(tc + 16, targs);
@@ -445,7 +456,7 @@ fn tcall_args(tc) { return load64(tc + 16); }
 # allocated, i.e. zeroed). The numeric fields are integers, stored as given
 # with no scaling or validation.
 fn sampling_params_new() {
-    var s = alloc(56);
+    var s = _stik_alloc(56);
     store64(s, 1000);
     var i = 8;
     while (i < 48) { store64(s + i, 0); i = i + 8; }
@@ -478,18 +489,80 @@ fn samp_set_top_p(s, v)       { store64(s + 8, v); return 0; }
 fn samp_set_top_k(s, v)       { store64(s + 16, v); return 0; }
 # Set the sampling seed. Returns 0.
 fn samp_set_seed(s, v)        { store64(s + 48, v); return 0; }
-#derive(Serialize)
 struct TokenUsage {
     prompt_tok: i64; completion_tok: i64; total_tok: i64;
     cache_create_tok: i64; cache_read_tok: i64;
 }
+# Write the TokenUsage at `ptr` to str_builder `sb` as JSON, each field an i64 member:
+#   {"prompt_tok":N,"completion_tok":N,"total_tok":N,"cache_create_tok":N,"cache_read_tok":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn TokenUsage_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"prompt_tok\":");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ",\"completion_tok\":");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ",\"total_tok\":");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ",\"cache_create_tok\":");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, ",\"cache_read_tok\":");
+    str_builder_add_int(sb, load64(ptr + 32));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new TokenUsage (40 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair with a
+# field's name gives its value. A missing member, or one that is not a number or is outside i64,
+# reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn TokenUsage_from_json(pairs) {
+    var p = _stik_alloc(40);
+    store64(p, _stik_json_pair_int(pairs, "prompt_tok"));
+    store64(p + 8, _stik_json_pair_int(pairs, "completion_tok"));
+    store64(p + 16, _stik_json_pair_int(pairs, "total_tok"));
+    store64(p + 24, _stik_json_pair_int(pairs, "cache_create_tok"));
+    store64(p + 32, _stik_json_pair_int(pairs, "cache_read_tok"));
+    return p;
+}
+# TokenUsage_from_json_str's field table, built on first use.
+var _stik_ft_tusage = 0;
+# The field table naming TokenUsage's members in layout order.
+fn _stik_ft_tusage_get() {
+    if (_stik_ft_tusage == 0) {
+        var ft = _stik_ft_new(5);
+        _stik_ft_set(ft, 0, "prompt_tok");
+        _stik_ft_set(ft, 1, "completion_tok");
+        _stik_ft_set(ft, 2, "total_tok");
+        _stik_ft_set(ft, 3, "cache_create_tok");
+        _stik_ft_set(ft, 4, "cache_read_tok");
+        _stik_ft_tusage = ft;
+    }
+    return _stik_ft_tusage;
+}
+# A new TokenUsage (40 bytes) from the JSON text at C string `json`, read in one pass up to its NUL
+# terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A missing
+# member, or one that is not a number or is outside i64, reads 0, and a repeated member gives its
+# last value. Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn TokenUsage_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(40);
+    store64(p, 0);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    store64(p + 24, 0);
+    store64(p + 32, 0);
+    _stik_json_read_fields(json, _stik_ft_tusage_get(), p, 0);
+    return p;
+}
 # A TokenUsage: token counts for an inference or embedding call. 40 bytes,
 # all 8-byte slots, all 0 at construction:
 #   +0 prompt, +8 completion, +16 total, +24 cache_create, +32 cache_read.
-# The layout is the TokenUsage struct above, so the derived TokenUsage_to_json
-# and TokenUsage_from_json_str read and write it.
+# Providers differ on whether prompt includes cached tokens: OpenAI's
+# prompt_tokens includes them, Anthropic's input_tokens excludes them (the
+# cache_* counts are separate). Record which convention a value follows.
+# The layout is the TokenUsage struct above, which TokenUsage_to_json and the
+# two TokenUsage_from_json fns read and write.
 fn token_usage_new() {
-    var u = alloc(40);
+    var u = _stik_alloc(40);
     var i = 0;
     while (i < 40) { store64(u + i, 0); i = i + 8; }
     return u;
@@ -522,7 +595,7 @@ fn tusage_set_cache_read(u, v)   { store64(u + 32, v); return 0; }
 #   +72..+104 five slots zeroed with no accessor, +112 service_tier (Str, 0),
 #   +120 metadata (0), +128 reasoning_effort (Str, 0).
 fn inference_request_new(model: Str) {
-    var r = alloc(136);
+    var r = _stik_alloc(136);
     store64(r, model);
     store64(r + 8, str_from(""));
     store64(r + 16, 0);
@@ -590,7 +663,7 @@ fn ireq_set_reasoning_effort(r, v: Str) { store64(r + 128, v); return 0; }
 #   (FINISH_STOP), +40 tool_calls (vec of ToolCall, empty), +48 and +56 zeroed,
 #   with no accessor.
 fn inference_response_new(model: Str) {
-    var r = alloc(64);
+    var r = _stik_alloc(64);
     store64(r, 0);
     store64(r + 8, model);
     store64(r + 16, vec_new());
@@ -638,7 +711,7 @@ fn stream_ping() { return tagged_new(STREAM_PING, 0); }
 fn model_capabilities_new(model_id: Str, provider) {
     # 96 → 120 bytes at v1.1.0: 3 new flags appended (video_input,
     # caching, parallel_tool_calls). Existing offsets 0..88 unchanged.
-    var m = alloc(120);
+    var m = _stik_alloc(120);
     store64(m, model_id);
     store64(m + 8, model_id);  # display_name defaults to model_id
     store64(m + 16, provider);
@@ -709,10 +782,10 @@ fn mcap_set_supports_caching(m, v)             { store64(m + 104, v); return 0; 
 fn mcap_set_supports_parallel_tool_calls(m, v) { store64(m + 112, v); return 0; }
 # A RateLimitInfo: a provider's rate-limit state. 40 bytes, all 8-byte slots,
 # all 0 at construction: +0 request limit, +8 requests remaining, +16 token
-# limit, +24 tokens remaining, +32 seconds until reset. This module has no
-# setters for it.
+# limit, +24 tokens remaining, +32 seconds until reset. The rli_set_* setters
+# fill it (since v1.11.0).
 fn rate_limit_info_new() {
-    var r = alloc(40);
+    var r = _stik_alloc(40);
     var i = 0;
     while (i < 40) { store64(r + i, 0); i = i + 8; }
     return r;
@@ -741,7 +814,7 @@ fn rli_set_reset_seconds(r, v) { store64(r + 32, v); return 0; }
 # all 8-byte slots: +0 tool_use_id (Str, the tool use it answers), +8 content
 # (Str), +16 is-error flag. content_tool_result boxes the same record.
 fn tool_result_new(tuid: Str, tcontent: Str, tiserr) {
-    var tr = alloc(24);
+    var tr = _stik_alloc(24);
     store64(tr, tuid);
     store64(tr + 8, tcontent);
     store64(tr + 16, tiserr);
@@ -757,7 +830,7 @@ fn tresult_is_error(tr)    { return load64(tr + 16); }
 # slots: +0 token (Str), +8 logprob (integer, stored as given),
 # +16 top_logprobs (vec, 0 until lpe_top_logprobs first creates it).
 fn logprob_entry_new(token: Str, logprob) {
-    var e = alloc(24);
+    var e = _stik_alloc(24);
     store64(e, token);
     store64(e + 8, logprob);
     store64(e + 16, 0);
@@ -773,7 +846,7 @@ fn lpe_top_logprobs(e){ return _stik_lazy_vec(e + 16); }
 # A TokenLogprob: a token with its log probability. 16 bytes: +0 token (Str),
 # +8 logprob (integer, stored as given).
 fn token_logprob_new(token: Str, logprob) {
-    var t = alloc(16);
+    var t = _stik_alloc(16);
     store64(t, token);
     store64(t + 8, logprob);
     return t;
@@ -786,7 +859,7 @@ fn tlp_logprob(t) { return load64(t + 8); }
 # 8-byte slots: +0 category (SafetyCategory), +8 probability
 # (SafetyProbability), +16 blocked flag. Values are stored as given.
 fn safety_rating_new(category, probability, blocked) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, category);
     store64(r + 8, probability);
     store64(r + 16, blocked);
@@ -801,7 +874,7 @@ fn srating_blocked(r)     { return load64(r + 16); }
 # An EmbeddingRequest. 24 bytes, all 8-byte slots: +0 model (Str), +8 inputs
 # (vec, 0 until embreq_inputs first creates it), +16 dimensions (0).
 fn embedding_request_new(model: Str) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, model);
     store64(r + 8, 0);
     store64(r + 16, 0);
@@ -819,7 +892,7 @@ fn embreq_set_dimensions(r, v) { store64(r + 16, v); return 0; }
 # +8 embeddings (vec, 0 until embresp_embeddings first creates it),
 # +16 usage (a fresh token_usage_new).
 fn embedding_response_new(model: Str) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, model);
     store64(r + 8, 0);
     store64(r + 16, token_usage_new());
@@ -834,7 +907,7 @@ fn embresp_usage(r)      { return load64(r + 16); }
 # A BatchRequest: one entry of a batch job. 16 bytes: +0 custom_id (Str),
 # +8 request (pointer, stored as given).
 fn batch_request_new(custom_id: Str, request) {
-    var b = alloc(16);
+    var b = _stik_alloc(16);
     store64(b, custom_id);
     store64(b + 8, request);
     return b;
@@ -846,7 +919,7 @@ fn breq_request(b)   { return load64(b + 8); }
 # A BatchResult: the outcome of one batch entry. 24 bytes, all 8-byte slots:
 # +0 custom_id (Str), +8 response (0 until set), +16 error (Str, 0 until set).
 fn batch_result_new(custom_id: Str) {
-    var b = alloc(24);
+    var b = _stik_alloc(24);
     store64(b, custom_id);
     store64(b + 8, 0);
     store64(b + 16, 0);

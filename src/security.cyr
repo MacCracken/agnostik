@@ -53,10 +53,13 @@ enum ConditionOperator { COND_EQ; COND_NEQ; COND_IN; COND_NIN; COND_GT; COND_GTE
 enum SeccompMode { SECCOMP_DISABLED; SECCOMP_STRICT; SECCOMP_FILTER; SECCOMP_UNSUPPORTED; }
 enum SystemFeature { FEAT_LANDLOCK; FEAT_SECCOMP; FEAT_NAMESPACES; FEAT_CGROUPS; FEAT_TPM; FEAT_SECURE_BOOT; }
 # Linux capability numbers, as the KERNEL defines them
-# (include/uapi/linux/capability.h). The value IS the capability number —
-# consumers build masks with `1 << cap` and pass them to capset(2) /
-# PR_CAPBSET_DROP, so an ordinal that does not match the kernel silently
-# operates on a DIFFERENT capability.
+# (include/uapi/linux/capability.h). The value IS the capability number, so
+# an ordinal that does not match the kernel silently operates on a DIFFERENT
+# capability. prctl(PR_CAPBSET_DROP) and similar take the number itself. A
+# capset(2) mask (_LINUX_CAPABILITY_VERSION_3) is two 32-bit words: bit
+# (cap % 32) of word (cap / 32). `1 << cap` is a 64-bit mask, so caps 32..40
+# land in its high half, which capset reads as the second word only when the
+# caller splits it.
 #
 # ⚠ Fixed at 1.4.1, and it was wrong in two ways. The list omitted
 # CAP_MAC_OVERRIDE (32) and CAP_MAC_ADMIN (33) entirely, which shifted
@@ -151,7 +154,7 @@ enum RlimitType {
 # 32 bytes, all 8-byte slots: +0 outbound ports, +8 outbound hosts, +16 inbound
 # ports (three empty vecs), +24 zeroed with no accessor.
 fn network_policy_new() {
-    var p = alloc(32);
+    var p = _stik_alloc(32);
     store64(p, vec_new());
     store64(p + 8, vec_new());
     store64(p + 16, vec_new());
@@ -168,7 +171,7 @@ fn netpol_inbound_ports(p)  { return load64(p + 16); }
 # limit reads 0 until set. Accessed slots: +0 memory_max, +8 memory_high,
 # +16 cpu_max, +32 cpu_weight, +40 pids_max; +24 and +48..+88 have no accessor.
 fn cgroup_limits_new() {
-    var c = alloc(96);
+    var c = _stik_alloc(96);
     var i = 0;
     while (i < 96) { store64(c + i, 0); i = i + 8; }
     return c;
@@ -201,7 +204,7 @@ fn cglim_set_cpu_weight(c, v)  { store64(c + 32, v); return 0; }
 # +32 uts, +40 ipc, +48 cgroup, +56 time. Only pid, net, mount and user have
 # setters.
 fn namespace_config_new() {
-    var n = alloc(64);
+    var n = _stik_alloc(64);
     var i = 0;
     while (i < 64) { store64(n + i, 0); i = i + 8; }
     return n;
@@ -252,7 +255,7 @@ fn sandbox_config_new() {
     # zeroed all 11 then overwrote two; this is a hot constructor, so the
     # unroll gives the bench real headroom against runner noise (the
     # 6.3.x codegen shift left it hugging the regression floor).
-    var s = alloc(88);
+    var s = _stik_alloc(88);
     store64(s + 0,  0);
     store64(s + 8,  NET_LOCALHOST_ONLY);
     store64(s + 16, 0);
@@ -319,7 +322,7 @@ fn sandbox_selinux(s) { return load64(s + 48); }
 # +40 readonly_root 0, +48 no_new_privs 1. The four scalars have secctx_set_*
 # setters since v1.11.0.
 fn security_context_new(agent_id) {
-    var ctx = alloc(56);
+    var ctx = _stik_alloc(56);
     store64(ctx, agent_id);
     store64(ctx + 8, vec_new());
     store64(ctx + 16, sandbox_config_new());
@@ -335,11 +338,14 @@ fn secctx_agent_id(c)        { return load64(c); }
 fn secctx_permissions(c)     { return load64(c + 8); }
 # The agent's SandboxConfig; sandbox_config_new defaults until changed.
 fn secctx_sandbox(c)         { return load64(c + 16); }
-# User ID to run the agent's process as; 0 in a fresh context.
+# User ID to run the agent's process as; 0 in a fresh context, meaning "not
+# set". 0 is also root's uid, so a launcher must treat 0 as "inherit" and
+# never setuid(0) from it; v1 has no separate set flag.
 fn secctx_run_as_user(c)     { return load64(c + 24); }
 # Set the value secctx_run_as_user reads, stored as given (not validated). Returns 0.
 fn secctx_set_run_as_user(c, v) { store64(c + 24, v); return 0; }
-# Group ID to run the agent's process as; 0 in a fresh context.
+# Group ID to run the agent's process as; 0 in a fresh context, meaning "not
+# set" (0 is also root's gid; see secctx_run_as_user).
 fn secctx_run_as_group(c)    { return load64(c + 32); }
 # Set the value secctx_run_as_group reads, stored as given (not validated). Returns 0.
 fn secctx_set_run_as_group(c, v) { store64(c + 32, v); return 0; }
@@ -354,7 +360,7 @@ fn secctx_set_no_new_privs(c, v) { store64(c + 48, v); return 0; }
 # A SecurityPolicy: a named rule applying `effect` to a set of permissions.
 # 24 bytes: +0 name (Str), +8 effect (PolicyEffect), +16 permissions (empty vec).
 fn security_policy_new(name: Str, effect) {
-    var p = alloc(24);
+    var p = _stik_alloc(24);
     store64(p, name);
     store64(p + 8, effect);
     store64(p + 16, vec_new());
@@ -370,7 +376,7 @@ fn secpol_permissions(p) { return load64(p + 16); }
 # LinuxCapability values (kernel capability numbers). 40 bytes: +0 effective,
 # +8 permitted, +16 inheritable, +24 bounding, +32 ambient; all start empty.
 fn capability_set_new() {
-    var c = alloc(40);
+    var c = _stik_alloc(40);
     store64(c, vec_new());
     store64(c + 8, vec_new());
     store64(c + 16, vec_new());
@@ -393,7 +399,7 @@ fn capset_ambient(c)     { return load64(c + 32); }
 # ABI version, +32 cgroup v2, +40 namespaces, each set with its sbcap_set_*
 # setter (v1.11.0).
 fn sandbox_capabilities_new() {
-    var c = alloc(48);
+    var c = _stik_alloc(48);
     var i = 0;
     while (i < 48) { store64(c + i, 0); i = i + 8; }
     return c;
@@ -426,7 +432,7 @@ fn sbcap_set_namespaces(c, v) { store64(c + 40, v); return 0; }
 # args. 32 bytes: +0 index (which argument), +8 value, +16 value_two, +24 op
 # (SeccompArgOp), all as given.
 fn seccomp_arg_new(index, value, value_two, op) {
-    var a = alloc(32);
+    var a = _stik_alloc(32);
     store64(a, index);
     store64(a + 8, value);
     store64(a + 16, value_two);
@@ -446,7 +452,7 @@ fn scarg_op(a)        { return load64(a + 24); }
 # accessor, +40 propagation (MountPropagation, MOUNT_PRIVATE). Only readonly
 # and noexec have setters.
 fn filesystem_rule_new(path: Str, access) {
-    var r = alloc(48);
+    var r = _stik_alloc(48);
     store64(r, path);
     store64(r + 8, access);
     store64(r + 16, 0);
@@ -475,7 +481,7 @@ fn fsrule_set_noexec(r, v)   { store64(r + 24, v); return 0; }
 # argument conditions. 24 bytes: +0 names (vec, lazy), +8 action (as given),
 # +16 args (vec, lazy).
 fn seccomp_rule_new(action) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, 0);
     store64(r + 8, action);
     store64(r + 16, 0);
@@ -492,7 +498,7 @@ fn scrule_args(r)   { return _stik_lazy_vec(r + 16); }
 # given), +8 architectures, +16 flags, +24 syscalls (three vecs, created
 # lazily), +32 and +40 zeroed with no accessor.
 fn seccomp_profile_new(default_action) {
-    var p = alloc(48);
+    var p = _stik_alloc(48);
     store64(p, default_action);
     store64(p + 8, 0);
     store64(p + 16, 0);
@@ -513,7 +519,7 @@ fn scprof_syscalls(p)       { return _stik_lazy_vec(p + 24); }
 # An EncryptedStorage: settings for an encrypted storage volume. 24 bytes:
 # +0 enabled 0, +8 size_mb 256, +16 filesystem (Str, "ext4").
 fn encrypted_storage_new() {
-    var e = alloc(24);
+    var e = _stik_alloc(24);
     store64(e, 0);
     store64(e + 8, 256);
     store64(e + 16, str_from("ext4"));
@@ -535,7 +541,7 @@ fn encst_set_size_mb(e, v)  { store64(e + 8, v); return 0; }
 # (RlimitType, an agnostik ordinal, not a kernel RLIMIT_* number), +8 soft,
 # +16 hard, all as given.
 fn rlimit_new(limit_type, soft, hard) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, limit_type);
     store64(r + 8, soft);
     store64(r + 16, hard);
@@ -552,7 +558,7 @@ fn rlimit_hard(r) { return load64(r + 16); }
 # and access come from the arguments; major and minor are set with
 # devrule_set_major / devrule_set_minor.
 fn device_rule_new(allow, dtype, access_str: Str) {
-    var r = alloc(40);
+    var r = _stik_alloc(40);
     store64(r, allow);
     store64(r + 8, dtype);
     store64(r + 16, 0);
@@ -578,7 +584,7 @@ fn devrule_access(r) { return load64(r + 32); }
 # given; this module defines no namespace-type enum), +8 path (0 until
 # nsentry_set_path).
 fn namespace_entry_new(ns_type) {
-    var e = alloc(16);
+    var e = _stik_alloc(16);
     store64(e, ns_type);
     store64(e + 8, 0);
     return e;
@@ -593,7 +599,7 @@ fn nsentry_set_path(e, v: Str) { store64(e + 8, v); return 0; }
 # the namespace) to IDs starting at inside_id (inside it). 24 bytes:
 # +0 inside_id, +8 outside_id, +16 count, all as given.
 fn id_mapping_new(inside_id, outside_id, count) {
-    var m = alloc(24);
+    var m = _stik_alloc(24);
     store64(m, inside_id);
     store64(m + 8, outside_id);
     store64(m + 16, count);
@@ -608,7 +614,7 @@ fn idmap_count(m)   { return load64(m + 16); }
 # A LandlockFsRule: the Landlock filesystem access allowed for one path.
 # 16 bytes: +0 path (Str), +8 allowed_access (vec, lazy).
 fn landlock_fs_rule_new(path: Str) {
-    var r = alloc(16);
+    var r = _stik_alloc(16);
     store64(r, path);
     store64(r + 8, 0);
     return r;
@@ -621,7 +627,7 @@ fn llfsr_allowed_access(r) { return _stik_lazy_vec(r + 8); }
 # A LandlockNetRule: the Landlock network access allowed on one port.
 # 16 bytes: +0 port, +8 allowed_access (vec, lazy).
 fn landlock_net_rule_new(port) {
-    var r = alloc(16);
+    var r = _stik_alloc(16);
     store64(r, port);
     store64(r + 8, 0);
     return r;
@@ -634,7 +640,7 @@ fn llnr_allowed_access(r)  { return _stik_lazy_vec(r + 8); }
 # A LandlockRuleset. 24 bytes, three vecs created lazily: +0 fs_rules
 # (LandlockFsRule), +8 net_rules (LandlockNetRule), +16 scoped (LandlockScope).
 fn landlock_ruleset_new() {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, 0);
     store64(r + 8, 0);
     store64(r + 16, 0);
@@ -649,7 +655,7 @@ fn llrs_scoped(r)    { return _stik_lazy_vec(r + 16); }
 # A PermissionCondition: an RBAC test `field operator value`. 24 bytes:
 # +0 field (Str), +8 operator (ConditionOperator), +16 value, all as given.
 fn permission_condition_new(field: Str, operator, value) {
-    var c = alloc(24);
+    var c = _stik_alloc(24);
     store64(c, field);
     store64(c + 8, operator);
     store64(c + 16, value);
@@ -665,7 +671,7 @@ fn pcond_value(c)    { return load64(c + 16); }
 # conditions. 24 bytes: +0 resource (Str), +8 actions, +16 conditions (two
 # vecs, created lazily).
 fn role_permission_new(resource: Str) {
-    var p = alloc(24);
+    var p = _stik_alloc(24);
     store64(p, resource);
     store64(p + 8, 0);
     store64(p + 16, 0);
@@ -682,7 +688,7 @@ fn rperm_conditions(p) { return _stik_lazy_vec(p + 16); }
 # (empty Str), +48 email 0, +56 display_name 0. Only sub and role are set at
 # construction; the token_set_* setters (v1.11.0) set the rest.
 fn token_payload_new(sub: Str, role) {
-    var t = alloc(64);
+    var t = _stik_alloc(64);
     store64(t, sub);
     store64(t + 8, role);
     store64(t + 16, vec_new());
@@ -722,7 +728,7 @@ fn token_set_display_name(t, v) { store64(t + 56, v); return 0; }
 # An AuthContext: an authenticated agent's role and permissions. 24 bytes:
 # +0 agent_id (as given), +8 role (Role), +16 permissions (empty vec).
 fn auth_context_new(agent_id, role) {
-    var a = alloc(24);
+    var a = _stik_alloc(24);
     store64(a, agent_id);
     store64(a + 8, role);
     store64(a + 16, vec_new());
@@ -788,6 +794,7 @@ fn capability_name(c) {
 # "defaulted" here is retaining a capability the operator asked to drop.
 # capability_parse(capability_name(v)) == v holds for every member.
 fn capability_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "cap_chown") == 1) { return Ok(CAP_CHOWN); }
     elif (str_eq_cstr(s, "cap_dac_override") == 1) { return Ok(CAP_DAC_OVERRIDE); }
     elif (str_eq_cstr(s, "cap_dac_read_search") == 1) { return Ok(CAP_DAC_READ_SEARCH); }
@@ -848,6 +855,7 @@ fn permission_name(p) {
 # unrecognised string is an error rather than a silent default, so
 # permission_parse(permission_name(v)) == v holds for every Permission member.
 fn permission_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "FileRead") == 1) { return Ok(PERM_FILE_READ); }
     elif (str_eq_cstr(s, "FileWrite") == 1) { return Ok(PERM_FILE_WRITE); }
     elif (str_eq_cstr(s, "NetworkAccess") == 1) { return Ok(PERM_NETWORK_ACCESS); }
@@ -871,6 +879,7 @@ fn role_name(r) {
 # unrecognised string is an error rather than a silent default, so
 # role_parse(role_name(v)) == v holds for every Role member.
 fn role_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Admin") == 1) { return Ok(ROLE_ADMIN); }
     elif (str_eq_cstr(s, "Operator") == 1) { return Ok(ROLE_OPERATOR); }
     elif (str_eq_cstr(s, "Auditor") == 1) { return Ok(ROLE_AUDITOR); }
@@ -890,6 +899,7 @@ fn fs_access_name(a) {
 # unrecognised string is an error rather than a silent default, so
 # fs_access_parse(fs_access_name(v)) == v holds for every FsAccess member.
 fn fs_access_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "NoAccess") == 1) { return Ok(FS_NO_ACCESS); }
     elif (str_eq_cstr(s, "ReadOnly") == 1) { return Ok(FS_READ_ONLY); }
     elif (str_eq_cstr(s, "ReadWrite") == 1) { return Ok(FS_READ_WRITE); }
@@ -909,6 +919,7 @@ fn net_access_name(a) {
 # unrecognised string is an error rather than a silent default, so
 # net_access_parse(net_access_name(v)) == v holds for every NetworkAccess member.
 fn net_access_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "None") == 1) { return Ok(NET_NONE); }
     elif (str_eq_cstr(s, "LocalhostOnly") == 1) { return Ok(NET_LOCALHOST_ONLY); }
     elif (str_eq_cstr(s, "Restricted") == 1) { return Ok(NET_RESTRICTED); }
@@ -931,6 +942,7 @@ fn seccomp_action_name(a) {
 # unrecognised string is an error rather than a silent default, so
 # seccomp_action_parse(seccomp_action_name(v)) == v holds for every SeccompAction member.
 fn seccomp_action_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Allow") == 1) { return Ok(SECCOMP_ALLOW); }
     elif (str_eq_cstr(s, "Kill") == 1) { return Ok(SECCOMP_KILL); }
     elif (str_eq_cstr(s, "KillProcess") == 1) { return Ok(SECCOMP_KILL_PROCESS); }
@@ -956,6 +968,7 @@ fn seccomp_arg_op_name(o) {
 # unrecognised string is an error rather than a silent default, so
 # seccomp_arg_op_parse(seccomp_arg_op_name(v)) == v holds for every SeccompArgOp member.
 fn seccomp_arg_op_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "NotEqual") == 1) { return Ok(ARG_NOT_EQUAL); }
     elif (str_eq_cstr(s, "LessThan") == 1) { return Ok(ARG_LESS_THAN); }
     elif (str_eq_cstr(s, "LessEqual") == 1) { return Ok(ARG_LESS_EQUAL); }
@@ -992,6 +1005,7 @@ fn seccomp_arch_name(a) {
 # unrecognised string is an error rather than a silent default, so
 # seccomp_arch_parse(seccomp_arch_name(v)) == v holds for every SeccompArch member.
 fn seccomp_arch_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "x86") == 1) { return Ok(ARCH_X86); }
     elif (str_eq_cstr(s, "x86_64") == 1) { return Ok(ARCH_X86_64); }
     elif (str_eq_cstr(s, "x32") == 1) { return Ok(ARCH_X32); }
@@ -1025,6 +1039,7 @@ fn mount_propagation_name(p) {
 # unrecognised string is an error rather than a silent default, so
 # mount_propagation_parse(mount_propagation_name(v)) == v holds for every MountPropagation member.
 fn mount_propagation_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Private") == 1) { return Ok(MOUNT_PRIVATE); }
     elif (str_eq_cstr(s, "Shared") == 1) { return Ok(MOUNT_SHARED); }
     elif (str_eq_cstr(s, "Slave") == 1) { return Ok(MOUNT_SLAVE); }
@@ -1043,6 +1058,7 @@ fn policy_effect_name(e) {
 # unrecognised string is an error rather than a silent default, so
 # policy_effect_parse(policy_effect_name(v)) == v holds for every PolicyEffect member.
 fn policy_effect_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Allow") == 1) { return Ok(POLICY_ALLOW); }
     elif (str_eq_cstr(s, "Deny") == 1) { return Ok(POLICY_DENY); }
     elif (str_eq_cstr(s, "Audit") == 1) { return Ok(POLICY_AUDIT); }
@@ -1064,6 +1080,7 @@ fn condition_operator_name(o) {
 # Parse a ConditionOperator display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn condition_operator_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Eq") == 1) { return Ok(COND_EQ); }
     elif (str_eq_cstr(s, "Neq") == 1) { return Ok(COND_NEQ); }
     elif (str_eq_cstr(s, "In") == 1) { return Ok(COND_IN); }
@@ -1088,6 +1105,7 @@ fn seccomp_mode_name(m) {
 # Parse a SeccompMode display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn seccomp_mode_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Disabled") == 1) { return Ok(SECCOMP_DISABLED); }
     elif (str_eq_cstr(s, "Strict") == 1) { return Ok(SECCOMP_STRICT); }
     elif (str_eq_cstr(s, "Filter") == 1) { return Ok(SECCOMP_FILTER); }
@@ -1109,6 +1127,7 @@ fn system_feature_name(f) {
 # Parse a SystemFeature display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn system_feature_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Landlock") == 1) { return Ok(FEAT_LANDLOCK); }
     elif (str_eq_cstr(s, "Seccomp") == 1) { return Ok(FEAT_SECCOMP); }
     elif (str_eq_cstr(s, "Namespaces") == 1) { return Ok(FEAT_NAMESPACES); }
@@ -1146,6 +1165,7 @@ fn landlock_fs_access_name(a) {
 # Parse a LandlockFsAccess display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn landlock_fs_access_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Execute") == 1) { return Ok(LL_EXECUTE); }
     elif (str_eq_cstr(s, "WriteFile") == 1) { return Ok(LL_WRITE_FILE); }
     elif (str_eq_cstr(s, "ReadFile") == 1) { return Ok(LL_READ_FILE); }
@@ -1182,6 +1202,7 @@ fn landlock_net_access_name(a) {
 # Parse a LandlockNetAccess display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn landlock_net_access_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "BindTcp") == 1) { return Ok(LL_BIND_TCP); }
     elif (str_eq_cstr(s, "ConnectTcp") == 1) { return Ok(LL_CONNECT_TCP); }
     elif (str_eq_cstr(s, "BindUdp") == 1) { return Ok(LL_BIND_UDP); }
@@ -1200,6 +1221,7 @@ fn landlock_scope_name(s) {
 # Parse a LandlockScope display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn landlock_scope_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "AbstractUnixSocket") == 1) { return Ok(LL_SCOPE_ABSTRACT_UNIX); }
     elif (str_eq_cstr(s, "Signal") == 1) { return Ok(LL_SCOPE_SIGNAL); }
     return stik_err_invalid_argument(str_from("unknown LandlockScope name"));
@@ -1216,6 +1238,7 @@ fn device_type_name(t) {
 # Parse a DeviceType display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn device_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "c") == 1) { return Ok(DEV_CHAR); }
     elif (str_eq_cstr(s, "b") == 1) { return Ok(DEV_BLOCK); }
     elif (str_eq_cstr(s, "a") == 1) { return Ok(DEV_ALL); }
@@ -1243,6 +1266,7 @@ fn rlimit_type_name(t) {
 # Parse a RlimitType display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn rlimit_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "nofile") == 1) { return Ok(RLIM_NOFILE); }
     elif (str_eq_cstr(s, "nproc") == 1) { return Ok(RLIM_NPROC); }
     elif (str_eq_cstr(s, "as") == 1) { return Ok(RLIM_ADDRESS_SPACE); }

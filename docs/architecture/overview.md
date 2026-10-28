@@ -109,25 +109,32 @@ v1.0.7 / v1.1.0 / v1.1.1 / v1.1.2 / v1.2.0 feature-coverage files).
 
 ## Serialization
 
-**JSON** — 9 struct types ship JSON serializers. Per
-[ADR-002](../adr/002-derive-serialize-7-of-9.md) the v1.1.0 cut split this:
+**JSON**: 9 struct types ship JSON serializers, all hand-written. From v1.1.0 to 1.12.2 seven of them used
+`#derive(Serialize)` ([ADR-002](../adr/002-derive-serialize-7-of-9.md)). Since 1.12.3
+([ADR-008](../adr/008-value-struct-serde-is-hand-written.md)) those seven are hand-written with the same names,
+arity and bytes, because the generated decoders read past truncated input and wrapped out-of-range numbers.
 
-| Struct | Camp | Reason |
+| Struct | Shape | Notes |
 |---|---|---|
-| `ResourceLimits` | `#derive(Serialize)` | All-int fields |
-| `ResourceUsage` | `#derive(Serialize)` | All-int fields |
-| `AgentStats` | `#derive(Serialize)` | All-int fields |
-| `EdgeResourceOverrides` | `#derive(Serialize)` | All-int fields |
-| `InjectionScores` | `#derive(Serialize)` | All-i8 fields (v1.1.1 sub-byte) |
-| `TokenUsage` | `#derive(Serialize)` | All-int fields |
-| `AcceleratorFlags` | `#derive(Serialize)` | All-i8 fields (v1.1.1 sub-byte) |
-| `AgentInfo` | hand-written | UUID stringification (`null` for an id of 0) + enum names, parsed back by name (legacy `agent_type_id` / `status_id` ints accepted as a fallback) + null-Str |
-| `TelemetryConfig` | hand-written | null-Str fallback for `export_endpoint` |
+| `ResourceLimits` | all-int | the three-fn value-struct pattern |
+| `ResourceUsage` | all-int | the three-fn value-struct pattern |
+| `AgentStats` | all-int | the three-fn value-struct pattern |
+| `EdgeResourceOverrides` | all-int | the three-fn value-struct pattern |
+| `InjectionScores` | all-i8 (v1.1.1 sub-byte) | scores saturate to 0..100 on every path |
+| `TokenUsage` | all-int | the three-fn value-struct pattern |
+| `AcceleratorFlags` | all-i8 (v1.1.1 sub-byte) | flags normalise to 0/1 on every path |
+| `AgentInfo` | custom | UUID stringification (`null` for an id of 0) + enum names, parsed back by name (legacy `agent_type_id` / `status_id` ints accepted as a fallback) + null-Str |
+| `TelemetryConfig` | custom | null-Str fallback for `export_endpoint` |
 
-Both camps emit the same compact byte format
-(`{"k":v,"k":v}` no spaces). Derive structs are accessed as
-`<Struct>_from_json_str(str_data(j))`; hand-written structs as
-`<Struct>_from_json(s: Str)`.
+All emit the same compact byte format (`{"k":v,"k":v}` no spaces).
+- **The seven value structs** each have three fns:
+  - `<Struct>_to_json(ptr, sb)`;
+  - `<Struct>_from_json_str(cstr)`: one bounded pass up to the NUL;
+  - `<Struct>_from_json(pairs)`: from `bayan_json_parse`.
+
+  The two decoders read numbers with F-008's overflow rule.
+- **`AgentInfo` and `TelemetryConfig`** are read as `<Struct>_from_json(s: Str)`, through `_stik_json_find_value`.
+  It matches top-level members only, and a repeated member gives its last value (since 1.12.3).
 
 **Protobuf (OTLP)** — `Span_to_otlp_proto(ptr, sb)` shipped in v1.2.0; v1.10.0
 adds its attributes, events and links, `LogRecord_to_otlp_proto`,

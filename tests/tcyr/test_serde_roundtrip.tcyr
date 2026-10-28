@@ -225,8 +225,10 @@ fn test_agent_info_null_id() {
     assert_eq(ainfo_type(bad), AGENT_TYPE_USER, "ai bad id keeps type");
     var bwant = _j2("{\"id\":null,\"name\":\"y\",", "\"agent_type\":\"User\",\"status\":\"Running\"}");
     assert_eq(str_eq(_ser(bad, &AgentInfo_to_json), bwant), 1, "ai bad id reserializes");
+    # Since 1.12.3 (F-039) a missing agent_type reads as User, not System, the
+    # most privileged type (0).
     var none = AgentInfo_from_json(str_from("{}"));
-    var ewant = _j2("{\"id\":null,\"name\":null,", "\"agent_type\":\"System\",\"status\":\"Pending\"}");
+    var ewant = _j2("{\"id\":null,\"name\":null,", "\"agent_type\":\"User\",\"status\":\"Pending\"}");
     assert_eq(str_eq(_ser(none, &AgentInfo_to_json), ewant), 1, "ai empty object reserializes");
     return 0;
 }

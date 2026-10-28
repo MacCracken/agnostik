@@ -1,0 +1,793 @@
+# tests/tcyr/test_v1123_hardening.tcyr
+#
+# v1.12.3: the last v1 repair cycle (a P(-1) pass) and the consumer report it
+# starts from. One test per finding, F-028..F-047 (docs/audit/2026-10-28-audit.md
+# §"v1.12.3 P(-1) pass"), plus fuzz targets whose oracles come from the
+# generators, not from the code under test. The allocation-failure paths that
+# need an exhausted heap or exit the process live in tests/probes/, run under
+# `prlimit --as` by scripts/oom-probe.sh.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "lib/assert.cyr"
+include "src/lib.cyr"
+
+# F-037: these names were agnostik's private globals through 1.12.2. Same-named
+# globals merge across libraries with no diagnostic, so a consumer's own
+# definitions replaced agnostik's: every UUID became ZZZZZZZZ-... and a genuine
+# genesis record stopped being recognised. Since 1.12.3 agnostik's are
+# _stik_-prefixed and its genesis cache does not read GENESIS_HASH.
+var _hex_lut = "ZZZZZZZZZZZZZZZZ";
+var _genesis_hash_str = 0;
+
+# ─── helpers ────
+
+var _RNG = 0;
+# Seed the xorshift generator (0 becomes 1).
+fn rng_init(seed) {
+    if (_RNG == 0) { _RNG = alloc(8); }
+    if (seed == 0) { seed = 1; }
+    store64(_RNG, seed);
+    return 0;
+}
+# Next 64-bit xorshift value.
+fn rng_next() {
+    var s = load64(_RNG);
+    s = s ^ (s << 13);
+    s = s ^ (s >> 7);
+    s = s ^ (s << 17);
+    store64(_RNG, s);
+    return s;
+}
+# A random value in 0..n-1.
+fn rng_below(n) { return (rng_next() & 0x7FFFFFFF) % n; }
+
+# Lower-case hex of a Str's bytes.
+fn hex_of(s) {
+    var d = "0123456789abcdef";
+    var sb = str_builder_new();
+    var i = 0;
+    while (i < str_len(s)) {
+        var b = load8(str_data(s) + i);
+        str_builder_putc(sb, load8(d + (b >> 4)));
+        str_builder_putc(sb, load8(d + (b & 15)));
+        i = i + 1;
+    }
+    return str_builder_build(sb);
+}
+# 1 when Str `hay` contains C string `needle`, else 0.
+fn str_has(hay, needle) {
+    var n = strlen(needle);
+    var i = 0;
+    var found = 0;
+    while (i + n <= str_len(hay) && found == 0) {
+        if (memeq(str_data(hay) + i, needle, n) == 1) { found = 1; }
+        i = i + 1;
+    }
+    return found;
+}
+# Serialize `ptr` with a T_to_json fn pointer into a fresh Str.
+fn ser(ptr, fp) {
+    var sb = str_builder_new();
+    fncall2(fp, ptr, sb);
+    return str_builder_build(sb);
+}
+# A Span with fixed ids and start time, so two encodings can be compared.
+var _IDS = 0;
+# Fixed 16-byte trace id / 8-byte span id buffers.
+fn fixed_ids() {
+    if (_IDS == 0) {
+        _IDS = alloc(24);
+        var i = 0;
+        while (i < 24) { store8(_IDS + i, i + 1); i = i + 1; }
+    }
+    return _IDS;
+}
+# A span named "s" with fixed ids and start time 1000.
+fn fixed_span() {
+    var ids = fixed_ids();
+    var sp = span_new(str_from("s"), ids, ids + 16);
+    store64(sp + 48, 1000);
+    return sp;
+}
+# Span_to_otlp_proto of `sp` as a Str.
+fn enc_span(sp) {
+    var sb = str_builder_new();
+    Span_to_otlp_proto(sp, sb);
+    return str_builder_build(sb);
+}
+
+# ─── F-028: allocation failure ────
+
+# The static out-of-memory error reads like any AgnostikError, is the same
+# object on every call, and lives outside the heap.
+fn test_err_oom_static() {
+    var e = _stik_err_oom();
+    assert(e != 0, "never 0");
+    assert_eq(agnostik_err_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "kind: resource exhausted");
+    assert_eq(agnostik_err_code(e), CODE_RESOURCE_EXHAUSTED, "code 1005");
+    assert_eq(agnostik_err_is_retriable(e), 1, "retriable, like any exhaustion");
+    var m = agnostik_err_message(e);
+    assert(m != 0, "has a message");
+    assert(str_eq_cstr(m, "out of memory") == 1, "message is 'out of memory'");
+    assert_eq(str_len(m), 13, "message length");
+    assert_eq(_stik_err_oom(), e, "the same object every call");
+    var other = agnostik_err_new(STIK_ERR_IO, str_from("disk"));
+    assert(other != e, "an ordinary allocation still gets its own error");
+    assert_eq(agnostik_err_kind(other), STIK_ERR_IO, "ordinary kind kept");
+    assert_eq(agnostik_err_kind(e), STIK_ERR_RESOURCE_EXHAUSTED, "static error unchanged");
+    return 0;
+}
+# _stik_alloc hands back usable memory when alloc succeeds.
+fn test_stik_alloc_ok() {
+    var p = _stik_alloc(32);
+    assert(p != 0, "_stik_alloc returns memory");
+    store64(p + 24, 77);
+    assert_eq(load64(p + 24), 77, "and it is writable");
+    return 0;
+}
+
+# ─── F-029: the JSON member lookup reads the document's structure ────
+
+# A nested key, a repeated key and whitespace before the colon.
+fn test_find_value_structure() {
+    var a = AgentInfo_from_json(str_from("{\"meta\":{\"name\":\"victim\"},\"name\":\"attacker\"}"));
+    assert(str_eq_cstr(ainfo_name(a), "attacker") == 1, "a nested name does not shadow the top-level one");
+    var b = AgentInfo_from_json(str_from("{\"name\":\"first\",\"name\":\"last\"}"));
+    assert(str_eq_cstr(ainfo_name(b), "last") == 1, "a repeated key gives its last value, as the derived parser did");
+    var c = AgentInfo_from_json(str_from("{\"name\" : \"spaced\"}"));
+    assert(str_eq_cstr(ainfo_name(c), "spaced") == 1, "whitespace before the colon is allowed (RFC 8259)");
+    var d = AgentInfo_from_json(str_from("{\"note\":\"\\\"name\\\":\\\"x\\\"\",\"name\":\"real\"}"));
+    assert(str_eq_cstr(ainfo_name(d), "real") == 1, "a key inside a string value is not a key (F-004 still holds)");
+    var e = AgentInfo_from_json(str_from("[{\"name\":\"in-array\"}]"));
+    assert_eq(ainfo_name(e), 0, "a member of a nested object in an array is not top-level");
+    var tj = "{\"x\":{\"enabled\":1,\"export_endpoint\":\"http://evil\"},\"enabled\":0}";
+    var t = TelemetryConfig_from_json(str_from(tj));
+    assert_eq(telcfg_enabled(t), 0, "TelemetryConfig: nested enabled ignored");
+    assert_eq(telcfg_endpoint(t), 0, "TelemetryConfig: nested endpoint ignored");
+    assert_eq(_stik_json_int(str_from("{\"a\":{\"a\":5},\"a\":7}"), str_from("a")), 7, "json_int: top-level, last");
+    assert_eq(_stik_json_int(str_from("{\"b\":{\"a\":5}}"), str_from("a")), 0, "json_int: nested only reads 0");
+    return 0;
+}
+
+# ─── F-030: out-of-range numbers read 0 ────
+
+# i64 max reads exactly; one past it, or a 20-digit value, reads 0.
+fn test_json_int_range() {
+    assert_eq(_stik_json_int(str_from("{\"x\":9223372036854775807}"), str_from("x")), 0x7FFFFFFFFFFFFFFF, "i64 max");
+    assert_eq(_stik_json_int(str_from("{\"x\":9223372036854775808}"), str_from("x")), 0, "i64 max + 1 reads 0");
+    assert_eq(_stik_json_int(str_from("{\"x\":12345678901234567890}"), str_from("x")), 0, "no silent prefix");
+    assert_eq(_stik_json_int(str_from("{\"x\":-42}"), str_from("x")), 0 - 42, "negatives still parse");
+    return 0;
+}
+
+# ─── F-031: a string field allocates its own length, and stays inside it ────
+
+# The decode buffer is sized to the value, not the document.
+fn test_json_str_alloc() {
+    var sb = str_builder_new();
+    str_builder_add_cstr(sb, "{\"k\":\"v\",\"pad\":\"");
+    var i = 0;
+    while (i < 60000) { str_builder_putc(sb, 'x'); i = i + 1; }
+    str_builder_add_cstr(sb, "\"}");
+    var doc = str_builder_build(sb);
+    var key = str_from("k");
+    var before = alloc_used();
+    var v = _stik_json_str(doc, key);
+    var used = alloc_used() - before;
+    assert(str_eq_cstr(v, "v") == 1, "value decoded");
+    assert(used < 1024, "a 1-byte value allocates bytes, not the 60 KB document");
+    return 0;
+}
+# A \u escape cut short by the closing quote cannot run past it.
+fn test_json_str_bounded() {
+    var v = _stik_json_str(str_from("{\"k\":\"\\u12\",\"z\":\"tail\"}"), str_from("k"));
+    assert_eq(str_len(v), 3, "only U+FFFD: the escape stops at the quote");
+    assert_eq(load8(str_data(v)), 0xEF, "U+FFFD byte 1");
+    var w = _stik_json_str(str_from("{\"k\":\"ab\\u00e9\"}"), str_from("k"));
+    assert(str_eq_cstr(w, "ab\xc3\xa9") == 1, "a whole escape still decodes");
+    return 0;
+}
+
+# ─── F-032: InjectionScores stay in 0..100 ────
+
+# Setters saturate, getters cap, and both JSON readers saturate.
+fn test_iscore_range() {
+    var s = injection_scores_new();
+    iscore_set_sql(s, 256);
+    assert_eq(iscore_sql(s), 100, "256 saturates to 100 (it wrapped to 0)");
+    iscore_set_xss(s, 0 - 1);
+    assert_eq(iscore_xss(s), 0, "-1 saturates to 0");
+    iscore_set_command(s, 300);
+    assert_eq(iscore_command(s), 100, "300 saturates to 100 (it read 44)");
+    iscore_set_path_traversal(s, 55);
+    assert_eq(iscore_path_traversal(s), 55, "in range unchanged");
+    store8(s + 4, 200);
+    assert_eq(iscore_prompt_injection(s), 100, "a raw byte above 100 reads 100");
+    var j = InjectionScores_from_json_str("{\"sql\":256,\"xss\":-5,\"command\":50}");
+    assert_eq(iscore_sql(j), 100, "JSON 256 saturates (the derived parser read 0)");
+    assert_eq(iscore_xss(j), 0, "JSON -5 saturates to 0");
+    assert_eq(iscore_command(j), 50, "JSON in range");
+    var out = ser(j, &InjectionScores_to_json);
+    var want = "{\"sql\":100,\"xss\":0,\"command\":50,\"path_traversal\":0,\"prompt_injection\":0}";
+    assert(str_eq_cstr(out, want) == 1, "to_json agrees with the getters");
+    return 0;
+}
+
+# ─── F-033: ss_put leaves no secret in its hand-off global ────
+
+var _seen_value = 0;
+# A two-parameter (legacy) put fn: reads the value from _ss_put_value.
+fn cb_put_legacy(data, sname) {
+    _seen_value = _ss_put_value;
+    return 7;
+}
+# The legacy callback still sees the value; the global is 0 afterwards.
+fn test_ss_put_clears() {
+    var st = secret_store_new(secret_store_vtable(0, &cb_put_legacy, 0, 0), alloc(8));
+    var v = str_from("hunter2-api-key");
+    assert_eq(ss_put(st, str_from("db"), v), 7, "put fn result passed through");
+    assert_eq(_seen_value, v, "a legacy put fn still reads the value during the call");
+    assert_eq(_ss_put_value, 0, "the global no longer holds the secret afterwards");
+    return 0;
+}
+
+# ─── F-034: secret_new with a 0 or negative-length Str ────
+
+# Both give an empty secret instead of writing through address 0.
+fn test_secret_new_edges() {
+    var a = secret_new(0);
+    assert_eq(secret_len(a), 0, "0 Str: empty secret");
+    var b = secret_new(str_new("abc", 0 - 1));
+    assert_eq(secret_len(b), 0, "negative length: empty secret");
+    var c = secret_new(str_from("pw"));
+    assert_eq(secret_len(c), 2, "ordinary secret kept");
+    assert(str_eq_cstr(secret_expose(c), "pw") == 1, "ordinary bytes kept");
+    return 0;
+}
+
+# ─── F-035: an unrecognised classification level fails closed ────
+
+# Out-of-range levels become CLASS_RESTRICTED; valid ones are kept.
+fn test_classification_level() {
+    assert_eq(cresult_level(classification_result_new(99)), CLASS_RESTRICTED, "99 -> Restricted");
+    assert_eq(cresult_auto_level(classification_result_new(0 - 1)), CLASS_RESTRICTED, "-1 -> Restricted");
+    assert_eq(cresult_level(classification_result_new(CLASS_INTERNAL)), CLASS_INTERNAL, "valid level kept");
+    return 0;
+}
+
+# ─── F-036: every parser refuses a 0 Str ────
+
+# Each of the 65 *_parse / *_from_str / tctx_from_traceparent fns returns Err.
+fn test_parsers_null() {
+    var ok = 0;
+    var t0, v0 = agent_id_from_str(0);
+    if (is_err_result(t0) == 1) { ok = ok + 1; }
+    var t1, v1 = agent_status_parse(0);
+    if (is_err_result(t1) == 1) { ok = ok + 1; }
+    var t2, v2 = agent_type_parse(0);
+    if (is_err_result(t2) == 1) { ok = ok + 1; }
+    var t3, v3 = aggregation_temporality_parse(0);
+    if (is_err_result(t3) == 1) { ok = ok + 1; }
+    var t4, v4 = agnostik_err_code_parse(0);
+    if (is_err_result(t4) == 1) { ok = ok + 1; }
+    var t5, v5 = agnostik_err_kind_parse(0);
+    if (is_err_result(t5) == 1) { ok = ok + 1; }
+    var t6, v6 = any_value_type_parse(0);
+    if (is_err_result(t6) == 1) { ok = ok + 1; }
+    var t7, v7 = audit_result_parse(0);
+    if (is_err_result(t7) == 1) { ok = ok + 1; }
+    var t8, v8 = audit_severity_parse(0);
+    if (is_err_result(t8) == 1) { ok = ok + 1; }
+    var t9, v9 = batch_status_parse(0);
+    if (is_err_result(t9) == 1) { ok = ok + 1; }
+    var t10, v10 = cache_control_parse(0);
+    if (is_err_result(t10) == 1) { ok = ok + 1; }
+    var t11, v11 = capability_parse(0);
+    if (is_err_result(t11) == 1) { ok = ok + 1; }
+    var t12, v12 = circuit_breaker_state_parse(0);
+    if (is_err_result(t12) == 1) { ok = ok + 1; }
+    var t13, v13 = classification_level_parse(0);
+    if (is_err_result(t13) == 1) { ok = ok + 1; }
+    var t14, v14 = condition_operator_parse(0);
+    if (is_err_result(t14) == 1) { ok = ok + 1; }
+    var t15, v15 = content_block_type_parse(0);
+    if (is_err_result(t15) == 1) { ok = ok + 1; }
+    var t16, v16 = device_family_parse(0);
+    if (is_err_result(t16) == 1) { ok = ok + 1; }
+    var t17, v17 = device_health_parse(0);
+    if (is_err_result(t17) == 1) { ok = ok + 1; }
+    var t18, v18 = device_type_parse(0);
+    if (is_err_result(t18) == 1) { ok = ok + 1; }
+    var t19, v19 = device_vendor_parse(0);
+    if (is_err_result(t19) == 1) { ok = ok + 1; }
+    var t20, v20 = env_profile_parse(0);
+    if (is_err_result(t20) == 1) { ok = ok + 1; }
+    var t21, v21 = event_type_parse(0);
+    if (is_err_result(t21) == 1) { ok = ok + 1; }
+    var t22, v22 = finish_reason_parse(0);
+    if (is_err_result(t22) == 1) { ok = ok + 1; }
+    var t23, v23 = fs_access_parse(0);
+    if (is_err_result(t23) == 1) { ok = ok + 1; }
+    var t24, v24 = label_operator_parse(0);
+    if (is_err_result(t24) == 1) { ok = ok + 1; }
+    var t25, v25 = landlock_fs_access_parse(0);
+    if (is_err_result(t25) == 1) { ok = ok + 1; }
+    var t26, v26 = landlock_net_access_parse(0);
+    if (is_err_result(t26) == 1) { ok = ok + 1; }
+    var t27, v27 = landlock_scope_parse(0);
+    if (is_err_result(t27) == 1) { ok = ok + 1; }
+    var t28, v28 = llm_provider_parse(0);
+    if (is_err_result(t28) == 1) { ok = ok + 1; }
+    var t29, v29 = log_severity_parse(0);
+    if (is_err_result(t29) == 1) { ok = ok + 1; }
+    var t30, v30 = memory_type_parse(0);
+    if (is_err_result(t30) == 1) { ok = ok + 1; }
+    var t31, v31 = message_role_parse(0);
+    if (is_err_result(t31) == 1) { ok = ok + 1; }
+    var t32, v32 = message_type_parse(0);
+    if (is_err_result(t32) == 1) { ok = ok + 1; }
+    var t33, v33 = metric_kind_parse(0);
+    if (is_err_result(t33) == 1) { ok = ok + 1; }
+    var t34, v34 = metric_value_type_parse(0);
+    if (is_err_result(t34) == 1) { ok = ok + 1; }
+    var t35, v35 = mount_propagation_parse(0);
+    if (is_err_result(t35) == 1) { ok = ok + 1; }
+    var t36, v36 = net_access_parse(0);
+    if (is_err_result(t36) == 1) { ok = ok + 1; }
+    var t37, v37 = permission_parse(0);
+    if (is_err_result(t37) == 1) { ok = ok + 1; }
+    var t38, v38 = pii_kind_parse(0);
+    if (is_err_result(t38) == 1) { ok = ok + 1; }
+    var t39, v39 = policy_effect_parse(0);
+    if (is_err_result(t39) == 1) { ok = ok + 1; }
+    var t40, v40 = probe_type_parse(0);
+    if (is_err_result(t40) == 1) { ok = ok + 1; }
+    var t41, v41 = response_format_parse(0);
+    if (is_err_result(t41) == 1) { ok = ok + 1; }
+    var t42, v42 = restart_policy_parse(0);
+    if (is_err_result(t42) == 1) { ok = ok + 1; }
+    var t43, v43 = rlimit_type_parse(0);
+    if (is_err_result(t43) == 1) { ok = ok + 1; }
+    var t44, v44 = role_parse(0);
+    if (is_err_result(t44) == 1) { ok = ok + 1; }
+    var t45, v45 = safety_category_parse(0);
+    if (is_err_result(t45) == 1) { ok = ok + 1; }
+    var t46, v46 = safety_probability_parse(0);
+    if (is_err_result(t46) == 1) { ok = ok + 1; }
+    var t47, v47 = seccomp_action_parse(0);
+    if (is_err_result(t47) == 1) { ok = ok + 1; }
+    var t48, v48 = seccomp_arch_parse(0);
+    if (is_err_result(t48) == 1) { ok = ok + 1; }
+    var t49, v49 = seccomp_arg_op_parse(0);
+    if (is_err_result(t49) == 1) { ok = ok + 1; }
+    var t50, v50 = seccomp_mode_parse(0);
+    if (is_err_result(t50) == 1) { ok = ok + 1; }
+    var t51, v51 = secret_kind_parse(0);
+    if (is_err_result(t51) == 1) { ok = ok + 1; }
+    var t52, v52 = span_id_from_str(0);
+    if (is_err_result(t52) == 1) { ok = ok + 1; }
+    var t53, v53 = span_kind_parse(0);
+    if (is_err_result(t53) == 1) { ok = ok + 1; }
+    var t54, v54 = span_status_parse(0);
+    if (is_err_result(t54) == 1) { ok = ok + 1; }
+    var t55, v55 = stop_reason_parse(0);
+    if (is_err_result(t55) == 1) { ok = ok + 1; }
+    var t56, v56 = stream_event_type_parse(0);
+    if (is_err_result(t56) == 1) { ok = ok + 1; }
+    var t57, v57 = system_feature_parse(0);
+    if (is_err_result(t57) == 1) { ok = ok + 1; }
+    var t58, v58 = system_status_parse(0);
+    if (is_err_result(t58) == 1) { ok = ok + 1; }
+    var t59, v59 = tctx_from_traceparent(0);
+    if (is_err_result(t59) == 1) { ok = ok + 1; }
+    var t60, v60 = tool_choice_parse(0);
+    if (is_err_result(t60) == 1) { ok = ok + 1; }
+    var t61, v61 = trace_id_from_str(0);
+    if (is_err_result(t61) == 1) { ok = ok + 1; }
+    var t62, v62 = user_id_from_str(0);
+    if (is_err_result(t62) == 1) { ok = ok + 1; }
+    var t63, v63 = validation_severity_parse(0);
+    if (is_err_result(t63) == 1) { ok = ok + 1; }
+    var t64, v64 = version_from_str(0);
+    if (is_err_result(t64) == 1) { ok = ok + 1; }
+    assert_eq(ok, 65, "every parser returns Err for a 0 Str instead of reading address 0");
+    return 0;
+}
+
+# ─── F-037: private globals are agnostik's own ────
+
+# This file defines _hex_lut and _genesis_hash_str (top); agnostik ignores them.
+fn test_private_globals() {
+    var u = "0af76519-16cd-43dd-8448-eb211c80319c";
+    var t, v = agent_id_from_str(str_from(u));
+    assert(str_eq_cstr(agent_id_to_str(v), u) == 1, "a consumer's _hex_lut no longer changes UUIDs");
+    var f = integrity_fields_genesis(str_from("sig"));
+    assert_eq(integrity_is_genesis(f), 1, "genesis recognised with a consumer _genesis_hash_str defined");
+    assert_eq(str_len(integrity_prev_hash(f)), 64, "genesis hash is 64 chars");
+    return 0;
+}
+
+# ─── F-038: version numbers do not wrap ────
+
+# Out-of-range segments are an Err; i64 max still parses.
+fn test_version_range() {
+    var a_t, a = version_from_str(str_from("18446744073709551617.0.0"));
+    assert(is_err_result(a_t) == 1, "2^64+1 is out of range (it parsed as 1.0.0)");
+    var b_t, b = version_from_str(str_from("9223372036854775808.0.0"));
+    assert(is_err_result(b_t) == 1, "i64 max + 1 is out of range");
+    var c_t, c = version_from_str(str_from("9223372036854775807.1.2"));
+    assert(is_ok(c_t) == 1, "i64 max parses");
+    assert_eq(version_major(c), 0x7FFFFFFFFFFFFFFF, "major is i64 max");
+    return 0;
+}
+
+# ─── F-039: AgentInfo_from_json does not default to the most privileged type ────
+
+# The agent_type AgentInfo_from_json reads from C string `c`.
+fn ai_type(c) { return ainfo_type(AgentInfo_from_json(str_from(c))); }
+# The status AgentInfo_from_json reads from C string `c`.
+fn ai_status(c) { return ainfo_status(AgentInfo_from_json(str_from(c))); }
+# Missing or invalid types read as User; explicit System still parses.
+fn test_agent_info_defaults() {
+    assert_eq(ai_type("{}"), AGENT_TYPE_USER, "missing type -> User");
+    assert_eq(ai_type("{\"agent_type\":\"Bogus\"}"), AGENT_TYPE_USER, "unknown name -> User");
+    assert_eq(ai_type("{\"agent_type_id\":99}"), AGENT_TYPE_USER, "out-of-range id -> User");
+    assert_eq(ai_type("{\"agent_type_id\":-7}"), AGENT_TYPE_USER, "negative id -> User");
+    assert_eq(ai_type("{\"agent_type\":\"System\"}"), AGENT_TYPE_SYSTEM, "explicit System kept");
+    assert_eq(ai_type("{\"agent_type_id\":0}"), AGENT_TYPE_SYSTEM, "explicit id 0 kept");
+    assert_eq(ai_status("{\"status_id\":42}"), AGENT_PENDING, "out-of-range status -> Pending");
+    return 0;
+}
+
+# ─── F-041: traceparent forward compatibility ────
+
+# A later version may be longer than 55 chars after a '-'; 00 may not.
+fn test_traceparent_future() {
+    var fut = "cc-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-09-what-the-future-will-be-like";
+    var a_t, a = tctx_from_traceparent(str_from(fut));
+    assert(is_ok(a_t) == 1, "the W3C spec's future-version example parses");
+    var b_t, b = tctx_from_traceparent(str_from("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01-extra"));
+    assert(is_err_result(b_t) == 1, "version 00 must be exactly 55");
+    var c_t, c = tctx_from_traceparent(str_from("01-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01x"));
+    assert(is_err_result(c_t) == 1, "a longer header needs '-' at 55");
+    var d_t, d = tctx_from_traceparent(str_from("00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01"));
+    assert(is_ok(d_t) == 1, "an ordinary header still parses");
+    return 0;
+}
+
+# ─── F-042: histogram shapes ────
+
+# Encode one histogram point; returns 1 when metric_to_otlp_proto answers Ok.
+fn hist_ok(bounds, counts, count) {
+    var h = histogram_value_new();
+    var i = 0;
+    while (i < vec_len(bounds)) { vec_push(hval_bounds(h), vec_get(bounds, i)); i = i + 1; }
+    i = 0;
+    while (i < vec_len(counts)) { vec_push(hval_bucket_counts(h), vec_get(counts, i)); i = i + 1; }
+    hval_set_count(h, count);
+    var pts = vec_new();
+    vec_push(pts, metric_data_point_new(str_from("h"), metric_histogram(h)));
+    var desc = instrument_descriptor_new(str_from("h"), str_from(""), str_from(""), METRIC_HISTOGRAM);
+    var sb = str_builder_new();
+    var t, r = metric_to_otlp_proto(desc, pts, sb);
+    return is_ok(t);
+}
+# A vec of the given values (up to 4; pass -999 to stop early).
+fn v4(a, b, c, d) {
+    var v = vec_new();
+    if (a != 0 - 999) { vec_push(v, a); }
+    if (b != 0 - 999) { vec_push(v, b); }
+    if (c != 0 - 999) { vec_push(v, c); }
+    if (d != 0 - 999) { vec_push(v, d); }
+    return v;
+}
+# Bounds strictly increasing and not NaN; bucket counts sum without overflow.
+fn test_histogram_shapes() {
+    var n = 0 - 999;
+    var neg2 = 0xC000000000000000;   # -2.0
+    var neg1 = 0xBFF0000000000000;   # -1.0
+    var negz = 0x8000000000000000;   # -0.0
+    var one  = 0x3FF0000000000000;   # 1.0
+    var two  = 0x4000000000000000;   # 2.0
+    var nan  = 0x7FF8000000000000;
+    assert_eq(hist_ok(v4(one, two, n, n), v4(1, 1, 1, n), 3), 1, "1.0 < 2.0 is fine");
+    assert_eq(hist_ok(v4(two, one, n, n), v4(1, 1, 1, n), 3), 0, "2.0 then 1.0 is refused");
+    assert_eq(hist_ok(v4(one, one, n, n), v4(1, 1, 1, n), 3), 0, "a repeated bound is refused");
+    assert_eq(hist_ok(v4(negz, 0, n, n), v4(1, 1, 1, n), 3), 0, "-0.0 then 0.0 are equal, so refused");
+    assert_eq(hist_ok(v4(one, nan, n, n), v4(1, 1, 1, n), 3), 0, "a NaN bound is refused");
+    assert_eq(hist_ok(v4(neg2, neg1, one, n), v4(1, 1, 1, 1), 4), 1, "negative bounds order by value");
+    assert_eq(hist_ok(v4(neg1, neg2, n, n), v4(1, 1, 1, n), 3), 0, "-1.0 then -2.0 is refused");
+    var big = 0x7FFFFFFFFFFFFFFF;
+    assert_eq(hist_ok(v4(one, two, n, n), v4(big, big, 3, n), 1), 0, "bucket counts that overflow are refused");
+    return 0;
+}
+
+# ─── F-043: span fields stay in their wire ranges ────
+
+# Out-of-range kind, negative duration and dropped counts encode as defaults.
+fn test_span_wire_ranges() {
+    var base = fixed_span();
+    var ref = enc_span(base);
+    var k = fixed_span();
+    span_set_kind(k, 99);
+    assert(str_eq(enc_span(k), ref) == 1, "a kind outside SpanKind is omitted, not written as 0");
+    var d = fixed_span();
+    span_set_duration_ms(d, 0 - 5000);
+    assert(str_eq(enc_span(d), ref) == 1, "a negative duration ends at the start");
+    var c = fixed_span();
+    span_set_dropped_attrs(c, 0 - 1);
+    span_set_dropped_events(c, 0 - 5);
+    span_set_dropped_links(c, 0 - 9);
+    assert(str_eq(enc_span(c), ref) == 1, "negative dropped counts are omitted");
+    var e = fixed_span();
+    span_set_dropped_attrs(e, 0x10000000000);
+    var f = fixed_span();
+    span_set_dropped_attrs(f, 0xFFFFFFFF);
+    assert(str_eq(enc_span(e), enc_span(f)) == 1, "a count above uint32 saturates at 0xFFFFFFFF");
+    var g = fixed_span();
+    span_set_duration_ms(g, 0x7FFFFFFFFFFFFFFF);
+    assert_eq(str_has(hex_of(enc_span(g)), "41ffffffffffffff7f"), 1, "a huge duration saturates the end time");
+    return 0;
+}
+
+# ─── F-044, F-045, F-046: audit, hardware ────
+
+# integrity_is_genesis with no prev_hash answers 0.
+fn test_genesis_null() {
+    var f = integrity_fields_new(version_default(), str_from("s"), 0);
+    assert_eq(integrity_is_genesis(f), 0, "0 prev_hash is not genesis, and does not crash");
+    return 0;
+}
+# VRAM totals skip non-positive values and saturate.
+fn test_vram_sum() {
+    var s = accelerator_summary_new();
+    var a = accelerator_device_new(0, str_from("a"), 0, 0);
+    adev_set_vram_total(a, 24576);
+    asum_add_device(s, a);
+    var b = accelerator_device_new(1, str_from("b"), 0, 0);
+    adev_set_vram_total(b, 0 - 100000);
+    asum_add_device(s, b);
+    assert_eq(asum_total_vram(s), 24576, "a negative report adds nothing");
+    var c = accelerator_device_new(2, str_from("c"), 0, 0);
+    adev_set_vram_total(c, 0x7FFFFFFFFFFFFFFF);
+    asum_add_device(s, c);
+    assert_eq(asum_total_vram(s), 0x7FFFFFFFFFFFFFFF, "the total saturates instead of wrapping");
+    return 0;
+}
+# AcceleratorFlags are 0 or 1 through every path.
+fn test_aflags_bool() {
+    var f = accelerator_flags_new();
+    aflags_set_cuda(f, 256);
+    assert_eq(aflags_cuda(f), 1, "256 sets the flag (it stored 0)");
+    aflags_set_rocm(f, 255);
+    assert_eq(aflags_rocm(f), 1, "255 reads 1");
+    store8(f + 2, 7);
+    assert_eq(aflags_metal(f), 1, "a raw nonzero byte reads 1");
+    var j = AcceleratorFlags_from_json_str("{\"cuda_available\":2,\"rocm_available\":0}");
+    assert_eq(aflags_cuda(j), 1, "JSON 2 reads 1");
+    assert_eq(aflags_rocm(j), 0, "JSON 0 reads 0");
+    var out = ser(f, &AcceleratorFlags_to_json);
+    assert_eq(str_has(out, "\"cuda_available\":1,\"rocm_available\":1,\"metal_available\":1"), 1, "to_json writes 0/1");
+    return 0;
+}
+
+# ─── F-047: the seven value structs' hand-written serde ────
+
+# Truncated text is read up to its NUL and never past it.
+fn test_serde_bounded() {
+    var a = TokenUsage_from_json_str("{\"pro");
+    assert(a != 0, "truncated object: a struct, not a crash");
+    assert_eq(tusage_total(a), 0, "missing fields read 0");
+    var buf = alloc(64);
+    var lead = "{\"prompt_tok";
+    memcpy(buf, lead, strlen(lead));
+    store8(buf + strlen(lead), 0);
+    var tail = "\":77,\"total_tok\":88}";
+    memcpy(buf + strlen(lead) + 1, tail, strlen(tail) + 1);
+    var b = TokenUsage_from_json_str(buf);
+    assert_eq(tusage_total(b), 0, "nothing is read past the NUL (the derived scanner read 88)");
+    assert_eq(TokenUsage_from_json_str(0), 0, "0 text: 0");
+    assert_eq(TokenUsage_from_json_str(""), 0, "empty text: 0");
+    assert_eq(TokenUsage_from_json_str("[1,2]"), 0, "not an object: 0");
+    assert_eq(TokenUsage_from_json_str("not json"), 0, "junk: 0");
+    return 0;
+}
+# Numbers outside i64, or not wholly numbers, read 0 on both paths.
+fn test_serde_ranges() {
+    var a = TokenUsage_from_json_str("{\"total_tok\":18446744073709551615}");
+    assert_eq(tusage_total(a), 0, "2^64-1 reads 0 (the derived parser read -1)");
+    var b = ResourceLimits_from_json_str("{\"max_memory\":9223372036854775808,\"max_fds\":64}");
+    assert_eq(rlim_max_memory(b), 0, "i64 max + 1 reads 0");
+    assert_eq(rlim_max_fds(b), 64, "its neighbour is unaffected");
+    var c = ResourceLimits_from_json(bayan_json_parse(str_from("{\"max_memory\":99999999999999999999,\"max_fds\":7}")));
+    assert_eq(rlim_max_memory(c), 0, "pairs path: out of range reads 0");
+    assert_eq(rlim_max_fds(c), 7, "pairs path: in range kept");
+    var d = ResourceLimits_from_json(0);
+    assert_eq(rlim_max_memory(d), 0, "pairs path: 0 pairs gives zeros, not a crash");
+    var e = ResourceLimits_from_json_str("{\"max_memory\":1,\"max_memory\":2}");
+    assert_eq(rlim_max_memory(e), 2, "a repeated member gives its last value");
+    return 0;
+}
+
+# ─── fuzz ────
+
+# The F-029 oracle: random objects with nested copies of the key, repeats,
+# strings that look like members and random whitespace. The generator knows the
+# last top-level value of "a"; _stik_json_int must agree.
+fn fuzz_find_value(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var it = 0;
+    while (it < 400) {
+        var sb = str_builder_new();
+        str_builder_putc(sb, '{');
+        var expect = 0;
+        var m = rng_below(6);
+        var i = 0;
+        while (i < m) {
+            if (i > 0) { str_builder_putc(sb, ','); }
+            var which = rng_below(4);
+            if (which == 0) { str_builder_add_cstr(sb, "\"a\""); }
+            elif (which == 1) { str_builder_add_cstr(sb, "\"b\""); }
+            elif (which == 2) { str_builder_add_cstr(sb, "\"ab\""); }
+            else { str_builder_add_cstr(sb, "\"x\""); }
+            if (rng_below(3) == 0) { str_builder_putc(sb, ' '); }
+            str_builder_putc(sb, ':');
+            if (rng_below(3) == 0) { str_builder_putc(sb, '\n'); }
+            var kind = rng_below(4);
+            if (kind == 0) {
+                var n = rng_below(100000) - 50000;
+                str_builder_add_int(sb, n);
+                if (which == 0) { expect = n; }
+            } elif (kind == 1) {
+                str_builder_add_cstr(sb, "{\"a\":");
+                str_builder_add_int(sb, rng_below(1000) + 1);
+                str_builder_add_cstr(sb, ",\"q\":[{\"a\":3}]}");
+                if (which == 0) { expect = 0; }
+            } elif (kind == 2) {
+                str_builder_add_cstr(sb, "\"\\\"a\\\":99\"");
+                if (which == 0) { expect = 0; }
+            } else {
+                str_builder_add_cstr(sb, "[1,{\"a\":4},\"a\"]");
+                if (which == 0) { expect = 0; }
+            }
+            i = i + 1;
+        }
+        str_builder_putc(sb, '}');
+        var doc = str_builder_build(sb);
+        if (_stik_json_int(doc, str_from("a")) == expect) { ok = ok + 1; }
+        it = it + 1;
+    }
+    assert_eq(ok, 400, "fuzz: json member lookup agrees with the generator");
+    return 0;
+}
+# The F-031 oracle: a random string value followed by a marker tail. The decoded
+# value never holds a marker byte (no escape ran past the quote), is at most
+# one byte longer than the source, and equals the source when it has no escape.
+fn fuzz_json_str(seed) {
+    rng_init(seed);
+    var alpha = "\\u0123456789abcdefABCDEF xyz\xc3\xa9\x7f\x1f";
+    var na = strlen(alpha);
+    var ok = 0;
+    var it = 0;
+    while (it < 600) {
+        var raw = str_builder_new();
+        var n = rng_below(24);
+        var has_esc = 0;
+        var i = 0;
+        while (i < n) {
+            var c = load8(alpha + rng_below(na));
+            if (c == 92) {
+                has_esc = 1;
+                str_builder_putc(raw, 92);
+                var e = rng_below(5);
+                if (e == 0) { str_builder_putc(raw, 34); }
+                elif (e == 1) { str_builder_putc(raw, 92); }
+                elif (e == 2) { str_builder_putc(raw, 'n'); }
+                else { str_builder_putc(raw, 'u'); }
+                i = i + 2;
+            } else {
+                str_builder_putc(raw, c);
+                i = i + 1;
+            }
+        }
+        var payload = str_builder_build(raw);
+        var sb = str_builder_new();
+        str_builder_add_cstr(sb, "{\"k\":\"");
+        str_builder_add(sb, payload);
+        str_builder_add_cstr(sb, "\",\"z\":\"\x01\x01\x01\x01\x01\x01\x01\x01\"}");
+        var v = _stik_json_str(str_builder_build(sb), str_from("k"));
+        var good = 1;
+        if (v == 0) { good = 0; }
+        else {
+            if (str_len(v) > str_len(payload) + 1) { good = 0; }
+            var j = 0;
+            while (j < str_len(v)) {
+                if (load8(str_data(v) + j) == 1) { good = 0; }
+                j = j + 1;
+            }
+            if (has_esc == 0 && str_eq(v, payload) != 1) { good = 0; }
+        }
+        ok = ok + good;
+        it = it + 1;
+    }
+    assert_eq(ok, 600, "fuzz: string decode stays inside its value and its bound");
+    return 0;
+}
+# The F-047 oracle: every prefix of a valid TokenUsage / ResourceLimits text,
+# NUL-terminated with digits written after the NUL, decodes without reading
+# them: no field exceeds its original value.
+fn fuzz_serde_truncation(seed) {
+    rng_init(seed);
+    var ok = 0;
+    var total = 0;
+    var it = 0;
+    while (it < 40) {
+        var u = token_usage_new();
+        var f = 0;
+        while (f < 5) { store64(u + f * 8, rng_below(1000000)); f = f + 1; }
+        var txt = ser(u, &TokenUsage_to_json);
+        var cut = 0;
+        while (cut <= str_len(txt)) {
+            var buf = alloc(str_len(txt) + 16);
+            memcpy(buf, str_data(txt), cut);
+            store8(buf + cut, 0);
+            memcpy(buf + cut + 1, "99999999", 9);
+            var d = TokenUsage_from_json_str(buf);
+            var good = 1;
+            if (d != 0) {
+                var g = 0;
+                while (g < 5) {
+                    if (load64(d + g * 8) > load64(u + g * 8)) { good = 0; }
+                    g = g + 1;
+                }
+            }
+            ok = ok + good;
+            total = total + 1;
+            cut = cut + 1;
+        }
+        it = it + 1;
+    }
+    assert_eq(ok, total, "fuzz: truncated text is never read past its NUL");
+    return 0;
+}
+
+# Test-file entry: runs every test, returns the assertion summary.
+fn main() {
+    println("--- v1.12.3 hardening (P(-1)) ---");
+    test_err_oom_static();
+    test_stik_alloc_ok();
+    test_find_value_structure();
+    test_json_int_range();
+    test_json_str_alloc();
+    test_json_str_bounded();
+    test_iscore_range();
+    test_ss_put_clears();
+    test_secret_new_edges();
+    test_classification_level();
+    test_parsers_null();
+    test_private_globals();
+    test_version_range();
+    test_agent_info_defaults();
+    test_traceparent_future();
+    test_histogram_shapes();
+    test_span_wire_ranges();
+    test_genesis_null();
+    test_vram_sum();
+    test_aflags_bool();
+    test_serde_bounded();
+    test_serde_ranges();
+    fuzz_find_value(0x5eed1123);
+    fuzz_json_str(0x5eed1124);
+    fuzz_serde_truncation(0x5eed1125);
+    return assert_summary();
+}

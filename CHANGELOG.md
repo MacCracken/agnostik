@@ -2,6 +2,256 @@
 
 ## [Unreleased]
 
+## [1.12.3] - 2026-10-28
+
+**P(-1) hardening patch: the last v1 repair cycle.** It starts from anuenue's report that `agnostik_err_new` wrote
+through a failed allocation, then reviews all of `src/` (8,091 lines). **Twenty findings, F-028..F-047: three
+MEDIUM, sixteen LOW, one INFO, all repaired**, with the audit in
+[`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) §"v1.12.3 P(-1) pass".
+- **No API change:** 1,122 fns, the same names, arity and signatures. The seven value structs' serde is now
+  hand-written under the same names, with byte-identical output.
+- **Tests:** 25 test files, **2,416 assertions, 0 failures**, on x86_64 and aarch64, plus three
+  allocation-failure probes.
+- **Consumers:** all five `[deps.agnostik]` consumers build and pass their tests against it on their own pins.
+
+### Fixed — allocation failure (F-028, ADR-007)
+
+The stdlib's `alloc` returns 0 rather than aborting. It does so when the heap cannot grow, and for any size ≤ 0
+or over 2 GiB. None of agnostik's 135 allocation sites checked: the next store wrote through address 0.
+
+- **`agnostik_err_new` never fails.** If its 24 bytes cannot be had it returns a static error: kind
+  `STIK_ERR_RESOURCE_EXHAUSTED`, code 1005, message "out of memory". Code that reports a failure keeps working
+  when memory runs out. That is anuenue's report: its failure path died of SIGSEGV writing to 0x00–0x17.
+  Closes [`docs/development/issues/anuenue-agnostik-err-new-unchecked-alloc-2026-10-14.md`](docs/development/issues/archive/anuenue-agnostik-err-new-unchecked-alloc-2026-10-14.md).
+- **Every other allocation goes through `_stik_alloc`.** It writes `agnostik: allocation failed (out of memory,
+  or a size <= 0 or over 2 GiB)` to stderr and exits 71 (EX_OSERR). It does not clamp sizes: a minimum-size block
+  handed back for a negative size would turn an arithmetic error into a heap overflow.
+- **`agnostik_err_print`** writes no message bytes for a negative-length message.
+- **`scripts/oom-probe.sh`** runs `tests/probes/*.cyr` under `prlimit --as=512MiB`; CI runs it. On the 1.12.2
+  source all three probes died of SIGSEGV.
+  - `err_oom`: the static error under an exhausted heap.
+  - `alloc_fail`: `version_new` fails by name.
+  - `pb_huge_len`: a forged span-name length fails by name.
+
+### Fixed — JSON reading (F-029, F-030, F-031, F-047)
+
+- **F-029 (MEDIUM): member lookup reads the document's structure.** `_stik_json_find_value` matched `"key":` at any
+  depth and took the first match.
+  - In `{"meta":{"name":"victim"},"name":"attacker"}`, `AgentInfo_from_json` read "victim" while the derived
+    parser read "attacker".
+  - In a `TelemetryConfig`, a nested `export_endpoint` overrode the top-level one.
+  - `"name" : "x"` was missing.
+
+  Now only top-level members match, a repeated key gives its last value, and whitespace may sit before the colon.
+- **F-030:** an out-of-range number reads 0. F-008 had stopped the wrap but kept a prefix (`12345678901234567890`
+  read `1234567890123456789`).
+- **F-031:** a string field's buffer is sized to the value, not the whole document. A 1 MiB document with four
+  string fields used to allocate 4 MiB. Decoding is bounded by the value's closing quote, so a `\u` escape cannot
+  swallow it.
+- **F-047 (MEDIUM): the seven value structs' serde is hand-written (ADR-008, superseding ADR-002 for them).** The
+  structs are ResourceLimits, ResourceUsage, AgentStats, EdgeResourceOverrides, InjectionScores, TokenUsage and
+  AcceleratorFlags.
+  - **The bug:** `#derive(Serialize)`'s generated `_from_json_str` looked for a key's closing quote with no bound.
+    `{"pro` segfaulted, and text followed by other bytes decoded values from past its NUL. Both generated decoders
+    wrapped numbers outside i64 (`18446744073709551615` read -1) and stored an i8 field's low byte.
+  - **The rewrite:** 21 fns with the same names and arity.
+    - `_to_json` emits the same bytes.
+    - `_from_json_str` reads in one pass that stops at the NUL, with a per-struct field table.
+    - `_from_json(pairs)` walks bayan pairs with the accessors every consumer pin has.
+    - Out-of-range or malformed numbers read 0.
+  - **Stricter input:** text with junk before the `{` now reads 0, and `12abc` reads 0 on the pairs path.
+
+### Fixed — values that wrapped or failed open (F-032, F-035, F-038, F-039, F-045, F-046)
+
+- **F-032 (MEDIUM): InjectionScores stay in 0..100.**
+  - **Through 1.12.2:** a setter stored the low byte, so 256 read 0 (no risk) and 300 read 44. Getters read
+    unsigned while the JSON wrote signed (200 → -56).
+  - **Since 1.12.3:** setters and getters saturate, and so do both JSON readers.
+  - `test_v111_subbyte_widths` now asserts 127 → 100.
+- **F-035:** `classification_result_new` turns an unrecognised level into `CLASS_RESTRICTED` (fail closed).
+  `cresult_set_level` already refused one.
+- **F-038:** `version_from_str` refuses numbers outside i64 (`18446744073709551617.0.0` parsed as 1.0.0). The
+  checked conversion also makes `version_roundtrip` 31% faster (see Performance).
+- **F-039:** `AgentInfo_from_json` reads a missing or unknown type as `AGENT_TYPE_USER`, not 0, which is
+  `AGENT_TYPE_SYSTEM`, the most privileged. Integer fallbacks are range-checked. `test_serde_roundtrip`'s
+  `{}` case now expects "User".
+- **F-045:** `asum_add_device` skips a non-positive VRAM total and saturates the sum.
+- **F-046:** AcceleratorFlags are 0/1 on every path. Setting 256 stored 0 (unavailable); 255 read 255 while the
+  JSON said -1.
+
+### Fixed — null and forged inputs (F-033, F-034, F-036, F-040, F-044)
+
+- **F-036:** all 65 `*_parse` / `*_from_str` / `tctx_from_traceparent` fns return an invalid-argument Err for a 0
+  Str instead of reading address 0. A missing JSON field passed straight on reached them.
+- **F-034:** `secret_new` with a 0 Str or a negative length gives an empty secret.
+- **F-044:** `integrity_is_genesis` answers 0 for a 0 prev_hash.
+- **F-040:** the protobuf buffer refuses, by name, to grow past 2 GiB.
+  - **Through 1.12.2:** a Str claiming a length near i64 max wrapped `len + n`, so the buffer did not grow and
+    the copy wrote past it. And doubling was uncapped, so fields of about 1 GiB asked for more than 2 GiB and
+    wrote through address 0.
+- **F-033:** `ss_put` clears its hand-off global once the put fn returns, so the last secret written no longer
+  stays reachable from `_ss_put_value`.
+
+### Fixed — namespacing and the audit chain (F-037)
+
+Same-named globals merge across libraries with no diagnostic. In a probe, another library's `_hex_lut` turned
+every agnostik UUID into `ZZZZZZZZ-...`. A consumer's `GENESIS_HASH` stopped `integrity_is_genesis` recognising a
+genuine genesis record.
+
+- **Renamed:** `_hex_lut` → `_stik_hex_lut`, `_UTF8_REPLACEMENT_CP` → `_stik_utf8_replacement_cp`,
+  `_genesis_hash_str` → `_stik_genesis_hash_str`. No consumer referenced any of them.
+- **Genesis cache:** it is built from its own literal; `GENESIS_HASH` stays exported.
+- **CI gate:** "Private helpers are namespaced" now covers top-level `var _` globals and `#inline fn _`. The three
+  documented callback hand-offs (`_ss_put_value`, `_textmap_extra`, `_propagator_extra`) are allowed by name.
+
+### Fixed — OTLP conformance (F-041, F-042, F-043)
+
+- **F-041:** a traceparent of a version above 00 may be longer than 55 chars when char 55 is '-', as W3C Trace
+  Context's versioning rule requires. The spec's own example now parses. Version 00 must still be exactly 55.
+- **F-042:** histogram data points are refused, as `metric_to_otlp_proto`'s Err, when:
+  - the bucket counts overflow i64 when summed (wrapped counts used to pass);
+  - the explicit bounds are not strictly increasing (with -0.0 equal to 0.0);
+  - a bound is NaN.
+- **F-043 (INFO):** span fields stay in their wire ranges.
+  - A kind outside SpanKind is omitted, not written as 0.
+  - A negative duration ends at the start, and a huge one saturates the end time.
+  - Dropped counts are omitted when ≤ 0 and saturate at 0xFFFFFFFF. A negative count used to go out as a
+    10-byte varint in a uint32 field.
+
+### Changed — documentation
+
+- **Fixed comments:**
+  - the capability doc's capset mask advice for caps 32..40;
+  - two stale comments: `RateLimitInfo` "has no setters", and audit dispatch "jumps to address 0";
+  - schema URLs are a `Str`;
+  - `run_as_user` / `run_as_group` 0 means "unset", not a request for root;
+  - TokenUsage notes the providers' different prompt-cache conventions;
+  - comments that still credited `#derive` for the seven structs.
+- **New ADRs:** ADR-007 (allocation failure) and ADR-008 (hand-written serde); ADR-002 is marked superseded.
+- **CLAUDE.md, CONTRIBUTING and the architecture overview** state the new rules: `_stik_alloc`, no
+  `#derive(Serialize)`, and `_stik_` globals.
+- **The roadmap's v2.0.0 slot** gains the items this pass deferred because they need new API or change output:
+  - set-flags for "unset";
+  - the fields the Rust port dropped;
+  - a constant-time compare;
+  - canonical audit-entry bytes;
+  - writing `SPAN_KIND_INTERNAL` explicitly;
+  - UTF-8-clean JSON text;
+  - provider enum additions.
+- **The anuenue issue record** moves to `docs/development/issues/archive/`, marked fixed.
+
+### Tests — `tests/tcyr/test_v1123_hardening.tcyr` (108 assertions)
+
+- **Per finding:** one test for each, except where a probe covers it.
+- **The 65-parser null test** is generated from the source, so it cannot drift.
+- **A consumer's globals:** the file defines `_hex_lut` and `_genesis_hash_str` itself, and agnostik ignores them.
+- **Three fuzz targets,** with oracles from the generators:
+  - JSON member lookup over documents with nested copies, repeats, look-alike strings and spaced colons
+    (400 cases);
+  - string decoding against a marker tail it must never reach, and its length bound (600 cases);
+  - every prefix of 40 TokenUsage texts, NUL-terminated with digits after the NUL, never decoding a field above
+    its original value.
+
+`test_v1120_otlp_envelopes`' histogram fuzz now builds ordered bounds by construction and breaks them on purpose
+(a repeat, a NaN), so its oracle stays independent of the new check. The F-003 / F-008 tests assert the new 0
+for out-of-range input.
+
+### Security
+
+The P(-1) pass is the third section of [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md), with
+twenty findings, all repaired.
+- **The three MEDIUM ones:**
+  - F-029, a JSON parser differential;
+  - F-032, a fail-open score validator;
+  - F-047, the derived decoders' over-read.
+- **Re-scan:** clean, and the namespacing gate catches an injected unprefixed global.
+- **Earlier findings:** F-001..F-027 remain closed.
+- **Out of agnostik's reach:** allocations inside stdlib fns keep the stdlib's behaviour, and consumers that derive
+  their own structs inherit the generated decoders' defects.
+
+### Performance
+
+**Release gate.** `scripts/bench-regression.sh` against the 1.12.2 baseline gave **31 checked, 0 new, 0
+regressions**, at load 0.30.
+
+**Paired A/B.** 15 interleaved rounds of the 1.12.2 tag (its own pin, 6.7.18) against this tree, through
+`scripts/bench-paired.sh`, in the same quiet window. Each row is the median of per-round paired ratios of the
+`min=` figure.
+
+| benchmark | 1.12.2 baseline | 1.12.3 gate | Δ gate | median of 5 | 1.12.2 → 1.12.3, paired median of 15 | rounds slower |
+|---|---:|---:|---:|---:|---:|---:|
+| version_roundtrip | 237 | 160 | -32.5% | 160 | -30.8% | 0/15 |
+| accelerator_device_full | 93 | 86 | -7.5% | 86 | -4.5% | 1/15 |
+| inference_request_full | 354 | 334 | -5.6% | 335 | -1.8% | 2/15 |
+| version_to_str | 104 | 99 | -4.8% | 98 | -1.0% | 2/15 |
+| resource_limits_to_json | 942 | 903 | -4.1% | 904 | -0.3% | 4/15 |
+| sandbox_config_default | 22 | 22 | +0.0% | 22 | +0.0% | 4/15 |
+| agent_stats_to_json | 645 | 627 | -2.8% | 628 | +0.2% | 9/15 |
+| audit_entry_full | 2203 | 2152 | -2.3% | 2165 | +0.3% | 9/15 |
+| agent_id_new | 552 | 512 | -7.2% | 520 | +0.4% | 9/15 |
+| security_context_full | 636 | 626 | -1.6% | 632 | +0.5% | 12/15 |
+| trace_context_child | 556 | 532 | -4.3% | 533 | +0.6% | 12/15 |
+| message_build_3turn | 357 | 349 | -2.2% | 351 | +0.9% | 11/15 |
+| agent_id_roundtrip | 989 | 961 | -2.8% | 964 | +1.0% | 13/15 |
+| token_usage_to_json | 848 | 810 | -4.5% | 811 | +1.1% | 11/15 |
+| traceparent_format | 1730 | 1675 | -3.2% | 1687 | +1.1% | 13/15 |
+| agent_id_to_str | 707 | 691 | -2.3% | 691 | +1.3% | 14/15 |
+| accel_flags_to_json | 1563 | 1535 | -1.8% | 1537 | +1.7% | 14/15 |
+| trace_context_new | 1111 | 1064 | -4.2% | 1076 | +1.9% | 15/15 |
+| log_record_otlp | 1535 | 1502 | -2.1% | 1502 | +2.4% | 12/15 |
+| metric_otlp_sum | 1730 | 1680 | -2.9% | 1676 | +2.5% | 13/15 |
+| span_otlp_min | 580 | 572 | -1.4% | 568 | +2.8% | 13/15 |
+| otlp_traces_request | 19962 | 20042 | +0.4% | 20042 | +2.9% | 14/15 |
+| token_usage_update | 32 | 32 | +0.0% | 32 | +3.2% | 12/15 |
+| histogram_otlp | 2407 | 2458 | +2.1% | 2451 | +4.2% | 14/15 |
+| span_otlp_full | 4019 | 4105 | +2.1% | 4105 | +5.3% | 15/15 |
+| injection_scores_to_json | 737 | 755 | +2.4% | 755 | +6.3% | 15/15 |
+| resource_limits_from_json | 497 | 525 | +5.6% | 521 | +8.6% | 15/15 |
+| agent_stats_from_json | 316 | 338 | +7.0% | 337 | +10.1% | 15/15 |
+| token_usage_from_json | 436 | 471 | +8.0% | 471 | +11.4% | 15/15 |
+| injection_scores_from_json | 366 | 403 | +10.1% | 403 | +13.6% | 15/15 |
+| accel_flags_from_json | 781 | 888 | +13.7% | 890 | +16.2% | 15/15 |
+
+**One win, two costs the repairs carry; the median row is +1.3%.**
+- **Win:** `version_roundtrip` is 30.8% faster (0 of 15 rounds slower). `version_from_str` converts digits in
+  place instead of building three `Str`s for `str_to_int`.
+- **The five value-struct decoders: +8.6% to +16.2%.** The hand-written ones bound every scan at the NUL and
+  range-check every number, which the derived ones did not. Getting there took three measured iterations:
+  - per-field lookups: 3.8–9.2× slower;
+  - one pass with a field table: +48–68%;
+  - in-place value parsing, a key fast path and a field search that starts after the last hit: the figures above.
+- **OTLP: +2.4% to +5.3%,** for the 2 GiB reservation guard and the span-field range checks.
+  - The reservation guard sits behind a fits-already fast path that cannot overflow.
+  - The end-time saturation check divides only past a bound no real span reaches.
+  - Before those two changes `span_otlp_full` was +6.8%.
+- **Encoders:** `injection_scores_to_json` is +6.3%; its getters clamp. The i64 encoders are within ±1.1%.
+- **Allocation:** `_stik_alloc` costs the smallest rows a few ns (`token_usage_update` +3.2%). `#inline` was tried;
+  the compiler refuses a body with control flow.
+
+The release run is appended to `docs/benchmarks/history.csv` (31 rows, commit column `a39be0b`, HEAD at the time),
+taken at load 0.46.
+
+Binaries (`CYRIUS_DCE=1`), 1.12.2 → 1.12.3:
+- x86_64: 482,768 → **483,104 B**;
+- aarch64: 1,568,104 → **1,502,888 B**;
+- agnos: 483,264 → **487,680 B**;
+- Windows: 1,529,344 → **1,517,568 B**;
+- plain x86_64: 1,359,312 → 1,347,360 B.
+
+The NOP-filling targets (aarch64, Windows) shrink: the derive's generated helpers are gone. `dist/agnostik.cyr`
+grows 345,519 → **390,296 B**: the serde is now source text in the bundle, where before each consumer's compiler
+expanded the derive. The `.deps` sidecar keeps the same 13 leaves, reordered.
+
+### Verification
+
+- **CI replay:** every `ci.yml` step passes, the new probe step included.
+- **Ubuntu 26.04 replay:** the same steps pass in an `ubuntu:26.04` container (uutils coreutils, mawk, no `xxd`),
+  along with release.yml's build job.
+- **Downstream:** `scripts/consumer-sweep.sh`: 5 of 5 green on pins 6.6.2, 6.6.20 and 6.7.9, 0 regressed, 0
+  agnostik-involved duplicates, and no warning new to any consumer.
+- **Gates:** api-surface 1,122 = snapshot; every fn documented; lint and fmt clean; `cyrius audit` exits 0.
+- **Version verify:** `VERSION`, the CHANGELOG header and the `dist/agnostik.cyr` banner read 1.12.3.
+
 ## [1.12.2] - 2026-10-28
 
 **CI patch:** the workflows move to the current stable GitHub actions and to the **Ubuntu 26.04 LTS** runner. No

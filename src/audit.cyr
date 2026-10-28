@@ -20,6 +20,7 @@ fn audit_severity_name(s) {
 # unrecognised string is an error rather than a silent default, so
 # audit_severity_parse(audit_severity_name(v)) == v holds for every AuditSeverity member.
 fn audit_severity_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Debug") == 1) { return Ok(AUDIT_DEBUG); }
     elif (str_eq_cstr(s, "Info") == 1) { return Ok(AUDIT_INFO); }
     elif (str_eq_cstr(s, "Warning") == 1) { return Ok(AUDIT_WARNING); }
@@ -44,6 +45,7 @@ fn audit_result_name(r) {
 # unrecognised string is an error rather than a silent default, so
 # audit_result_parse(audit_result_name(v)) == v holds for every AuditResult member.
 fn audit_result_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Success") == 1) { return Ok(AUDIT_SUCCESS); }
     elif (str_eq_cstr(s, "Failure") == 1) { return Ok(AUDIT_FAILURE); }
     elif (str_eq_cstr(s, "Denied") == 1) { return Ok(AUDIT_DENIED); }
@@ -54,10 +56,18 @@ var GENESIS_HASH = "000000000000000000000000000000000000000000000000000000000000
 # integrity_is_genesis run on the per-event hot path; re-wrapping the
 # 64-char constant via str_from on every call cost a strlen + 16-byte
 # alloc each time. Cache the wrapper (the underlying bytes are constant).
-var _genesis_hash_str = 0;
+# Since 1.12.3 (F-037) it is built from its own literal, not from
+# GENESIS_HASH, and the cache is _stik_-prefixed: globals of the same name merge
+# across libraries with no diagnostic, so a consumer's own `var GENESIS_HASH`
+# (or `_genesis_hash_str`) silently replaced agnostik's and made
+# integrity_is_genesis answer 0 for a genuine genesis record. GENESIS_HASH stays
+# exported, with the same 64 '0' characters.
+var _stik_genesis_hash_str = 0;
 fn _stik_genesis_hash_cached() {
-    if (_genesis_hash_str == 0) { _genesis_hash_str = str_from(GENESIS_HASH); }
-    return _genesis_hash_str;
+    if (_stik_genesis_hash_str == 0) {
+        _stik_genesis_hash_str = str_from("0000000000000000000000000000000000000000000000000000000000000000");
+    }
+    return _stik_genesis_hash_str;
 }
 # IntegrityFields for the first entry of a hash chain. 24 bytes, all 8-byte
 # slots, read through the integrity_* accessors:
@@ -66,7 +76,7 @@ fn _stik_genesis_hash_cached() {
 # '0' characters. That Str is one cached instance shared by every genesis
 # record, so never modify it in place.
 fn integrity_fields_genesis(signature: Str) {
-    var f = alloc(24);
+    var f = _stik_alloc(24);
     store64(f, version_default());
     store64(f + 8, signature);
     store64(f + 16, _stik_genesis_hash_cached());
@@ -77,7 +87,7 @@ fn integrity_fields_genesis(signature: Str) {
 # `prev_hash` are stored as passed: nothing is copied, and the hash is not
 # checked for length or hex.
 fn integrity_fields_new(version, signature: Str, prev_hash: Str) {
-    var f = alloc(24);
+    var f = _stik_alloc(24);
     store64(f, version);
     store64(f + 8, signature);
     store64(f + 16, prev_hash);
@@ -90,9 +100,14 @@ fn integrity_signature(f) { return load64(f + 8); }
 # Hash Str of the previous chain entry; GENESIS_HASH (64 '0's) for the first.
 fn integrity_prev_hash(f) { return load64(f + 16); }
 # 1 when prev_hash is byte-for-byte the genesis hash (64 '0' characters), else
-# 0. Only the hash is compared; version and signature are not consulted.
+# 0, including when prev_hash is 0 (since 1.12.3; it used to read address 0).
+# Only the hash is compared; version and signature are not consulted. A genesis
+# hash means "first in its chain" only at chain position 0: a sink that rebuilds
+# entries from storage must check the position too, since the 64 '0's are easy
+# to supply.
 fn integrity_is_genesis(f) {
     var hash = load64(f + 16);
+    if (hash == 0) { return 0; }
     return str_eq(hash, _stik_genesis_hash_cached());
 }
 # An AuditEntry: one audited action. 112 bytes, all 8-byte slots, read through
@@ -105,7 +120,7 @@ fn integrity_is_genesis(f) {
 # starts AUDIT_SUCCESS, details the Str "{}", tags an empty vec, and integrity
 # genesis IntegrityFields with an empty signature; the other slots start at 0.
 fn audit_entry_new(id: Str, agent_id, action: Str, severity) {
-    var e = alloc(112);
+    var e = _stik_alloc(112);
     store64(e, id);
     store64(e + 8, 0);
     store64(e + 16, clock_epoch_ns());
@@ -174,7 +189,7 @@ fn aentry_set_integrity(e, v)      { store64(e + 104, v); return 0; }
 # max_days and archive are set with retpol_set_max_days / retpol_set_archive
 # (v1.11.0).
 fn retention_policy_new(min_days) {
-    var p = alloc(24);
+    var p = _stik_alloc(24);
     store64(p, min_days);
     store64(p + 8, 0);
     store64(p + 16, 0);
@@ -200,10 +215,10 @@ var AS_SEAL = 4;
 #   +0 append (AS_APPEND), +8 verify_chain (AS_VERIFY_CHAIN),
 #   +16 verify_entry (AS_VERIFY_ENTRY), +24 query (AS_QUERY), +32 seal (AS_SEAL).
 # append and verify_chain come from the arguments; the other three start at 0
-# and are filled with audit_sink_set_*. Dispatch does not check for an empty
-# slot, so calling one that is still 0 jumps to address 0.
+# and are filled with audit_sink_set_*. Every as_* dispatcher checks its slot
+# (since v1.11.0): an unset one is not called.
 fn audit_sink_vtable(append_fn, verify_chain_fn) {
-    var vt = alloc(40);
+    var vt = _stik_alloc(40);
     store64(vt, append_fn);
     store64(vt + 8, verify_chain_fn);
     store64(vt + 16, 0);

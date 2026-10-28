@@ -63,8 +63,10 @@ consumer sweeps green.
 ## Index
 
 - [ADR-001 — Revive `#derive(Serialize)` (post-F-011 cyrius maturity)](001-revive-derive-serialize.md) — *superseded by ADR-002*
-- [ADR-002 — Apply `#derive(Serialize)` to 7 of 9 structs; AgentInfo + TelemetryConfig retain hand-written impls](002-derive-serialize-7-of-9.md)
+- [ADR-002 — Apply `#derive(Serialize)` to 7 of 9 structs; AgentInfo + TelemetryConfig retain hand-written impls](002-derive-serialize-7-of-9.md) — *superseded by ADR-008*
 - [ADR-003 — The roadmap tracks agnostik work only; upstream papercuts are not carried](003-roadmap-tracks-agnostik-work-only.md)
 - [ADR-004 — OTLP attribute values are AnyValue boxes, encoded canonically through a private buffer](004-otlp-attributes-are-anyvalue-boxes-encoded-canonically.md)
 - [ADR-005 — `agent_id_from_str` checks the UUID form, not its version](005-agent-id-parse-checks-form-not-version.md)
 - [ADR-006 — OTLP `string` fields are always valid UTF-8 (invalid AnyValue strings go out as bytes)](006-otlp-strings-are-valid-utf8.md)
+- [ADR-007 — An allocation failure fails by name; the error constructor never fails](007-allocation-failure-fails-by-name.md)
+- [ADR-008 — The seven value structs' serde is hand-written, bounded and range-checked](008-value-struct-serde-is-hand-written.md)

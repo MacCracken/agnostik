@@ -24,8 +24,8 @@ var PROTO_WT_FIXED32 = 5;
 # A new protobuf output buffer: 24 bytes, +0 data, +8 length, +16 capacity,
 # starting with 256 bytes of capacity.
 fn _stik_pb_new() {
-    var b = alloc(24);
-    store64(b, alloc(256));
+    var b = _stik_alloc(24);
+    store64(b, _stik_alloc(256));
     store64(b + 8, 0);
     store64(b + 16, 256);
     return b;
@@ -33,16 +33,36 @@ fn _stik_pb_new() {
 
 # Make room for `n` more bytes, at least doubling the capacity when it grows.
 # The data may move; callers re-read it after reserving. Returns 0.
+# A buffer never exceeds 2 GiB, the stdlib allocator's limit: a reservation
+# that would take it past that, or a negative `n`, fails by name through
+# _stik_alloc_fail (F-040, 1.12.3). Through 1.12.2 `len + n` could wrap for a
+# Str claiming a length near i64 max, so the buffer did not grow and the copy
+# wrote past it; and the doubled capacity was not capped, so a request near
+# 1 GiB asked for more than 2 GiB and wrote through address 0.
 fn _stik_pb_reserve(b, n) {
     var len = load64(b + 8);
     var cap = load64(b + 16);
-    if (len + n <= cap) { return 0; }
+    # Fast path: fits already. cap - len cannot overflow, so a huge or negative
+    # n never passes here by wrapping.
+    if (n >= 0 && n <= cap - len) { return 0; }
+    if (n < 0 || n > 0x80000000 - len) { return _stik_alloc_fail(); }
     var nc = cap * 2;
-    if (nc < len + n) { nc = len + n + 256; }
-    var nd = alloc(nc);
+    if (nc > 0x80000000) { nc = 0x80000000; }
+    if (nc < len + n) { nc = len + n; }
+    var nd = _stik_alloc(nc);
     memcpy(nd, load64(b), len);
     store64(b, nd);
     store64(b + 16, nc);
+    return 0;
+}
+
+# Write a uint32 count field (OTLP's dropped_*_count) only when it is positive,
+# saturated at 0xFFFFFFFF (F-043, 1.12.3). A negative count used to go out as a
+# 10-byte varint that decoders read as 0xFFFFFFFF. Returns 0.
+fn _stik_pb_count32(b, field, v) {
+    if (v <= 0) { return 0; }
+    if (v > 0xFFFFFFFF) { v = 0xFFFFFFFF; }
+    _stik_pb_int64(b, field, v);
     return 0;
 }
 

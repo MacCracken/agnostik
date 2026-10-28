@@ -102,8 +102,9 @@ fn test_f003_overflow_capped() {
     # silently consuming the rest.
     var src = str_from("{\"x\": 1234567890123456789012}");
     var v = _stik_json_int(src, str_from("x"));
-    # 1234567890123456789 = first 19 digits, fits in i64 (< 2^63).
-    assert_eq(v, 1234567890123456789, "F-003: capped at 19 digits");
+    # Through 1.12.2 it returned the first 19 digits (1234567890123456789);
+    # since 1.12.3 (F-030) an out-of-range number reads 0, the invalid value.
+    assert_eq(v, 0, "F-003/F-030: out of range reads 0, never a prefix");
     return 0;
 }
 

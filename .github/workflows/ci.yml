@@ -182,6 +182,15 @@ jobs:
           done
           [ $fail -eq 0 ] || { echo "test failures"; exit 1; }
 
+      - name: Allocation-failure probes
+        # v1.12.3+. tests/probes/*.cyr drain the heap (or forge a size) and
+        # check that agnostik fails by name: the static out-of-memory error
+        # from agnostik_err_new, exit 71 with "agnostik: allocation failed"
+        # from every other allocation, never a write through address 0. They
+        # run under `prlimit --as` (util-linux), outside `cyrius test`, because
+        # unbounded the drain would map memory until the address space ran out.
+        run: bash scripts/oom-probe.sh
+
       - name: Test (aarch64 under qemu-user)
         # v1.7.1+. CI cross-built aarch64 but never ran it, so a result that is
         # wrong only on aarch64 (the F-022 class: a raw syscall number that is
@@ -278,14 +287,21 @@ jobs:
         # `_hex_byte` with bote. So every `_`-prefixed fn in a shipped module
         # is `_stik_`-prefixed. src/main.cyr is the test harness and never
         # ships in dist/agnostik.cyr. v1.7.0+ gate.
+        # Since 1.12.3 it covers `#inline fn _` and top-level `var _` globals
+        # too (F-037): same-named globals merge across libraries with no
+        # diagnostic, so another library's `_hex_lut` turned every agnostik
+        # UUID into ZZZZZZZZ-.... The three callback hand-offs allowed below
+        # are documented API that legacy callbacks read by name.
         run: |
-          hits=$(grep -nE '^(pub |public )?fn _' src/*.cyr | grep -v '^src/main\.cyr:' | grep -vE ':(pub |public )?fn _stik_' || true)
-          if [ -n "$hits" ]; then
-            echo "FAIL: private helpers without the _stik_ prefix:"
-            echo "$hits"
+          hits=$(grep -nE '^(pub |public |#inline )?fn _' src/*.cyr | grep -v '^src/main\.cyr:' | grep -vE ':(pub |public |#inline )?fn _stik_' || true)
+          ghits=$(grep -nE '^var _' src/*.cyr | grep -v '^src/main\.cyr:' | grep -vE ':var _stik_' | grep -vE ':var _(ss_put_value|textmap_extra|propagator_extra) ' || true)
+          if [ -n "$hits$ghits" ]; then
+            echo "FAIL: private fns or globals without the _stik_ prefix:"
+            if [ -n "$hits" ]; then echo "$hits"; fi
+            if [ -n "$ghits" ]; then echo "$ghits"; fi
             exit 1
           fi
-          echo "ok: every private helper in a shipped module is _stik_-prefixed"
+          echo "ok: every private fn and global in a shipped module is _stik_-prefixed"
 
   docs:
     name: Documentation

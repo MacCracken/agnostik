@@ -1,6 +1,8 @@
 # ADR-002: Apply `#derive(Serialize)` to 7 of 9 structs; AgentInfo + TelemetryConfig retain hand-written impls
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-008](008-value-struct-serde-is-hand-written.md) (2026-10-28) — the derived decoders scanned past
+the end of truncated input and wrapped out-of-range numbers; the seven structs' serde is hand-written since v1.12.3,
+with the same names, arity and output bytes.
 **Date:** 2026-05-10
 **Slot:** v1.1.0
 **Supersedes:** [ADR-001](001-revive-derive-serialize.md)

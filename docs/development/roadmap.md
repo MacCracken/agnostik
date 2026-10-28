@@ -2,9 +2,9 @@
 
 ## Status
 
-**v1.12.2** is the most recent stable release, on Cyrius `6.7.18`. It has 12
+**v1.12.3** is the most recent stable release, on Cyrius `6.7.18`, and the last v1 repair cycle. It has 12
 modules plus `src/proto.cyr` (the protobuf writer behind the OTLP encoders),
-1,122 public fns (every fn documented), and 2,307 test assertions across 24
+1,122 public fns (every fn documented), and 2,416 test assertions across 25
 `.tcyr` files, passing on x86_64-linux and on aarch64 under `qemu-aarch64`.
 There are 31 benchmarks and no external dependencies.
 Five repos declare `[deps.agnostik]` (aegis, anuenue, ark, kybernet, mela), and
@@ -14,7 +14,7 @@ tree before each release. CI runs the suite on x86_64 and on aarch64 (under
 
 Live numbers are in [`state.md`](state.md). Release history is in
 [`../../CHANGELOG.md`](../../CHANGELOG.md). The most recent audit is
-[`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md) (the v1.12.1 toolchain refresh and the v1.12.2 CI pass); the one before it,
+[`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md) (the v1.12.1 toolchain refresh, the v1.12.2 CI pass and the v1.12.3 P(-1) pass); the one before it,
 [`../audit/2026-10-14-audit.md`](../audit/2026-10-14-audit.md), holds the 1.6.5 and v1.7.0 through v1.12.0 passes.
 
 Every item below is pinned to a release. Shipped work leaves this file for the
@@ -68,6 +68,36 @@ Context: [`../audit/2026-06-01-audit.md`](../audit/2026-06-01-audit.md)
 §Deferred.
 
 ---
+
+### Deferred from the v1.12.3 P(-1) pass
+
+v1.12.3 was the last v1 repair cycle. These are its findings that need new public API or change output, so they
+wait for the major. Each is described in [`../audit/2026-10-28-audit.md`](../audit/2026-10-28-audit.md)
+§"Deferred to v2.0.0".
+
+- 🔧 **Unset versus zero.**
+  - `secctx_run_as_user` / `_group` use 0 for "not set", which is also root's id.
+  - The cgroup limits share the ambiguity: 0 is both "inherit" and a literal `memory.max=0`.
+  - Add set-flags, or make the fields optional.
+- 🔧 **The fields the Rust port dropped.**
+  - FilesystemRule nosuid / nodev.
+  - SandboxConfig network policy, encrypted storage, rlimits and devices: the +32 and +56 slots have no
+    accessors.
+  - CgroupLimits cpu_period and io_*.
+- 🔧 **A constant-time comparison** for secrets and tokens.
+- 🔧 **Audit chain:**
+  - a canonical byte encoding of an `AuditEntry` to hash;
+  - `aentry_set_timestamp`;
+  - copy `prev_hash` instead of aliasing it.
+- 🔧 **OTLP span kind.** Write `SPAN_KIND_INTERNAL` explicitly; it is elided today, so collectors read
+  UNSPECIFIED. This changes the protoc golden bytes of every default-kind span; regenerate them against
+  opentelemetry-proto.
+- 🔧 **JSON text is valid UTF-8.** Sanitize the JSON writers' strings (`AgentInfo` name, `TelemetryConfig`
+  endpoint) as ADR-006 does for OTLP.
+- 🔧 **Provider enums:**
+  - OpenAI batch statuses `validating`, `finalizing` and `cancelling`;
+  - `MessageRole` `developer`;
+  - `MemoryType` HBM3e and GDDR7.
 
 ## Working agreement
 

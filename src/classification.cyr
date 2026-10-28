@@ -13,6 +13,7 @@ fn classification_level_name(l) {
 # unrecognised string is an error rather than a silent default, so
 # classification_level_parse(classification_level_name(v)) == v holds for every ClassificationLevel member.
 fn classification_level_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Public") == 1) { return Ok(CLASS_PUBLIC); }
     elif (str_eq_cstr(s, "Internal") == 1) { return Ok(CLASS_INTERNAL); }
     elif (str_eq_cstr(s, "Confidential") == 1) { return Ok(CLASS_CONFIDENTIAL); }
@@ -74,6 +75,7 @@ fn pii_kind_name(k) {
 # `Custom` is PII_CUSTOM's canonical name (it is produced by
 # pii_kind_name's fallback, not by an explicit arm), so it maps back here.
 fn pii_kind_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Email") == 1) { return Ok(PII_EMAIL); }
     elif (str_eq_cstr(s, "Phone") == 1) { return Ok(PII_PHONE); }
     elif (str_eq_cstr(s, "SSN") == 1) { return Ok(PII_SSN); }
@@ -100,9 +102,12 @@ fn pii_kind_parse(s: Str) {
 #   +0 level, +8 auto_level, +16 rules, +24 pii, +32 keywords, +40 confidence,
 #   +48 confidence-set flag (since 1.7.0; the first six offsets are unchanged).
 # Both levels start at `level`, the three vecs start empty, and confidence
-# starts at 0 and unset. Record findings by pushing into the vecs.
+# starts at 0 and unset. Record findings by pushing into the vecs. A `level`
+# that is not a ClassificationLevel becomes CLASS_RESTRICTED, failing closed
+# (since 1.12.3; it was stored as given, though cresult_set_level refuses one).
 fn classification_result_new(level) {
-    var r = alloc(56);
+    if (level < CLASS_PUBLIC || level > CLASS_RESTRICTED) { level = CLASS_RESTRICTED; }
+    var r = _stik_alloc(56);
     store64(r, level);
     store64(r + 8, level);
     store64(r + 16, vec_new());

@@ -16,6 +16,7 @@ fn validation_severity_name(s) {
 # unrecognised string is an error rather than a silent default, so
 # validation_severity_parse(validation_severity_name(v)) == v holds for every ValidationSeverity member.
 fn validation_severity_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Low") == 1) { return Ok(VSEV_LOW); }
     elif (str_eq_cstr(s, "Medium") == 1) { return Ok(VSEV_MEDIUM); }
     elif (str_eq_cstr(s, "High") == 1) { return Ok(VSEV_HIGH); }
@@ -28,7 +29,7 @@ fn validation_severity_parse(s: Str) {
 # code, message and severity are stored as passed; position and pattern start
 # at 0 (vwarn_set_position / vwarn_set_pattern since v1.11.0).
 fn validation_warning_new(code, message: Str, severity) {
-    var w = alloc(40);
+    var w = _stik_alloc(40);
     store64(w, code);
     store64(w + 8, message);
     store64(w + 16, severity);
@@ -51,51 +52,117 @@ fn vwarn_pattern(w)  { return load64(w + 32); }
 # Set the value vwarn_pattern reads, stored as given (not validated). Returns 0.
 fn vwarn_set_pattern(w, v) { store64(w + 32, v); return 0; }
 # v1.1.1: widened to i8 (range 0..100 fits comfortably in i7).
-# 40 B → 5 B per instance. Comments must live OUTSIDE the struct
-# body: cyrius < 6.6.7 derive codegen reads a `#` inside the body
-# as a field name, and consumers compile the dist bundle under their
-# own pins.
-#derive(Serialize)
+# 40 B → 5 B per instance. Comments stay OUTSIDE the struct body:
+# through 1.12.2 it carried #derive(Serialize), whose codegen under
+# cyrius < 6.6.7 read a `#` inside the body as a field name. The serde
+# fns below it are hand-written since 1.12.3 (ADR-008).
 struct InjectionScores {
     sql: i8; xss: i8; command: i8;
     path_traversal: i8; prompt_injection: i8;
 }
+# Write the InjectionScores at `ptr` to str_builder `sb` as JSON, each score as its getter reads it
+# (0..100):
+#   {"sql":N,"xss":N,"command":N,"path_traversal":N,"prompt_injection":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn InjectionScores_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"sql\":");
+    str_builder_add_int(sb, iscore_sql(ptr));
+    str_builder_add_cstr(sb, ",\"xss\":");
+    str_builder_add_int(sb, iscore_xss(ptr));
+    str_builder_add_cstr(sb, ",\"command\":");
+    str_builder_add_int(sb, iscore_command(ptr));
+    str_builder_add_cstr(sb, ",\"path_traversal\":");
+    str_builder_add_int(sb, iscore_path_traversal(ptr));
+    str_builder_add_cstr(sb, ",\"prompt_injection\":");
+    str_builder_add_int(sb, iscore_prompt_injection(ptr));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new InjectionScores (5 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair
+# with a field's name gives its value. A member is saturated to 0..100; a missing or non-numeric one
+# reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn InjectionScores_from_json(pairs) {
+    var p = _stik_alloc(5);
+    store8(p, _stik_iscore_clamp(_stik_json_pair_int(pairs, "sql")));
+    store8(p + 1, _stik_iscore_clamp(_stik_json_pair_int(pairs, "xss")));
+    store8(p + 2, _stik_iscore_clamp(_stik_json_pair_int(pairs, "command")));
+    store8(p + 3, _stik_iscore_clamp(_stik_json_pair_int(pairs, "path_traversal")));
+    store8(p + 4, _stik_iscore_clamp(_stik_json_pair_int(pairs, "prompt_injection")));
+    return p;
+}
+# InjectionScores_from_json_str's field table, built on first use.
+var _stik_ft_iscores = 0;
+# The field table naming InjectionScores's members in layout order.
+fn _stik_ft_iscores_get() {
+    if (_stik_ft_iscores == 0) {
+        var ft = _stik_ft_new(5);
+        _stik_ft_set(ft, 0, "sql");
+        _stik_ft_set(ft, 1, "xss");
+        _stik_ft_set(ft, 2, "command");
+        _stik_ft_set(ft, 3, "path_traversal");
+        _stik_ft_set(ft, 4, "prompt_injection");
+        _stik_ft_iscores = ft;
+    }
+    return _stik_ft_iscores;
+}
+# A new InjectionScores (5 bytes) from the JSON text at C string `json`, read in one pass up to its
+# NUL terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A member is
+# saturated to 0..100; a missing or non-numeric one reads 0, and a repeated member gives its last
+# value. Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn InjectionScores_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(5);
+    store8(p, 0);
+    store8(p + 1, 0);
+    store8(p + 2, 0);
+    store8(p + 3, 0);
+    store8(p + 4, 0);
+    _stik_json_read_fields(json, _stik_ft_iscores_get(), p, 1);
+    return p;
+}
 # An InjectionScores: one score per injection class, 0..100. 5 bytes, one i8
 # per score, read through the iscore_* accessors:
 #   +0 sql, +1 xss, +2 command, +3 path_traversal, +4 prompt_injection.
-# All start at 0. InjectionScores_to_json (#derive) serializes it.
+# All start at 0. InjectionScores_to_json serializes it.
 fn injection_scores_new() {
-    var s = alloc(5);
+    var s = _stik_alloc(5);
     var i = 0;
     while (i < 5) { store8(s + i, 0); i = i + 1; }
     return s;
 }
+# Saturate a score to 0..100. Since 1.12.3 the iscore setters store through it
+# and the getters read through it, so a score is never out of range. Through
+# 1.12.2 a setter stored the low byte, so 256 read back as 0 (no risk) and 300
+# as 44. InjectionScores_from_json and _from_json_str saturate through it too
+# (since 1.12.3; the derived ones kept each number's low byte, so 256 read 0).
+fn _stik_iscore_clamp(v) {
+    if (v < 0) { return 0; }
+    if (v > 100) { return 100; }
+    return v;
+}
 # SQL-injection score (0..100).
-fn iscore_sql(s)              { return load8(s); }
+fn iscore_sql(s)              { return _stik_iscore_clamp(load8(s)); }
 # Cross-site-scripting (XSS) score (0..100).
-fn iscore_xss(s)              { return load8(s + 1); }
+fn iscore_xss(s)              { return _stik_iscore_clamp(load8(s + 1)); }
 # Command-injection score (0..100).
-fn iscore_command(s)          { return load8(s + 2); }
+fn iscore_command(s)          { return _stik_iscore_clamp(load8(s + 2)); }
 # Path-traversal score (0..100).
-fn iscore_path_traversal(s)   { return load8(s + 3); }
+fn iscore_path_traversal(s)   { return _stik_iscore_clamp(load8(s + 3)); }
 # Prompt-injection score (0..100).
-fn iscore_prompt_injection(s) { return load8(s + 4); }
+fn iscore_prompt_injection(s) { return _stik_iscore_clamp(load8(s + 4)); }
 # v1.1.1: explicit setters added so callers don't need raw store8.
-# Set the SQL-injection score, 0..100. Only the low byte of `v` is stored and
-# the range is not enforced. Returns 0.
-fn iscore_set_sql(s, v)              { store8(s, v); return 0; }
-# Set the XSS score, 0..100. Only the low byte of `v` is stored and the range
-# is not enforced. Returns 0.
-fn iscore_set_xss(s, v)              { store8(s + 1, v); return 0; }
-# Set the command-injection score, 0..100. Only the low byte of `v` is stored
-# and the range is not enforced. Returns 0.
-fn iscore_set_command(s, v)          { store8(s + 2, v); return 0; }
-# Set the path-traversal score, 0..100. Only the low byte of `v` is stored and
-# the range is not enforced. Returns 0.
-fn iscore_set_path_traversal(s, v)   { store8(s + 3, v); return 0; }
-# Set the prompt-injection score, 0..100. Only the low byte of `v` is stored
-# and the range is not enforced. Returns 0.
-fn iscore_set_prompt_injection(s, v) { store8(s + 4, v); return 0; }
+# Set the SQL-injection score, saturated to 0..100 (above 100 stores 100, below
+# 0 stores 0). Returns 0.
+fn iscore_set_sql(s, v)              { store8(s, _stik_iscore_clamp(v)); return 0; }
+# Set the XSS score, saturated to 0..100. Returns 0.
+fn iscore_set_xss(s, v)              { store8(s + 1, _stik_iscore_clamp(v)); return 0; }
+# Set the command-injection score, saturated to 0..100. Returns 0.
+fn iscore_set_command(s, v)          { store8(s + 2, _stik_iscore_clamp(v)); return 0; }
+# Set the path-traversal score, saturated to 0..100. Returns 0.
+fn iscore_set_path_traversal(s, v)   { store8(s + 3, _stik_iscore_clamp(v)); return 0; }
+# Set the prompt-injection score, saturated to 0..100. Returns 0.
+fn iscore_set_prompt_injection(s, v) { store8(s + 4, _stik_iscore_clamp(v)); return 0; }
 # A ValidationResult: the outcome of validating one input. 56 bytes, all
 # 8-byte slots, read through the vresult_* accessors:
 #   +0 valid, +8 sanitized, +16 warnings, +24 blocked, +32 block_reason,
@@ -104,7 +171,7 @@ fn iscore_set_prompt_injection(s, v) { store8(s + 4, v); return 0; }
 # an empty vec, and the other slots start at 0. vresult_set_blocked is the only
 # setter.
 fn validation_result_new(valid, sanitized: Str) {
-    var r = alloc(56);
+    var r = _stik_alloc(56);
     store64(r, valid);
     store64(r + 8, sanitized);
     store64(r + 16, vec_new());

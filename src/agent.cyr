@@ -47,10 +47,74 @@ enum CircuitBreakerState {
     CB_OPEN;
     CB_HALF_OPEN;
 }
-#derive(Serialize)
 struct ResourceLimits {
     max_memory: i64; max_cpu_time: i64; max_fds: i64;
     max_procs: i64; max_disk: i64; net_bw: i64;
+}
+# Write the ResourceLimits at `ptr` to str_builder `sb` as JSON, each field an i64 member:
+#   {"max_memory":N,"max_cpu_time":N,"max_fds":N,"max_procs":N,"max_disk":N,"net_bw":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn ResourceLimits_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"max_memory\":");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ",\"max_cpu_time\":");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ",\"max_fds\":");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ",\"max_procs\":");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, ",\"max_disk\":");
+    str_builder_add_int(sb, load64(ptr + 32));
+    str_builder_add_cstr(sb, ",\"net_bw\":");
+    str_builder_add_int(sb, load64(ptr + 40));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new ResourceLimits (48 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair
+# with a field's name gives its value. A missing member, or one that is not a number or is outside
+# i64, reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn ResourceLimits_from_json(pairs) {
+    var p = _stik_alloc(48);
+    store64(p, _stik_json_pair_int(pairs, "max_memory"));
+    store64(p + 8, _stik_json_pair_int(pairs, "max_cpu_time"));
+    store64(p + 16, _stik_json_pair_int(pairs, "max_fds"));
+    store64(p + 24, _stik_json_pair_int(pairs, "max_procs"));
+    store64(p + 32, _stik_json_pair_int(pairs, "max_disk"));
+    store64(p + 40, _stik_json_pair_int(pairs, "net_bw"));
+    return p;
+}
+# ResourceLimits_from_json_str's field table, built on first use.
+var _stik_ft_rlimits = 0;
+# The field table naming ResourceLimits's members in layout order.
+fn _stik_ft_rlimits_get() {
+    if (_stik_ft_rlimits == 0) {
+        var ft = _stik_ft_new(6);
+        _stik_ft_set(ft, 0, "max_memory");
+        _stik_ft_set(ft, 1, "max_cpu_time");
+        _stik_ft_set(ft, 2, "max_fds");
+        _stik_ft_set(ft, 3, "max_procs");
+        _stik_ft_set(ft, 4, "max_disk");
+        _stik_ft_set(ft, 5, "net_bw");
+        _stik_ft_rlimits = ft;
+    }
+    return _stik_ft_rlimits;
+}
+# A new ResourceLimits (48 bytes) from the JSON text at C string `json`, read in one pass up to its
+# NUL terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A missing
+# member, or one that is not a number or is outside i64, reads 0, and a repeated member gives its
+# last value. Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn ResourceLimits_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(48);
+    store64(p, 0);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    store64(p + 24, 0);
+    store64(p + 32, 0);
+    store64(p + 40, 0);
+    _stik_json_read_fields(json, _stik_ft_rlimits_get(), p, 0);
+    return p;
 }
 # A ResourceLimits: per-agent resource caps. 48 bytes, all 8-byte slots:
 #   +0 max_memory (bytes, default 256 MB), +8 max_cpu_time (seconds, default
@@ -58,7 +122,7 @@ struct ResourceLimits {
 #   +40 net_bw (0).
 # agnostik only stores the caps; enforcing them is the runtime's job.
 fn resource_limits_new() {
-    var r = alloc(48);
+    var r = _stik_alloc(48);
     store64(r, 268435456);     # 256 MB default
     store64(r + 8, 3600);      # 1 hour default
     store64(r + 16, 256);      # 256 fds
@@ -91,15 +155,69 @@ fn rlim_set_max_procs(r, v)     { store64(r + 24, v); return 0; }
 fn rlim_set_max_disk(r, v)      { store64(r + 32, v); return 0; }
 # Set the network-bandwidth cap (net_bw). Returns 0.
 fn rlim_set_net_bw(r, v)        { store64(r + 40, v); return 0; }
-#derive(Serialize)
 struct ResourceUsage {
     mem_used: i64; cpu_used: i64; fds_used: i64; procs_used: i64;
+}
+# Write the ResourceUsage at `ptr` to str_builder `sb` as JSON, each field an i64 member:
+#   {"mem_used":N,"cpu_used":N,"fds_used":N,"procs_used":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn ResourceUsage_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"mem_used\":");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ",\"cpu_used\":");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ",\"fds_used\":");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, ",\"procs_used\":");
+    str_builder_add_int(sb, load64(ptr + 24));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new ResourceUsage (32 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair with
+# a field's name gives its value. A missing member, or one that is not a number or is outside i64,
+# reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn ResourceUsage_from_json(pairs) {
+    var p = _stik_alloc(32);
+    store64(p, _stik_json_pair_int(pairs, "mem_used"));
+    store64(p + 8, _stik_json_pair_int(pairs, "cpu_used"));
+    store64(p + 16, _stik_json_pair_int(pairs, "fds_used"));
+    store64(p + 24, _stik_json_pair_int(pairs, "procs_used"));
+    return p;
+}
+# ResourceUsage_from_json_str's field table, built on first use.
+var _stik_ft_rusage = 0;
+# The field table naming ResourceUsage's members in layout order.
+fn _stik_ft_rusage_get() {
+    if (_stik_ft_rusage == 0) {
+        var ft = _stik_ft_new(4);
+        _stik_ft_set(ft, 0, "mem_used");
+        _stik_ft_set(ft, 1, "cpu_used");
+        _stik_ft_set(ft, 2, "fds_used");
+        _stik_ft_set(ft, 3, "procs_used");
+        _stik_ft_rusage = ft;
+    }
+    return _stik_ft_rusage;
+}
+# A new ResourceUsage (32 bytes) from the JSON text at C string `json`, read in one pass up to its
+# NUL terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A missing
+# member, or one that is not a number or is outside i64, reads 0, and a repeated member gives its
+# last value. Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn ResourceUsage_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(32);
+    store64(p, 0);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    store64(p + 24, 0);
+    _stik_json_read_fields(json, _stik_ft_rusage_get(), p, 0);
+    return p;
 }
 # A ResourceUsage: what an agent is currently consuming, the counterpart of
 # ResourceLimits. 32 bytes, all 0: +0 mem_used, +8 cpu_used, +16 fds_used,
 # +24 procs_used, set with the rusage_set_* setters (v1.11.0).
 fn resource_usage_new() {
-    var u = alloc(32);
+    var u = _stik_alloc(32);
     store64(u, 0);
     store64(u + 8, 0);
     store64(u + 16, 0);
@@ -134,7 +252,7 @@ fn rusage_set_procs(u, v) { store64(u + 24, v); return 0; }
 # by cyrius 6.6.2's arity-disagreement diagnostic. agnostik's is the one that moved
 # because it had exactly one caller and no external consumers.
 fn agnostik_health_check_new() {
-    var h = alloc(40);
+    var h = _stik_alloc(40);
     store64(h, PROBE_LIVENESS_READINESS);
     store64(h + 8, 30);    # 30s interval
     store64(h + 16, 5);    # 5s timeout
@@ -166,7 +284,7 @@ fn hc_set_initial_delay(h, v) { store64(h + 32, v); return 0; }
 # 16 bytes, each stored as given: +0 command (a vec), +8 timeout.
 # Attach it to a LifecycleHooks slot.
 fn lifecycle_hook_new(cmd_vec, timeout) {
-    var h = alloc(16);
+    var h = _stik_alloc(16);
     store64(h, cmd_vec);
     store64(h + 8, timeout);
     return h;
@@ -179,7 +297,7 @@ fn lhook_timeout(h)  { return load64(h + 8); }
 # all 0: +0 pre_start, +8 post_start, +16 pre_stop, +24 post_stop, each a
 # LifecycleHook pointer or 0 for none.
 fn lifecycle_hooks_new() {
-    var h = alloc(32);
+    var h = _stik_alloc(32);
     store64(h, 0);
     store64(h + 8, 0);
     store64(h + 16, 0);
@@ -212,7 +330,7 @@ fn lhooks_set_post_stop(h, v)  { store64(h + 24, v); return 0; }
 #   +88 lifecycle_hooks (0), +96 restart_backoff (0).
 # A pointer slot holding 0 means that part is not configured.
 fn agent_config_new(name: Str) {
-    var c = alloc(104);
+    var c = _stik_alloc(104);
     store64(c, name);
     store64(c + 8, AGENT_TYPE_USER);
     store64(c + 16, resource_limits_new());
@@ -280,7 +398,7 @@ fn aconf_set_lifecycle_hooks(c, v)  { store64(c + 88, v); return 0; }
 #   +0 tokens_per_hour, +8 requests_per_min, +16 concurrent.
 # Set with the arl_set_* setters (v1.11.0).
 fn agent_rate_limit_new() {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, 0);
     store64(r + 8, 0);
     store64(r + 16, 0);
@@ -302,7 +420,7 @@ fn arl_set_concurrent(r, v) { store64(r + 16, v); return 0; }
 # as given: +0 agent_id, +8 event_type, +16 payload. agnostik defines no
 # encoding for event_type or payload.
 fn agent_event_new(id, event_type, payload) {
-    var e = alloc(24);
+    var e = _stik_alloc(24);
     store64(e, id);
     store64(e + 8, event_type);
     store64(e + 16, payload);
@@ -352,12 +470,16 @@ fn AgentInfo_to_json(ptr, sb) {
     str_builder_add_cstr(sb, "\"}");
     return 0;
 }
-# Parse an AgentInfo from JSON. Never fails: a field that is missing or
-# invalid reads as 0. `agent_type` and `status` are read as the names
-# AgentInfo_to_json writes, falling back to integer `agent_type_id` /
-# `status_id` keys, the shape this fn read through 1.6.2.
+# Parse an AgentInfo from JSON. Never fails. `agent_type` and `status` are read
+# as the names AgentInfo_to_json writes, falling back to integer
+# `agent_type_id` / `status_id` keys, the shape this fn read through 1.6.2. A
+# missing or invalid id or name reads as 0; a missing or unrecognised type
+# reads as AGENT_TYPE_USER, the default agent_config_new uses, and status as
+# AGENT_PENDING. Through 1.12.2 a missing or bogus type read as 0, which is
+# AGENT_TYPE_SYSTEM, the most privileged (F-039), and an out-of-range integer
+# fallback was stored as given.
 fn AgentInfo_from_json(src: Str) {
-    var info = alloc(32);
+    var info = _stik_alloc(32);
     store64(info, 0);
     var id_str = _stik_json_str(src, str_from("id"));
     if (id_str != 0) {
@@ -371,6 +493,8 @@ fn AgentInfo_from_json(src: Str) {
     # back as type 0 / status 0. Those keys stay as the fallback when the
     # name is absent or unrecognised, so that shape still parses.
     var atype = _stik_json_int(src, str_from("agent_type_id"));
+    if (_stik_json_find_value(src, str_from("agent_type_id")) < 0) { atype = AGENT_TYPE_USER; }
+    if (atype < AGENT_TYPE_SYSTEM || atype > AGENT_TYPE_SERVICE) { atype = AGENT_TYPE_USER; }
     var tname = _stik_json_str(src, str_from("agent_type"));
     if (tname != 0) {
         var t_t, t = agent_type_parse(tname);
@@ -378,6 +502,7 @@ fn AgentInfo_from_json(src: Str) {
     }
     store64(info + 16, atype);
     var astatus = _stik_json_int(src, str_from("status_id"));
+    if (astatus < AGENT_PENDING || astatus > AGENT_FAILED) { astatus = AGENT_PENDING; }
     var sname = _stik_json_str(src, str_from("status"));
     if (sname != 0) {
         var s_t, s = agent_status_parse(sname);
@@ -391,7 +516,7 @@ fn AgentInfo_from_json(src: Str) {
 #   +0 id (AgentId), +8 name (Str), +16 agent_type (AgentType),
 #   +24 status (AgentStatus).
 fn agent_info_new(id, name: Str, atype, status) {
-    var info = alloc(32);
+    var info = _stik_alloc(32);
     store64(info, id);
     store64(info + 8, name);
     store64(info + 16, atype);
@@ -406,15 +531,64 @@ fn ainfo_name(i)   { return load64(i + 8); }
 fn ainfo_type(i)   { return load64(i + 16); }
 # AgentStatus member.
 fn ainfo_status(i) { return load64(i + 24); }
-#derive(Serialize)
 struct AgentStats {
     total_requests: i64; total_tokens: i64; uptime_seconds: i64;
+}
+# Write the AgentStats at `ptr` to str_builder `sb` as JSON, each field an i64 member:
+#   {"total_requests":N,"total_tokens":N,"uptime_seconds":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn AgentStats_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"total_requests\":");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ",\"total_tokens\":");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ",\"uptime_seconds\":");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new AgentStats (24 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair with a
+# field's name gives its value. A missing member, or one that is not a number or is outside i64,
+# reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn AgentStats_from_json(pairs) {
+    var p = _stik_alloc(24);
+    store64(p, _stik_json_pair_int(pairs, "total_requests"));
+    store64(p + 8, _stik_json_pair_int(pairs, "total_tokens"));
+    store64(p + 16, _stik_json_pair_int(pairs, "uptime_seconds"));
+    return p;
+}
+# AgentStats_from_json_str's field table, built on first use.
+var _stik_ft_astats = 0;
+# The field table naming AgentStats's members in layout order.
+fn _stik_ft_astats_get() {
+    if (_stik_ft_astats == 0) {
+        var ft = _stik_ft_new(3);
+        _stik_ft_set(ft, 0, "total_requests");
+        _stik_ft_set(ft, 1, "total_tokens");
+        _stik_ft_set(ft, 2, "uptime_seconds");
+        _stik_ft_astats = ft;
+    }
+    return _stik_ft_astats;
+}
+# A new AgentStats (24 bytes) from the JSON text at C string `json`, read in one pass up to its NUL
+# terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A missing
+# member, or one that is not a number or is outside i64, reads 0, and a repeated member gives its
+# last value. Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn AgentStats_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(24);
+    store64(p, 0);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    _stik_json_read_fields(json, _stik_ft_astats_get(), p, 0);
+    return p;
 }
 # An AgentStats: cumulative counters for one agent. 24 bytes, all 0:
 #   +0 total_requests, +8 total_tokens, +16 uptime_seconds.
 # Set with the astats_set_* setters (v1.11.0).
 fn agent_stats_new() {
-    var s = alloc(24);
+    var s = _stik_alloc(24);
     store64(s, 0);
     store64(s + 8, 0);
     store64(s + 16, 0);
@@ -440,7 +614,7 @@ fn astats_set_uptime(s, v) { store64(s + 16, v); return 0; }
 # Every collection is allocated up front. No accessor in this file reads
 # +56, +64 or +72.
 fn agent_manifest_new(name: Str) {
-    var m = alloc(80);
+    var m = _stik_alloc(80);
     store64(m, name);
     store64(m + 8, str_from(""));
     store64(m + 16, str_from(""));
@@ -502,6 +676,7 @@ fn agent_status_name(s) {
 # unrecognised string is an error rather than a silent default, so
 # agent_status_parse(agent_status_name(v)) == v holds for every AgentStatus member.
 fn agent_status_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Pending") == 1) { return Ok(AGENT_PENDING); }
     elif (str_eq_cstr(s, "Starting") == 1) { return Ok(AGENT_STARTING); }
     elif (str_eq_cstr(s, "Running") == 1) { return Ok(AGENT_RUNNING); }
@@ -525,6 +700,7 @@ fn agent_type_name(t) {
 # unrecognised string is an error rather than a silent default, so
 # agent_type_parse(agent_type_name(v)) == v holds for every AgentType member.
 fn agent_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "System") == 1) { return Ok(AGENT_TYPE_SYSTEM); }
     elif (str_eq_cstr(s, "User") == 1) { return Ok(AGENT_TYPE_USER); }
     elif (str_eq_cstr(s, "Service") == 1) { return Ok(AGENT_TYPE_SERVICE); }
@@ -544,6 +720,7 @@ fn restart_policy_name(p) {
 # Parse a RestartPolicy display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn restart_policy_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Never") == 1) { return Ok(RESTART_NEVER); }
     elif (str_eq_cstr(s, "Always") == 1) { return Ok(RESTART_ALWAYS); }
     elif (str_eq_cstr(s, "OnFailure") == 1) { return Ok(RESTART_ON_FAILURE); }
@@ -562,6 +739,7 @@ fn probe_type_name(t) {
 # Parse a ProbeType display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn probe_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "LivenessReadiness") == 1) { return Ok(PROBE_LIVENESS_READINESS); }
     elif (str_eq_cstr(s, "Liveness") == 1) { return Ok(PROBE_LIVENESS); }
     elif (str_eq_cstr(s, "Readiness") == 1) { return Ok(PROBE_READINESS); }
@@ -582,6 +760,7 @@ fn stop_reason_name(r) {
 # Parse a StopReason display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn stop_reason_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "UserRequested") == 1) { return Ok(STOP_USER_REQUESTED); }
     elif (str_eq_cstr(s, "ResourceExhausted") == 1) { return Ok(STOP_RESOURCE_EXHAUSTED); }
     elif (str_eq_cstr(s, "Error") == 1) { return Ok(STOP_ERROR); }
@@ -601,6 +780,7 @@ fn circuit_breaker_state_name(s) {
 # Parse a CircuitBreakerState display name: exact, case-sensitive match.
 # Returns Ok(member), or an invalid-argument Err for any other string.
 fn circuit_breaker_state_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Closed") == 1) { return Ok(CB_CLOSED); }
     elif (str_eq_cstr(s, "Open") == 1) { return Ok(CB_OPEN); }
     elif (str_eq_cstr(s, "HalfOpen") == 1) { return Ok(CB_HALF_OPEN); }
@@ -619,6 +799,7 @@ fn label_operator_name(o) {
 # Parse a LabelOperator display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn label_operator_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "In") == 1) { return Ok(LABEL_IN); }
     elif (str_eq_cstr(s, "NotIn") == 1) { return Ok(LABEL_NOT_IN); }
     elif (str_eq_cstr(s, "Exists") == 1) { return Ok(LABEL_EXISTS); }
@@ -631,7 +812,7 @@ enum LabelOperator { LABEL_IN; LABEL_NOT_IN; LABEL_EXISTS; LABEL_DOES_NOT_EXIST;
 #   ids, as given), +24 correlation_id (Str, 0), +32 reply_to (Str, 0),
 #   +40 payload (Str, as given), +48 timestamp (clock_epoch_ns at construction).
 fn agent_message_new(sender, receiver, payload_str: Str) {
-    var m = alloc(56);
+    var m = _stik_alloc(56);
     store64(m, agent_id_new());
     store64(m + 8, sender);
     store64(m + 16, receiver);
@@ -664,7 +845,7 @@ fn amsg_set_reply_to(m, v: Str)       { store64(m + 32, v); return 0; }
 # stored as given: +0 required_agent (Str, the agent's name),
 # +8 min_version (Version), +16 required (1 = mandatory, 0 = optional).
 fn agent_dependency_new(required_agent: Str, min_ver, required) {
-    var d = alloc(24);
+    var d = _stik_alloc(24);
     store64(d, required_agent);
     store64(d + 8, min_ver);
     store64(d + 16, required);
@@ -680,7 +861,7 @@ fn adep_required(d)       { return load64(d + 16); }
 #   +0 agent_id, +8 limits (the ResourceLimits requested), both as given,
 #   +16 justification (Str, 0 until set).
 fn resource_request_new(agent_id, limits) {
-    var r = alloc(24);
+    var r = _stik_alloc(24);
     store64(r, agent_id);
     store64(r + 8, limits);
     store64(r + 16, 0);
@@ -698,7 +879,7 @@ fn rreq_set_justification(r, v: Str) { store64(r + 16, v); return 0; }
 #   +0 agent_id, +8 limits (the ResourceLimits granted), +16 approved (flag),
 #   all as given, +24 reason (Str, 0 until set).
 fn resource_grant_new(agent_id, limits, approved) {
-    var g = alloc(32);
+    var g = _stik_alloc(32);
     store64(g, agent_id);
     store64(g + 8, limits);
     store64(g + 16, approved);
@@ -721,7 +902,7 @@ fn rgrant_set_reason(g, v: Str) { store64(g + 24, v); return 0; }
 # policy; the retrying code applies it. The rpol_set_* setters (v1.11.0)
 # change the defaults.
 fn retry_policy_new() {
-    var p = alloc(40);
+    var p = _stik_alloc(40);
     store64(p, 3);
     store64(p + 8, 1000);
     store64(p + 16, 2000);
@@ -754,7 +935,7 @@ fn rpol_set_jitter(p, v) { store64(p + 32, v); return 0; }
 # AgentConfig's restart_backoff slot points to. 32 bytes: +0 initial_delay
 # (1000 ms), +8 multiplier (2000), +16 max_delay (60000 ms), +24 jitter (1).
 fn restart_backoff_new() {
-    var b = alloc(32);
+    var b = _stik_alloc(32);
     store64(b, 1000);
     store64(b + 8, 2000);
     store64(b + 16, 60000);
@@ -782,7 +963,7 @@ fn rback_set_jitter(b, v) { store64(b + 24, v); return 0; }
 # 40 bytes: +0 name (Str), +8 config (AgentConfig), +16 replicas (1),
 # +24 min_replicas (1), +32 max_replicas (10).
 fn agent_pool_new(pool_name: Str, config) {
-    var p = alloc(40);
+    var p = _stik_alloc(40);
     store64(p, pool_name);
     store64(p + 8, config);
     store64(p + 16, 1);
@@ -810,7 +991,7 @@ fn apool_set_max_replicas(p, v) { store64(p + 32, v); return 0; }
 #   +0 skills, +8 input_types, +16 output_types (vecs, each created empty on
 #   first access), +24 max_tasks (0).
 fn agent_capabilities_new() {
-    var c = alloc(32);
+    var c = _stik_alloc(32);
     store64(c, 0);
     store64(c + 8, 0);
     store64(c + 16, 0);
@@ -832,7 +1013,7 @@ fn acap_set_max_tasks(c, v) { store64(c + 24, v); return 0; }
 #   +24 pod_anti_affinity (vecs, each created empty on first access),
 #   +32 priority (0), +40 preemptible (0).
 fn scheduling_constraints_new() {
-    var s = alloc(48);
+    var s = _stik_alloc(48);
     var i = 0;
     while (i < 48) { store64(s + i, 0); i = i + 8; }
     return s;
@@ -858,7 +1039,7 @@ fn sched_set_priority(s, v)    { store64(s + 32, v); return 0; }
 # +8 operator (LabelOperator), both as given, +16 values (vec, created empty
 # on first access).
 fn label_selector_new(key: Str, operator) {
-    var l = alloc(24);
+    var l = _stik_alloc(24);
     store64(l, key);
     store64(l + 8, operator);
     store64(l + 16, 0);
@@ -873,7 +1054,7 @@ fn lsel_values(l)   { return _stik_lazy_vec(l + 16); }
 # A Topic: a named pub/sub channel. 24 bytes: +0 name (Str), +8 description
 # (Str, default ""), +16 ttl (0).
 fn topic_new(tname: Str) {
-    var t = alloc(24);
+    var t = _stik_alloc(24);
     store64(t, tname);
     store64(t + 8, str_from(""));
     store64(t + 16, 0);
@@ -893,7 +1074,7 @@ fn topic_set_ttl(t, v)         { store64(t + 16, v); return 0; }
 #   +0 agent_id (the subscriber), +8 topic (Str, the topic's name),
 #   +16 filter (Str, 0 for none).
 fn subscription_new(agent_id, topic_name: Str) {
-    var s = alloc(24);
+    var s = _stik_alloc(24);
     store64(s, agent_id);
     store64(s + 8, topic_name);
     store64(s + 16, 0);
@@ -912,7 +1093,7 @@ fn sub_set_filter(s, v: Str) { store64(s + 16, v); return 0; }
 #   (agent id), +24 payload (Str, default "{}"), +32 timestamp
 #   (clock_epoch_ns at construction), +40 priority (0), +48 ttl (0).
 fn topic_message_new(topic_name: Str, publisher) {
-    var m = alloc(56);
+    var m = _stik_alloc(56);
     store64(m, agent_id_new());
     store64(m + 8, topic_name);
     store64(m + 16, publisher);

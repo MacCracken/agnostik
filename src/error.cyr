@@ -23,13 +23,62 @@ enum AgnostikErrorCode {
     CODE_SERIALIZATION = 1009;
     CODE_IO = 1010;
 }
+# Every allocation in agnostik's shipped modules goes through here (ADR-007).
+# The stdlib's alloc returns 0, rather than aborting, when the heap cannot grow
+# or the size is <= 0 or over 2 GiB, and through 1.12.2 no call site checked:
+# the next store wrote through address 0 plus an offset. This writes
+# "agnostik: allocation failed" to stderr and exits with status 71
+# (EX_OSERR) instead, so the failure is named and never writes through 0. A size
+# <= 0 counts as a failure too: it means the caller's size arithmetic went
+# wrong, and a minimum-size block handed back would turn that into a heap
+# overflow. agnostik_err_new is the one exception (see _stik_err_oom). It cannot
+# be #inline (the compiler refuses a body with control flow); the extra call
+# costs the smallest benchmark rows a few ns.
+fn _stik_alloc(n) {
+    var p = alloc(n);
+    if (p != 0) { return p; }
+    return _stik_alloc_fail();
+}
+# The failure path of _stik_alloc, also taken by a caller that knows a size is
+# out of range before asking (the protobuf buffer past 2 GiB): writes
+# "agnostik: allocation failed" to stderr and exits 71 (EX_OSERR). Never returns.
+fn _stik_alloc_fail() {
+    var msg = "agnostik: allocation failed (out of memory, or a size <= 0 or over 2 GiB)\n";
+    sys_write(2, msg, strlen(msg));
+    sys_exit(71);
+    return 0;
+}
+# The out-of-memory AgnostikError, in static storage so that building it needs no
+# heap: 24 bytes for the error and 16 for its message's Str header (a top-level
+# `var x[N]` is N*8 bytes).
+var _stik_oom_err[3];
+var _stik_oom_msg[2];
+# The error agnostik_err_new returns when it cannot allocate: kind
+# STIK_ERR_RESOURCE_EXHAUSTED (code 1005, so agnostik_err_is_retriable answers 1)
+# with the message "out of memory". It is filled on each call, from constants,
+# so it is the same object every time and stays valid when the heap is exhausted.
+# The caller's own kind and message are lost: what failed was the allocation.
+fn _stik_err_oom() {
+    var m = "out of memory";
+    store64(&_stik_oom_msg, m);
+    store64(&_stik_oom_msg + 8, strlen(m));
+    store64(&_stik_oom_err, STIK_ERR_RESOURCE_EXHAUSTED);
+    store64(&_stik_oom_err + 8, CODE_RESOURCE_EXHAUSTED);
+    store64(&_stik_oom_err + 16, &_stik_oom_msg);
+    return &_stik_oom_err;
+}
 # An AgnostikError: a kind plus a message. 24 bytes, all 8-byte slots:
 #   +0 kind (AgnostikErrorKind), +8 code (AgnostikErrorCode), +16 message (Str, or 0).
 # The code is derived from the kind; STIK_ERR_UNKNOWN and any value outside the
 # enum get CODE_INTERNAL (1008). The kind is stored as given, not validated.
 # Fallible fns return it wrapped in Err through the stik_err_* constructors.
+# Never 0: if the 24-byte allocation fails it returns the static out-of-memory
+# error (_stik_err_oom) instead of writing through a null pointer, so the path
+# that reports failures keeps working when memory runs out. Before 1.12.3 it
+# wrote to addresses 0x00-0x17 (reported by anuenue).
 fn agnostik_err_new(kind, message: Str) {
     var e = alloc(24);
+    if (e == 0) { return _stik_err_oom(); }
     store64(e, kind);
     # Map kind → code
     var code = 1008;
@@ -61,6 +110,13 @@ fn agnostik_err_is_retriable(e) {
     if (kind == STIK_ERR_TIMEOUT) { return 1; }
     if (kind == STIK_ERR_RESOURCE_EXHAUSTED) { return 1; }
     return 0;
+}
+# Err(AgnostikError) of kind STIK_ERR_INVALID_ARGUMENT for a parser handed a 0
+# Str. Every *_parse / *_from_str / tctx_from_traceparent returns it since
+# 1.12.3 (F-036); they used to read address 0, so a missing JSON field passed
+# straight through crashed.
+fn _stik_err_no_value() {
+    return stik_err_invalid_argument(str_from("no value (a 0 Str)"));
 }
 # Err(AgnostikError) of kind STIK_ERR_AGENT_NOT_FOUND, with `name` as the
 # message. Like every stik_err_* constructor it returns the value-form
@@ -127,6 +183,7 @@ fn agnostik_err_kind_name(kind) {
 # `unknown error` is STIK_ERR_UNKNOWN's canonical name (it is produced by
 # agnostik_err_kind_name's fallback, not by an explicit arm), so it maps back here.
 fn agnostik_err_kind_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "agent not found") == 1) { return Ok(STIK_ERR_AGENT_NOT_FOUND); }
     elif (str_eq_cstr(s, "permission denied") == 1) { return Ok(STIK_ERR_PERMISSION_DENIED); }
     elif (str_eq_cstr(s, "config error") == 1) { return Ok(STIK_ERR_CONFIG_ERROR); }
@@ -159,6 +216,7 @@ fn agnostik_err_code_name(c) {
 # Parse a AgnostikErrorCode display name: exact, case-sensitive match. Returns
 # Ok(member), or an invalid-argument Err for any other string.
 fn agnostik_err_code_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "AgentNotFound") == 1) { return Ok(CODE_AGENT_NOT_FOUND); }
     elif (str_eq_cstr(s, "PermissionDenied") == 1) { return Ok(CODE_PERMISSION_DENIED); }
     elif (str_eq_cstr(s, "ConfigError") == 1) { return Ok(CODE_CONFIG_ERROR); }
@@ -173,6 +231,9 @@ fn agnostik_err_code_parse(s: Str) {
 }
 # Write the error to stderr (fd 2) as "<kind name>: <message>" and a newline,
 # or just "<kind name>" and a newline when it has no message. Returns 0.
+# A message Str with a negative length writes no message bytes: passed through,
+# write(2) would read it as a huge unsigned count and copy the heap beyond the
+# message to stderr until it faulted.
 fn agnostik_err_print(e) {
     var kind = agnostik_err_kind(e);
     var name = agnostik_err_kind_name(kind);
@@ -183,7 +244,7 @@ fn agnostik_err_print(e) {
         sys_write(2, ": ", 2);
         var s = str_data(msg);
         var slen = str_len(msg);
-        sys_write(2, s, slen);
+        if (slen > 0) { sys_write(2, s, slen); }
     }
     sys_write(2, "\n", 1);
     return 0;

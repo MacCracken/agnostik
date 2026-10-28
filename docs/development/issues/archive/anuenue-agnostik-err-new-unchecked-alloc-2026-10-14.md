@@ -1,8 +1,13 @@
-# `agnostik_err_new` writes through its allocation without checking it — OPEN
+# `agnostik_err_new` writes through its allocation without checking it — FIXED in 1.12.3
 
-**Status:** 🟡 **OPEN** — filed by a consumer; confirmed by reading the source at tag `1.12.0`.
-Not reproduced by running it: the window is narrow (below).
-**Placement:** unplaced — for the user to place.
+**Status:** ✅ **FIXED in agnostik 1.12.3** (F-028, [ADR-007](../../../adr/007-allocation-failure-fails-by-name.md)).
+- **The fix:** `agnostik_err_new` now returns a static out-of-memory error (kind `STIK_ERR_RESOURCE_EXHAUSTED`,
+  message "out of memory") when its 24 bytes cannot be had, so it never returns 0 and never writes through
+  address 0. Every other allocation in agnostik goes through `_stik_alloc`, which names the failure and exits 71.
+- **Reproduced and verified:** `tests/probes/err_oom.cyr` drains the heap under `prlimit --as=512MiB` and calls
+  `agnostik_err_new` and `stik_err_io`. On the 1.12.2 source it died of SIGSEGV; on 1.12.3 it gets the static
+  error and prints it. CI runs it through `scripts/oom-probe.sh`.
+- **History:** first confirmed by reading the source at tag `1.12.0`; the original report follows unchanged.
 **Source:** anuenue (`/home/macro/Repos/anuenue`), found by the code review in its v1.4.4 closeout
 (`docs/audit/2026-10-14-v14x-delta.md`).
 **Discovered:** 2026-10-14.

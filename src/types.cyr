@@ -41,7 +41,7 @@ fn _stik_fill_random(buf, n) {
 # bits set. If the CSPRNG is unavailable the process exits with status 70
 # rather than return a predictable id.
 fn agent_id_new() {
-    var id = alloc(16);
+    var id = _stik_alloc(16);
     _stik_fill_random(id, 16);
     # RFC 4122 v4 markers: high nibble of byte 6 = 0100, top two bits
     # of byte 8 = 10.
@@ -63,12 +63,12 @@ fn agent_id_eq(a, b) {
     if (load64(a + 8) != load64(b + 8)) { return 0; }
     return 1;
 }
-var _hex_lut = "0123456789abcdef";
+var _stik_hex_lut = "0123456789abcdef";
 # Write `byte` (0-255) as two lower-case hex digits at buf + offset. The
 # caller provides the two bytes of room. Returns 0.
 fn _stik_hex_byte(buf, offset, byte) {
-    store8(buf + offset, load8(_hex_lut + (byte >> 4)));
-    store8(buf + offset + 1, load8(_hex_lut + (byte & 0x0F)));
+    store8(buf + offset, load8(_stik_hex_lut + (byte >> 4)));
+    store8(buf + offset + 1, load8(_stik_hex_lut + (byte & 0x0F)));
     return 0;
 }
 # Returns 0-15 on valid hex char, -1 on invalid. The single hex-char
@@ -125,7 +125,7 @@ fn _stik_utf8_encode(out, op, cp) {
 # groups, as a new Str. agent_id_from_str is the inverse.
 fn agent_id_to_str(id): Str {
     # UUID format: 8-4-4-4-12 = 36 chars
-    var buf = alloc(37);
+    var buf = _stik_alloc(37);
     var pos = 0;
     var i = 0;
     while (i < 16) {
@@ -146,10 +146,11 @@ fn agent_id_to_str(id): Str {
 # (checked since v1.11.0; they were skipped). Any UUID version and variant is
 # accepted, the nil and max UUIDs included (ADR-005).
 fn agent_id_from_str(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     var data = s.data;
     var slen = s.len;
     if (slen != 36) { return stik_err_invalid_argument(str_from("invalid agent id: expected UUID")); }
-    var id = alloc(16);
+    var id = _stik_alloc(16);
     var si = 0;
     var bi = 0;
     while (bi < 16) {
@@ -184,45 +185,66 @@ fn agent_id_from_str(s: Str) {
 # strings respected so `"\""` doesn't end the string early (parallels
 # the F-002 fix in `_stik_json_str`).
 fn _stik_json_find_value(src: Str, key: Str) {
-    var sb = str_builder_new();
-    str_builder_putc(sb, '"');
-    str_builder_add(sb, key);
-    str_builder_add_cstr(sb, "\":");
-    var needle = str_builder_build(sb);
-    var nd = needle.data;
-    var nlen = needle.len;
+    # Since 1.12.3 (F-029) it reads the document's structure, so it agrees with
+    # the #derive(Serialize) parser: a key matches only as a member of the
+    # top-level object (depth 1), whitespace may sit before the ':' as RFC 8259
+    # allows, and a repeated key gives its LAST value. Through 1.12.2 it matched
+    # `"key":` at any depth and took the first, so in
+    # `{"meta":{"name":"x"},"name":"y"}` it read "x" while the derived parser
+    # read "y", and `"name" : "y"` was missing. Keys are compared as raw bytes
+    # (an escaped key is not decoded). Returns the index of the value, after the
+    # colon and any whitespace, or -1.
     var data = src.data;
     var slen = src.len;
+    var kd = key.data;
+    var klen = key.len;
+    var depth = 0;
+    var found = 0 - 1;
     var i = 0;
-    var in_str = 0;
-    while (i + nlen <= slen) {
+    while (i < slen) {
         var ch = load8(data + i);
-        if (in_str == 1) {
-            if (ch == 92 && i + 1 < slen) { i = i + 2; }
-            elif (ch == 34) { in_str = 0; i = i + 1; }
-            else { i = i + 1; }
-        } else {
-            if (ch == 34) {
-                # Possible start of a string OR start of our needle.
-                # If the next nlen bytes match the needle, treat as a
-                # match (top-level key). Else enter string mode.
-                if (memeq(data + i, nd, nlen) == 1) {
-                    var vi = i + nlen;
-                    # F-010: skip RFC 7159 whitespace (space, tab, LF, CR).
-                    var skipping = 1;
-                    while (vi < slen && skipping == 1) {
-                        var w = load8(data + vi);
-                        if (w == 32 || w == 9 || w == 10 || w == 13) { vi = vi + 1; }
-                        else { skipping = 0; }
+        if (ch == 34) {
+            # A string: find its closing quote, honouring backslash escapes.
+            var s0 = i + 1;
+            var j = s0;
+            var open = 1;
+            while (j < slen && open == 1) {
+                var c = load8(data + j);
+                if (c == 92) { j = j + 2; }
+                elif (c == 34) { open = 0; }
+                else { j = j + 1; }
+            }
+            if (open == 1) { i = slen; }
+            else {
+                # A member name is a string followed by ':' (after whitespace).
+                var k = _stik_json_skip_ws(data, j + 1, slen);
+                if (k < slen && load8(data + k) == 58) {
+                    if (depth == 1 && j - s0 == klen && memeq(data + s0, kd, klen) == 1) {
+                        found = _stik_json_skip_ws(data, k + 1, slen);
                     }
-                    return vi;
+                    i = k + 1;
+                } else {
+                    i = j + 1;
                 }
-                in_str = 1;
-                i = i + 1;
-            } else { i = i + 1; }
+            }
         }
+        elif (ch == 123 || ch == 91) { depth = depth + 1; i = i + 1; }
+        elif (ch == 125 || ch == 93) { depth = depth - 1; i = i + 1; }
+        else { i = i + 1; }
     }
-    return 0 - 1;
+    return found;
+}
+# The first index at or after `i` (and below `slen`) that is not RFC 8259
+# whitespace (space, tab, LF, CR); `slen` when there is none.
+fn _stik_json_skip_ws(data, i, slen) {
+    var k = i;
+    var skipping = 1;
+    while (k < slen && skipping == 1) {
+        var w = load8(data + k);
+        if (w == 32 || w == 9 || w == 10 || w == 13) { k = k + 1; }
+        else { skipping = 0; }
+    }
+    return k;
 }
 # Audit 2026-04-26 F-003: handle leading '-' for negatives.
 # Audit 2026-04-26 F-008: pre-multiply overflow check; we no longer
@@ -234,12 +256,18 @@ fn _stik_json_find_value(src: Str, key: Str) {
 fn _stik_json_int(src: Str, key: Str) {
     var vi = _stik_json_find_value(src, key);
     if (vi < 0) { return 0; }
-    var data = src.data;
-    var slen = src.len;
+    return _stik_json_int_at(src.data, src.len, vi);
+}
+# The JSON integer at index `vi` of the `slen` bytes at `data`, as
+# _stik_json_int reads a member's value: an optional '-' then digits, stopping
+# at the first non-digit; 0 when there are no digits or the number is outside
+# i64 (F-030).
+fn _stik_json_int_at(data, slen, vi) {
     var neg = 0;
     if (vi < slen && load8(data + vi) == 45) { neg = 1; vi = vi + 1; }
     var val = 0;
     var parsing = 1;
+    var overflow = 0;
     while (vi < slen && parsing == 1) {
         var ch = load8(data + vi);
         # F-008: detect i64 overflow before it wraps. i64::MAX =
@@ -249,13 +277,17 @@ fn _stik_json_int(src: Str, key: Str) {
         # used to wrap silently to a negative i64, letting an attacker
         # smuggle a value past `if (x > LIMIT)` non-negative guards.
         if (ch < 48 || ch > 57) { parsing = 0; }
-        elif (val > 922337203685477580) { parsing = 0; }
-        elif (val == 922337203685477580 && (ch - 48) > 7) { parsing = 0; }
+        elif (val > 922337203685477580) { overflow = 1; parsing = 0; }
+        elif (val == 922337203685477580 && (ch - 48) > 7) { overflow = 1; parsing = 0; }
         else {
             val = val * 10 + (ch - 48);
             vi = vi + 1;
         }
     }
+    # F-030 (1.12.3): an out-of-range number reads 0, the contract's value for
+    # an invalid one. F-008 stopped the wrap, but kept the digits read so far:
+    # 12345678901234567890 read as 1234567890123456789.
+    if (overflow == 1) { return 0; }
     if (neg == 1) { return 0 - val; }
     return val;
 }
@@ -270,7 +302,7 @@ fn _stik_json_int(src: Str, key: Str) {
 # Malformed escapes (truncated, invalid hex, orphan surrogate) emit
 # U+FFFD REPLACEMENT CHARACTER (3 UTF-8 bytes) per common JSON
 # implementations.
-var _UTF8_REPLACEMENT_CP = 0xFFFD;
+var _stik_utf8_replacement_cp = 0xFFFD;
 # Returns the value of `key` in `src`, unescaped, as a new Str; 0 when the key
 # is missing, its value is null, or the value is not a string.
 fn _stik_json_str(src: Str, key: Str) {
@@ -284,13 +316,29 @@ fn _stik_json_str(src: Str, key: Str) {
     if (vi >= slen) { return 0; }
     if (load8(data + vi) != 34) { return 0; }
     vi = vi + 1;
-    var out = alloc(slen + 1);
+    # F-031 (1.12.3): the buffer is sized to this value, not the document.
+    # Through 1.12.2 every string field allocated the whole document's length
+    # (4 MiB for four fields of a 1 MiB document, never freed). Find the
+    # closing quote first; decoding is bounded by it, so no escape can run past
+    # it, and decoding never emits more bytes than it consumes except a
+    # truncated \u at the very end (3 for 2), so the value's length + 2 is
+    # enough. An unterminated value runs to the end of `src`.
+    var vend = vi;
+    var scanning = 1;
+    while (vend < slen && scanning == 1) {
+        var vc = load8(data + vend);
+        if (vc == 92) { vend = vend + 2; }
+        elif (vc == 34) { scanning = 0; }
+        else { vend = vend + 1; }
+    }
+    if (vend > slen) { vend = slen; }
+    var out = _stik_alloc(vend - vi + 2);
     var op = 0;
     var done = 0;
-    while (vi < slen && done == 0) {
+    while (vi < vend && done == 0) {
         var ch = load8(data + vi);
         if (ch == 34) { done = 1; }
-        elif (ch == 92 && vi + 1 < slen) {
+        elif (ch == 92 && vi + 1 < vend) {
             var esc = load8(data + vi + 1);
             if (esc == 34)      { store8(out + op, 34); op = op + 1; vi = vi + 2; }
             elif (esc == 92)    { store8(out + op, 92); op = op + 1; vi = vi + 2; }
@@ -302,37 +350,37 @@ fn _stik_json_str(src: Str, key: Str) {
             elif (esc == 102)   { store8(out + op, 12); op = op + 1; vi = vi + 2; }
             elif (esc == 117) {
                 # \u escape — needs 6 source bytes (\, u, then 4 hex).
-                if (vi + 6 > slen) {
-                    op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
-                    vi = slen;
+                if (vi + 6 > vend) {
+                    op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
+                    vi = vend;
                 } else {
                     var cp = _stik_json_parse_u4(data, vi + 2);
                     if (cp < 0) {
-                        op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                         vi = vi + 6;
                     }
                     elif (cp >= 0xD800 && cp <= 0xDBFF) {
                         # High surrogate — expect \uYYYY low surrogate next.
-                        if (vi + 12 > slen) {
-                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        if (vi + 12 > vend) {
+                            op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                             vi = vi + 6;
                         }
                         elif (load8(data + vi + 6) != 92) {
-                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                             vi = vi + 6;
                         }
                         elif (load8(data + vi + 7) != 117) {
-                            op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                            op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                             vi = vi + 6;
                         }
                         else {
                             var lo = _stik_json_parse_u4(data, vi + 8);
                             if (lo < 0xDC00) {
-                                op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                                 vi = vi + 6;
                             }
                             elif (lo > 0xDFFF) {
-                                op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                                op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                                 vi = vi + 6;
                             }
                             else {
@@ -345,7 +393,7 @@ fn _stik_json_str(src: Str, key: Str) {
                     }
                     elif (cp >= 0xDC00 && cp <= 0xDFFF) {
                         # Orphan low surrogate — invalid alone.
-                        op = _stik_utf8_encode(out, op, _UTF8_REPLACEMENT_CP);
+                        op = _stik_utf8_encode(out, op, _stik_utf8_replacement_cp);
                         vi = vi + 6;
                     }
                     else {
@@ -366,6 +414,173 @@ fn _stik_json_str(src: Str, key: Str) {
     return str_new(out, op);
 }
 
+# --- Serde for the seven value structs (ADR-008) -----------------------------
+# ResourceLimits, ResourceUsage, AgentStats, EdgeResourceOverrides,
+# InjectionScores, TokenUsage and AcceleratorFlags had T_to_json, T_from_json
+# and T_from_json_str generated by #derive(Serialize) through 1.12.2. Since
+# 1.12.3 (F-047) they are written by hand on these helpers, with the same names,
+# arity and output bytes: the generated T_from_json_str looked for a key's
+# closing quote with no bound, so truncated text read past its end (or
+# segfaulted), and both generated decoders wrapped numbers outside i64.
+
+# A field table for _stik_json_read_fields: `n` member names as
+# [n, name0, len0, name1, len1, ...], filled with _stik_ft_set. Each struct
+# builds its table once and keeps it.
+fn _stik_ft_new(n) {
+    var ft = _stik_alloc(8 + n * 16);
+    store64(ft, n);
+    return ft;
+}
+# Set entry `i` of field table `ft` to C string `name`. Returns 0.
+fn _stik_ft_set(ft, i, name) {
+    store64(ft + 8 + i * 16, name);
+    store64(ft + 16 + i * 16, strlen(name));
+    return 0;
+}
+# One pass over the JSON object in the C string at `data`, which the caller has
+# checked opens with '{'. The walk stops at the NUL terminator and never reads
+# past it, a backslash just before the NUL included. A member of the top-level
+# object whose name is entry j of field table `ft` has its value read as an
+# integer (_stik_json_int_at, which also stops at the NUL) and stored in slot j
+# of `out` by `mode`: 0 an i64 at out + 8j, 1 a score saturated to 0..100 at the
+# byte out + j, 2 a 0/1 flag at the byte out + j. A nested member never matches,
+# a repeated one overwrites (the last wins), and a missing one leaves its slot.
+# Returns 0.
+fn _stik_json_read_fields(data, ft, out, mode) {
+    var n = load64(ft);
+    var nextf = 0;
+    var depth = 0;
+    var i = 0;
+    var go = 1;
+    while (go == 1) {
+        var ch = load8(data + i);
+        if (ch == 34) {
+            var s0 = i + 1;
+            var j = s0;
+            var open = 1;
+            while (open == 1) {
+                var c = load8(data + j);
+                if (c > 92) { j = j + 1; }
+                elif (c == 34) { open = 0; }
+                elif (c == 92) {
+                    if (load8(data + j + 1) == 0) { open = 2; } else { j = j + 2; }
+                }
+                elif (c == 0) { open = 2; }
+                else { j = j + 1; }
+            }
+            if (open == 2) { go = 0; }
+            else {
+                var k = j + 1;
+                var w = load8(data + k);
+                while (w == 32 || w == 9 || w == 10 || w == 13) { k = k + 1; w = load8(data + k); }
+                var hit = 0 - 1;
+                if (w == 58 && depth == 1) {
+                    # Search from the entry after the last hit: members usually
+                    # come in layout order, so this matches on the first try.
+                    var klen = j - s0;
+                    var tries = 0;
+                    var f = nextf;
+                    while (tries < n && hit < 0) {
+                        var e = ft + 8 + f * 16;
+                        if (load64(e + 8) == klen && memeq(data + s0, load64(e), klen) == 1) { hit = f; }
+                        f = f + 1;
+                        if (f == n) { f = 0; }
+                        tries = tries + 1;
+                    }
+                    if (hit >= 0) { nextf = f; }
+                }
+                if (hit >= 0) {
+                    # The value, read in place as _stik_json_int_at reads it
+                    # (an optional '-' then digits; outside i64 reads 0), and
+                    # the walk resumes after it.
+                    var vi = k + 1;
+                    var vw = load8(data + vi);
+                    while (vw == 32 || vw == 9 || vw == 10 || vw == 13) { vi = vi + 1; vw = load8(data + vi); }
+                    var neg = 0;
+                    if (vw == 45) { neg = 1; vi = vi + 1; vw = load8(data + vi); }
+                    var val = 0;
+                    var ovf = 0;
+                    while (vw >= 48 && vw <= 57) {
+                        if (val > 922337203685477580) { ovf = 1; }
+                        elif (val == 922337203685477580 && vw > 55) { ovf = 1; }
+                        if (ovf == 0) { val = val * 10 + (vw - 48); }
+                        vi = vi + 1;
+                        vw = load8(data + vi);
+                    }
+                    if (ovf == 1) { val = 0; }
+                    elif (neg == 1) { val = 0 - val; }
+                    if (mode == 0) { store64(out + hit * 8, val); }
+                    elif (mode == 1) {
+                        if (val < 0) { val = 0; }
+                        if (val > 100) { val = 100; }
+                        store8(out + hit, val);
+                    }
+                    else { store8(out + hit, val != 0); }
+                    i = vi;
+                }
+                elif (w == 58) { i = k + 1; }
+                else { i = j + 1; }
+            }
+        }
+        elif (ch == 0) { go = 0; }
+        elif (ch == 123 || ch == 91) { depth = depth + 1; i = i + 1; }
+        elif (ch == 125 || ch == 93) { depth = depth - 1; i = i + 1; }
+        else { i = i + 1; }
+    }
+    return 0;
+}
+# 1 when the C string `json` is non-0 and opens with '{' after whitespace.
+fn _stik_json_is_obj_cstr(json) {
+    if (json == 0) { return 0; }
+    var i = 0;
+    var c = load8(json);
+    while (c == 32 || c == 9 || c == 10 || c == 13) { i = i + 1; c = load8(json + i); }
+    if (c == 123) { return 1; }
+    return 0;
+}
+# Integer value of member `name` (a C string) in `pairs`, the vec
+# bayan_json_parse returns: the first pair with that key, as the derived
+# T_from_json read it. 0 when `pairs` is 0, the key is missing, or the value is
+# not wholly a decimal integer within i64 (the derived code's str_to_int wrapped
+# and read "12abc" as 12). It walks the pairs with bayan_json_key /
+# bayan_json_value, which every cyrius pin a consumer uses provides.
+fn _stik_json_pair_int(pairs, name) {
+    if (pairs == 0) { return 0; }
+    var n = vec_len(pairs);
+    var i = 0;
+    var v = 0;
+    var looking = 1;
+    while (i < n && looking == 1) {
+        var pr = vec_get(pairs, i);
+        if (str_eq_cstr(bayan_json_key(pr), name) == 1) { v = bayan_json_value(pr); looking = 0; }
+        i = i + 1;
+    }
+    if (v == 0) { return 0; }
+    return _stik_int_str_checked(v);
+}
+# A Str holding an optional '-' then decimal digits, as an i64; 0 when it holds
+# anything else or the number is outside i64.
+fn _stik_int_str_checked(v: Str) {
+    var d = v.data;
+    var n = v.len;
+    var i = 0;
+    var neg = 0;
+    if (n > 0 && load8(d) == 45) { neg = 1; i = 1; }
+    if (i >= n) { return 0; }
+    var k = i;
+    var digits = 1;
+    while (k < n && digits == 1) {
+        var c = load8(d + k);
+        if (c < 48 || c > 57) { digits = 0; }
+        k = k + 1;
+    }
+    if (digits == 0) { return 0; }
+    var val = _stik_dec_checked(d + i, n - i);
+    if (val < 0) { return 0; }
+    if (neg == 1) { return 0 - val; }
+    return val;
+}
+
 # A fresh UserId. A UserId shares AgentId's representation (a 16-byte random
 # UUID v4), so this and the other user_id_* fns delegate to agent_id_*.
 fn user_id_new()              { return agent_id_new(); }
@@ -384,7 +599,7 @@ fn user_id_from_str(s: Str)   { return agent_id_from_str(s); }
 #   +0 major, +8 minor, +16 patch, +24 prerelease, +32 build.
 # prerelease and build are Strs, both 0 (absent) at construction.
 fn version_new(major, minor, patch) {
-    var v = alloc(40);
+    var v = _stik_alloc(40);
     store64(v, major);
     store64(v + 8, minor);
     store64(v + 16, patch);
@@ -412,7 +627,7 @@ fn version_set_build(v, b: Str)        { store64(v + 32, b); return 0; }
 # a new Str. Output is capped at 127 bytes: a prerelease or build part that
 # would not fit is dropped silently, not truncated.
 fn version_to_str(v): Str {
-    var buf = alloc(128);
+    var buf = _stik_alloc(128);
     var cap = 127;
     var pos = 0;
     pos = pos + fmt_int_buf(version_major(v), buf + pos);
@@ -441,15 +656,31 @@ fn version_to_str(v): Str {
     store8(buf + pos, 0);
     return str_new(buf, pos);
 }
+# The value of the `len` ASCII digits at `p` (the caller has checked they are
+# digits), or -1 when it exceeds i64 max: F-008's pre-multiply check.
+fn _stik_dec_checked(p, len) {
+    var val = 0;
+    var k = 0;
+    var ok = 1;
+    while (k < len && ok == 1) {
+        var d = load8(p + k) - 48;
+        if (val > 922337203685477580) { ok = 0; }
+        elif (val == 922337203685477580 && d > 7) { ok = 0; }
+        else { val = val * 10 + d; k = k + 1; }
+    }
+    if (ok == 0) { return 0 - 1; }
+    return val;
+}
 # Parse "MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD]" into a new Version. Returns
-# Ok(version), or an invalid-argument Err when a dot is missing or a numeric
-# segment is empty or has a non-digit. The first '-' or '+' after the second
-# dot ends the patch; the prerelease runs to the next '+'. Prerelease and build
-# text is not validated, and the numbers are not range-checked.
+# Ok(version), or an invalid-argument Err when a dot is missing, a numeric
+# segment is empty or has a non-digit, or a number exceeds i64 max. The first
+# '-' or '+' after the second dot ends the patch; the prerelease runs to the
+# next '+'. Prerelease and build text is not validated.
 fn version_from_str(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     var data = s.data;
     var slen = s.len;
-    var v = alloc(40);
+    var v = _stik_alloc(40);
     store64(v, 0);
     store64(v + 8, 0);
     store64(v + 16, 0);
@@ -517,12 +748,18 @@ fn version_from_str(s: Str) {
         }
         k = k + 1;
     }
-    var major_s = str_new(data, maj_len);
-    store64(v, str_to_int(major_s));
-    var minor_s = str_new(data + dot1 + 1, min_len);
-    store64(v + 8, str_to_int(minor_s));
-    var patch_s = str_new(data + dot2 + 1, pat_len);
-    store64(v + 16, str_to_int(patch_s));
+    # F-038 (1.12.3): checked conversion. str_to_int wrapped, so
+    # 18446744073709551617.0.0 parsed as 1.0.0 and 9223372036854775808.0.0 as a
+    # negative major that version_to_str printed and could not re-parse.
+    var maj = _stik_dec_checked(data, maj_len);
+    var mnr = _stik_dec_checked(data + dot1 + 1, min_len);
+    var pat = _stik_dec_checked(data + dot2 + 1, pat_len);
+    if (maj < 0 || mnr < 0 || pat < 0) {
+        return stik_err_invalid_argument(str_from("invalid version: number out of range"));
+    }
+    store64(v, maj);
+    store64(v + 8, mnr);
+    store64(v + 16, pat);
     # Parse prerelease and build if present
     if (patch_end < slen) {
         var sep = load8(data + patch_end);
@@ -573,7 +810,7 @@ enum SystemStatus {
 #   +0 llm, +8 virtualization, +16 gpu, +24 tpm.
 # All start at 0.
 fn capabilities_new() {
-    var c = alloc(32);
+    var c = _stik_alloc(32);
     store64(c, 0);
     store64(c + 8, 0);
     store64(c + 16, 0);
@@ -609,7 +846,7 @@ fn capabilities_eq(a, b) {
 #   created empty).
 # name and enabled are stored as passed; there are no setters.
 fn component_config_new(name: Str, enabled) {
-    var c = alloc(24);
+    var c = _stik_alloc(24);
     store64(c, name);
     store64(c + 8, enabled);
     store64(c + 16, map_new());
@@ -635,6 +872,7 @@ fn message_type_name(t) {
 # unrecognised string is an error rather than a silent default, so
 # message_type_parse(message_type_name(v)) == v holds for every MessageType member.
 fn message_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Command") == 1) { return Ok(MSG_COMMAND); }
     elif (str_eq_cstr(s, "Response") == 1) { return Ok(MSG_RESPONSE); }
     elif (str_eq_cstr(s, "Event") == 1) { return Ok(MSG_EVENT); }
@@ -656,6 +894,7 @@ fn system_status_name(s) {
 # `Unknown` is STATUS_UNKNOWN's canonical name (it is produced by
 # system_status_name's fallback, not by an explicit arm), so it maps back here.
 fn system_status_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Healthy") == 1) { return Ok(STATUS_HEALTHY); }
     elif (str_eq_cstr(s, "Degraded") == 1) { return Ok(STATUS_DEGRADED); }
     elif (str_eq_cstr(s, "Critical") == 1) { return Ok(STATUS_CRITICAL); }

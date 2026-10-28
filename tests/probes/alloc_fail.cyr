@@ -1,0 +1,50 @@
+# tests/probes/alloc_fail.cyr
+# expect-exit: 71
+# expect-stderr: agnostik: allocation failed
+#
+# Every allocation in agnostik's shipped modules goes through _stik_alloc
+# (1.12.3, ADR-007). With the heap exhausted, a constructor must fail by name:
+# the message on stderr and exit status 71, never a write through address 0.
+# Until 1.12.3 version_new stored its three fields at addresses 0, 8 and 16
+# and the probe died of SIGSEGV. scripts/oom-probe.sh runs it under
+# `prlimit --as`, checking the exit status and the message above.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "src/lib.cyr"
+
+# Writes a C string to stderr; allocates nothing.
+fn _probe_say(s) {
+    sys_write(2, s, strlen(s));
+    return 0;
+}
+
+# Allocates `step`-byte blocks until alloc returns 0; returns how many succeeded.
+fn _probe_drain(step) {
+    var n = 0;
+    var more = 1;
+    while (more == 1) {
+        if (alloc(step) == 0) { more = 0; } else { n = n + 1; }
+    }
+    return n;
+}
+
+# Drains the heap, then builds a Version; reaching the end is a failure.
+fn main() {
+    var big = _probe_drain(1048576);
+    _probe_drain(4096);
+    _probe_drain(8);
+    if (big == 0) { _probe_say("alloc_fail: no 1 MiB block ever succeeded\n"); return 2; }
+    if (alloc(40) != 0) { _probe_say("alloc_fail: heap not exhausted; raise the drain\n"); return 2; }
+    var v = version_new(1, 2, 3);
+    _probe_say("alloc_fail: version_new returned instead of failing by name\n");
+    return 1;
+}

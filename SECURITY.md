@@ -30,6 +30,11 @@ only). Primary attack surfaces:
    - **Fuzz harness** at `tests/tcyr/test_v112_fuzz.tcyr` (v1.1.2) — 8
      parser entry points × 200 deterministic xorshift64 iterations + every
      audit finding's input shape as a regression seed; runs every CI build.
+   - Since 1.12.3 the JSON reader matches top-level members only and takes
+     a repeated key's last value (F-029). A number outside i64 reads 0. Every
+     parser returns an Err for a 0 `Str`. The seven value structs'
+     `<Struct>_from_json_str` read up to the NUL and never past it (F-047,
+     ADR-008). `tests/tcyr/test_v1123_hardening.tcyr` fuzzes all three.
 2. **Identifier generation** — `agent_id_new` / `span_id_new` /
    `trace_id_new` draw every ID from the kernel CSPRNG through the stdlib's
    portable `sys_getrandom` (F-022, v1.6.2), never a raw syscall number.
@@ -50,7 +55,16 @@ only). Primary attack surfaces:
    out as `bytes_value`, unchanged, and other strings get U+FFFD for each
    ill-formed subpart. So a strict decoder never rejects a message over a
    caller's bytes.
-4. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
+4. **Allocation failure** (v1.12.3, ADR-007). The stdlib's `alloc` returns
+   0, rather than aborting, when the heap cannot grow or a size is <= 0 or
+   over 2 GiB. agnostik never writes through that 0. `agnostik_err_new`
+   returns a static out-of-memory error, so failure reporting keeps working.
+   Every other allocation fails by name: `agnostik: allocation failed` on
+   stderr and exit 71. A consumer can therefore see agnostik end the process
+   when memory runs out, as it already does for a missing CSPRNG (exit 70).
+   Before 1.12.3 that case was a write through address 0, a SIGSEGV on Linux.
+   `scripts/oom-probe.sh` checks both paths under `prlimit` in CI.
+5. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
    install the pinned Cyrius toolchain through `scripts/ci-install-cyrius.sh`.
    It checks the release's `SHA256SUMS.sig` against the cyrius Ed25519
    release key pinned in that script, then the tarball against `SHA256SUMS`,
@@ -82,6 +96,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-14 | v1.12.0 minor-cut pass (same report, eighth section): the UTF-8 writer, Resource / Scope encoders, export requests, histograms, exemplars | No findings | [`docs/audit/2026-10-14-audit.md`](docs/audit/2026-10-14-audit.md) |
 | 2026-10-28 | v1.12.1 toolchain refresh (cyrius 6.7.9 → 6.7.18): advisories CYRIUS-2026-0036..0050 against agnostik's reach, silent 6.7.10–6.7.18 changes, re-vendored stdlib, syscall wrappers on every target | No findings; 0045 (`bayan` PDF) and 0047 (`io` `file_write_atomic`) sit in vendored modules agnostik never calls | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 | 2026-10-28 | v1.12.2 CI pass (same report, second section): actions checkout v7 / upload-artifact v7 / download-artifact v8 / action-gh-release v3, the `ubuntu-26.04` runner, the `xxd`-free installer, a read-only CI token | No findings; GHSA-cxww-7g56-2vh6 (download-artifact < 4.1.3) is out of range | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
+| 2026-10-28 | v1.12.3 P(-1) pass (same report, third section): full review of `src/`, from anuenue's unchecked-allocation report | F-028..F-047, all repaired: three MEDIUM (F-029 JSON parser differential, F-032 fail-open score validator, F-047 derived decoders' over-read), sixteen LOW, one INFO; v2.0.0 carries the items that need new API | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

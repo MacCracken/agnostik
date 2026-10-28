@@ -1,0 +1,38 @@
+# tests/probes/pb_huge_len.cyr
+# expect-exit: 71
+# expect-stderr: agnostik: allocation failed
+#
+# A Span whose name Str claims a length near i64 max. Encoding it must fail by
+# name (F-040, 1.12.3): the protobuf buffer refuses to grow past 2 GiB. Through
+# 1.12.2 `len + n` wrapped negative, the buffer did not grow, and the copy
+# wrote past its 256 bytes into the heap. scripts/oom-probe.sh runs it,
+# checking the exit status and the message above.
+
+include "lib/syscalls.cyr"
+include "lib/string.cyr"
+include "lib/alloc.cyr"
+include "lib/fmt.cyr"
+include "lib/str.cyr"
+include "lib/vec.cyr"
+include "lib/hashmap.cyr"
+include "lib/tagged.cyr"
+include "lib/fnptr.cyr"
+include "lib/trait.cyr"
+include "src/lib.cyr"
+
+# Writes a C string to stderr.
+fn _probe_say(s) {
+    sys_write(2, s, strlen(s));
+    return 0;
+}
+
+# Encodes a span with a forged name length; reaching the end is a failure.
+fn main() {
+    var ids = alloc(24);
+    var name = str_new("x", 0x7FFFFFFFFFFFFFFF);
+    var sp = span_new(name, ids, ids + 16);
+    var sb = str_builder_new();
+    Span_to_otlp_proto(sp, sb);
+    _probe_say("pb_huge_len: Span_to_otlp_proto returned instead of failing by name\n");
+    return 1;
+}

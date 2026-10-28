@@ -11,13 +11,14 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.12.2
+- **Current**: 1.12.3
 - **Toolchain**: Cyrius `6.7.18` (pinned in `cyrius.cyml`)
-- **Tests**: 2,307 assertions across 24 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 2,416 assertions across 25 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
   encoders byte-identical to protoc's encoding of the official schema;
   api-surface gate locked at 1,122 public fns, every one documented;
-  `cyrius audit` clean; all five consumers swept green
+  `cyrius audit` clean; allocation-failure probes under `prlimit`; all five
+  consumers swept green
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
   (1.0.x, 1 INFO fixed), 2026-06-01 (v1.3.0, F-013 buffer safety),
   2026-08-24 (P(-1) sweep, F-014..F-021 — 6 repaired in v1.3.7, the two
@@ -29,7 +30,8 @@ against successive Cyrius type-system slots.
   F-026 JSON string escaping, fixed in v1.9.0; v1.10.0 minor-cut pass —
   F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
   and v1.12.0 minor-cut passes — no findings), 2026-10-28 (v1.12.1 toolchain
-  refresh, cyrius 6.7.9 → 6.7.18, and v1.12.2 CI pass — no findings).
+  refresh, cyrius 6.7.9 → 6.7.18, and v1.12.2 CI pass — no findings; v1.12.3 P(-1)
+  pass — F-028..F-047, three MEDIUM, all repaired).
   Cadence: every minor cut and toolchain refresh, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.
@@ -78,7 +80,7 @@ vec_push(span_events(span), span_event_new(str_from("retry")));
 var sb = str_builder_new();
 Span_to_otlp_proto(span, sb);                         # opentelemetry.proto.trace.v1.Span bytes
 
-# JSON serde — derive-driven for the trivial structs (v1.1.0)
+# JSON serde: hand-written, bounded decoders (ADR-008)
 var rl = resource_limits_new();
 var j = str_builder_new();
 ResourceLimits_to_json(rl, j);                        # `{"max_memory":268435456,...}`
@@ -113,9 +115,13 @@ tree, on its own cyrius pin, before a release.
 - [`docs/adr/001-revive-derive-serialize.md`](docs/adr/001-revive-derive-serialize.md)
   — derive plan (superseded).
 - [`docs/adr/002-derive-serialize-7-of-9.md`](docs/adr/002-derive-serialize-7-of-9.md)
-  — `#derive(Serialize)` for 7 of 9 trivial structs; `AgentInfo` and
-  `TelemetryConfig` retain hand-written impls (custom UUID stringification +
-  enum-name lookup + null-Str fallback).
+  — `#derive(Serialize)` for 7 of 9 trivial structs (superseded by ADR-008).
+- [`docs/adr/007-allocation-failure-fails-by-name.md`](docs/adr/007-allocation-failure-fails-by-name.md)
+  — every allocation goes through `_stik_alloc`, which names a failure and exits
+  71; `agnostik_err_new` returns a static out-of-memory error instead.
+- [`docs/adr/008-value-struct-serde-is-hand-written.md`](docs/adr/008-value-struct-serde-is-hand-written.md)
+  — the seven value structs' serde is hand-written, bounded and range-checked,
+  with the same names, arity and output bytes.
 
 ## License
 

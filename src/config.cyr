@@ -22,6 +22,7 @@ fn env_profile_name(p) {
 # unrecognised string is an error rather than a silent default, so
 # env_profile_parse(env_profile_name(v)) == v holds for every EnvironmentProfile member.
 fn env_profile_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Development") == 1) { return Ok(ENV_DEVELOPMENT); }
     elif (str_eq_cstr(s, "Testing") == 1) { return Ok(ENV_TESTING); }
     elif (str_eq_cstr(s, "Staging") == 1) { return Ok(ENV_STAGING); }
@@ -36,7 +37,7 @@ fn env_profile_parse(s: Str) {
 # profile starts ENV_DEVELOPMENT, hostname an empty Str, components an empty
 # cstr-keyed map, and generation and content_hash 0.
 fn agnos_config_new() {
-    var c = alloc(40);
+    var c = _stik_alloc(40);
     store64(c, ENV_DEVELOPMENT);
     store64(c + 8, str_from(""));
     store64(c + 16, map_new());
@@ -62,16 +63,67 @@ fn acfg_set_content_hash(c, v) { store64(c + 32, v); return 0; }
 fn acfg_set_profile(c, v)  { store64(c, v); return 0; }
 # Set the hostname Str. Not validated. Returns 0.
 fn acfg_set_hostname(c, v: Str) { store64(c + 8, v); return 0; }
-#derive(Serialize)
 struct EdgeResourceOverrides {
     max_memory: i64; max_cpu_time: i64; max_agents: i64;
 }
+# Write the EdgeResourceOverrides at `ptr` to str_builder `sb` as JSON, each field an i64 member:
+#   {"max_memory":N,"max_cpu_time":N,"max_agents":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn EdgeResourceOverrides_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"max_memory\":");
+    str_builder_add_int(sb, load64(ptr));
+    str_builder_add_cstr(sb, ",\"max_cpu_time\":");
+    str_builder_add_int(sb, load64(ptr + 8));
+    str_builder_add_cstr(sb, ",\"max_agents\":");
+    str_builder_add_int(sb, load64(ptr + 16));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new EdgeResourceOverrides (24 bytes) from `pairs`, the vec bayan_json_parse returns; the first
+# pair with a field's name gives its value. A missing member, or one that is not a number or is
+# outside i64, reads 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc"
+# as 12).
+fn EdgeResourceOverrides_from_json(pairs) {
+    var p = _stik_alloc(24);
+    store64(p, _stik_json_pair_int(pairs, "max_memory"));
+    store64(p + 8, _stik_json_pair_int(pairs, "max_cpu_time"));
+    store64(p + 16, _stik_json_pair_int(pairs, "max_agents"));
+    return p;
+}
+# EdgeResourceOverrides_from_json_str's field table, built on first use.
+var _stik_ft_eovr = 0;
+# The field table naming EdgeResourceOverrides's members in layout order.
+fn _stik_ft_eovr_get() {
+    if (_stik_ft_eovr == 0) {
+        var ft = _stik_ft_new(3);
+        _stik_ft_set(ft, 0, "max_memory");
+        _stik_ft_set(ft, 1, "max_cpu_time");
+        _stik_ft_set(ft, 2, "max_agents");
+        _stik_ft_eovr = ft;
+    }
+    return _stik_ft_eovr;
+}
+# A new EdgeResourceOverrides (24 bytes) from the JSON text at C string `json`, read in one pass up
+# to its NUL terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A
+# missing member, or one that is not a number or is outside i64, reads 0, and a repeated member
+# gives its last value. Through 1.12.2 the derived scanner could read past the end of truncated
+# text.
+fn EdgeResourceOverrides_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(24);
+    store64(p, 0);
+    store64(p + 8, 0);
+    store64(p + 16, 0);
+    _stik_json_read_fields(json, _stik_ft_eovr_get(), p, 0);
+    return p;
+}
 # An EdgeResourceOverrides: resource-limit overrides a ProfileDefinition can
-# carry. 24 bytes, the #derive(Serialize) struct's three i64 fields:
+# carry. 24 bytes, the EdgeResourceOverrides struct's three i64 fields:
 #   +0 max_memory, +8 max_cpu_time, +16 max_agents.
 # All start at 0; the eovr_set_* setters (v1.11.0) change them.
 fn edge_overrides_new() {
-    var e = alloc(24);
+    var e = _stik_alloc(24);
     store64(e, 0);
     store64(e + 8, 0);
     store64(e + 16, 0);
@@ -97,7 +149,7 @@ fn eovr_set_max_agents(e, v) { store64(e + 16, v); return 0; }
 # empty cstr-keyed map. profdef_set_inherits_from and profdef_set_edge_overrides
 # (v1.11.0) set the two scalars.
 fn profile_definition_new(name: Str, profile) {
-    var p = alloc(40);
+    var p = _stik_alloc(40);
     store64(p, name);
     store64(p + 8, profile);
     store64(p + 16, 0 - 1);
@@ -124,7 +176,7 @@ fn profdef_settings(p)       { return load64(p + 32); }
 # A FleetConfig. 16 bytes: +0 profiles (a vec, starts empty), +8 default
 # (starts at 0).
 fn fleet_config_new() {
-    var f = alloc(16);
+    var f = _stik_alloc(16);
     store64(f, vec_new());
     store64(f + 8, 0);
     return f;

@@ -13,6 +13,7 @@ fn device_family_name(f) {
 # unrecognised string is an error rather than a silent default, so
 # device_family_parse(device_family_name(v)) == v holds for every DeviceFamily member.
 fn device_family_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "GPU") == 1) { return Ok(DEV_GPU); }
     elif (str_eq_cstr(s, "TPU") == 1) { return Ok(DEV_TPU); }
     elif (str_eq_cstr(s, "NPU") == 1) { return Ok(DEV_NPU); }
@@ -52,6 +53,7 @@ fn device_vendor_name(v) {
 # `Custom` is VENDOR_CUSTOM's canonical name (it is produced by
 # device_vendor_name's fallback, not by an explicit arm), so it maps back here.
 fn device_vendor_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Nvidia") == 1) { return Ok(VENDOR_NVIDIA); }
     elif (str_eq_cstr(s, "AMD") == 1) { return Ok(VENDOR_AMD); }
     elif (str_eq_cstr(s, "Intel") == 1) { return Ok(VENDOR_INTEL); }
@@ -79,6 +81,7 @@ fn device_health_name(h) {
 # `Unknown` is HEALTH_UNKNOWN's canonical name (it is produced by
 # device_health_name's fallback, not by an explicit arm), so it maps back here.
 fn device_health_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "Ok") == 1) { return Ok(HEALTH_OK); }
     elif (str_eq_cstr(s, "Degraded") == 1) { return Ok(HEALTH_DEGRADED); }
     elif (str_eq_cstr(s, "Failed") == 1) { return Ok(HEALTH_FAILED); }
@@ -123,6 +126,7 @@ fn memory_type_name(t) {
 # `Unknown` is MEM_UNKNOWN's canonical name (it is produced by
 # memory_type_name's fallback, not by an explicit arm), so it maps back here.
 fn memory_type_parse(s: Str) {
+    if (s == 0) { return _stik_err_no_value(); }
     if (str_eq_cstr(s, "GDDR5") == 1) { return Ok(MEM_GDDR5); }
     elif (str_eq_cstr(s, "GDDR6") == 1) { return Ok(MEM_GDDR6); }
     elif (str_eq_cstr(s, "GDDR6X") == 1) { return Ok(MEM_GDDR6X); }
@@ -139,11 +143,10 @@ fn memory_type_parse(s: Str) {
 }
 # v1.1.1: widened to i8 (each field is a 0/1 boolean). 72 B → 9 B per
 # instance. Existing accessor + setter signatures preserved; the
-# type-tag and storage width are the only differences. Comments must
-# live OUTSIDE the struct body: cyrius < 6.6.7 derive codegen reads a
-# `#` inside the body as a field name, and consumers compile the dist
-# bundle under their own pins.
-#derive(Serialize)
+# type-tag and storage width are the only differences. Comments stay
+# OUTSIDE the struct body: through 1.12.2 it carried #derive(Serialize),
+# whose codegen under cyrius < 6.6.7 read a `#` inside the body as a
+# field name. The serde fns below it are hand-written since 1.12.3 (ADR-008).
 struct AcceleratorFlags {
     cuda_available: i8;
     rocm_available: i8;
@@ -155,53 +158,139 @@ struct AcceleratorFlags {
     openvino_available: i8;
     directml_available: i8;
 }
+# Write the AcceleratorFlags at `ptr` to str_builder `sb` as JSON, each flag as its getter reads it
+# (0 or 1):
+#   {"cuda_available":N,"rocm_available":N,"metal_available":N,"vulkan_available":N,
+#    "oneapi_available":N,"tpu_available":N,"sycl_available":N,"openvino_available":N,
+#    "directml_available":N}
+# The bytes the #derive(Serialize) code wrote through 1.12.2, one literal per member as it emitted
+# them (ADR-008). Returns 0.
+fn AcceleratorFlags_to_json(ptr, sb) {
+    str_builder_add_cstr(sb, "{\"cuda_available\":");
+    str_builder_add_int(sb, aflags_cuda(ptr));
+    str_builder_add_cstr(sb, ",\"rocm_available\":");
+    str_builder_add_int(sb, aflags_rocm(ptr));
+    str_builder_add_cstr(sb, ",\"metal_available\":");
+    str_builder_add_int(sb, aflags_metal(ptr));
+    str_builder_add_cstr(sb, ",\"vulkan_available\":");
+    str_builder_add_int(sb, aflags_vulkan(ptr));
+    str_builder_add_cstr(sb, ",\"oneapi_available\":");
+    str_builder_add_int(sb, aflags_oneapi(ptr));
+    str_builder_add_cstr(sb, ",\"tpu_available\":");
+    str_builder_add_int(sb, aflags_tpu(ptr));
+    str_builder_add_cstr(sb, ",\"sycl_available\":");
+    str_builder_add_int(sb, aflags_sycl(ptr));
+    str_builder_add_cstr(sb, ",\"openvino_available\":");
+    str_builder_add_int(sb, aflags_openvino(ptr));
+    str_builder_add_cstr(sb, ",\"directml_available\":");
+    str_builder_add_int(sb, aflags_directml(ptr));
+    str_builder_add_cstr(sb, "}");
+    return 0;
+}
+# A new AcceleratorFlags (9 bytes) from `pairs`, the vec bayan_json_parse returns; the first pair
+# with a field's name gives its value. A nonzero member reads 1; a missing or non-numeric one reads
+# 0 (since 1.12.3; the derived code wrapped out-of-range numbers and read "12abc" as 12).
+fn AcceleratorFlags_from_json(pairs) {
+    var p = _stik_alloc(9);
+    store8(p, _stik_json_pair_int(pairs, "cuda_available") != 0);
+    store8(p + 1, _stik_json_pair_int(pairs, "rocm_available") != 0);
+    store8(p + 2, _stik_json_pair_int(pairs, "metal_available") != 0);
+    store8(p + 3, _stik_json_pair_int(pairs, "vulkan_available") != 0);
+    store8(p + 4, _stik_json_pair_int(pairs, "oneapi_available") != 0);
+    store8(p + 5, _stik_json_pair_int(pairs, "tpu_available") != 0);
+    store8(p + 6, _stik_json_pair_int(pairs, "sycl_available") != 0);
+    store8(p + 7, _stik_json_pair_int(pairs, "openvino_available") != 0);
+    store8(p + 8, _stik_json_pair_int(pairs, "directml_available") != 0);
+    return p;
+}
+# AcceleratorFlags_from_json_str's field table, built on first use.
+var _stik_ft_aflags = 0;
+# The field table naming AcceleratorFlags's members in layout order.
+fn _stik_ft_aflags_get() {
+    if (_stik_ft_aflags == 0) {
+        var ft = _stik_ft_new(9);
+        _stik_ft_set(ft, 0, "cuda_available");
+        _stik_ft_set(ft, 1, "rocm_available");
+        _stik_ft_set(ft, 2, "metal_available");
+        _stik_ft_set(ft, 3, "vulkan_available");
+        _stik_ft_set(ft, 4, "oneapi_available");
+        _stik_ft_set(ft, 5, "tpu_available");
+        _stik_ft_set(ft, 6, "sycl_available");
+        _stik_ft_set(ft, 7, "openvino_available");
+        _stik_ft_set(ft, 8, "directml_available");
+        _stik_ft_aflags = ft;
+    }
+    return _stik_ft_aflags;
+}
+# A new AcceleratorFlags (9 bytes) from the JSON text at C string `json`, read in one pass up to its
+# NUL terminator and never past it. 0 when `json` is 0 or the text is not a JSON object. A nonzero
+# member reads 1; a missing or non-numeric one reads 0, and a repeated member gives its last value.
+# Through 1.12.2 the derived scanner could read past the end of truncated text.
+fn AcceleratorFlags_from_json_str(json) {
+    if (_stik_json_is_obj_cstr(json) == 0) { return 0; }
+    var p = _stik_alloc(9);
+    store8(p, 0);
+    store8(p + 1, 0);
+    store8(p + 2, 0);
+    store8(p + 3, 0);
+    store8(p + 4, 0);
+    store8(p + 5, 0);
+    store8(p + 6, 0);
+    store8(p + 7, 0);
+    store8(p + 8, 0);
+    _stik_json_read_fields(json, _stik_ft_aflags_get(), p, 2);
+    return p;
+}
 # An AcceleratorFlags: which compute backends are available for a device.
-# 9 bytes, one i8 0/1 flag per backend, read through the aflags_* accessors:
+# 9 bytes, one i8 0/1 flag per backend, read through the aflags_* accessors.
+# Since 1.12.3 a setter stores 1 for any nonzero value and a getter answers 1 for
+# any nonzero byte; through 1.12.2 the low byte was stored, so 256 read as 0
+# (unavailable) and 255 read as 255 while the JSON said -1:
 #   +0 cuda, +1 rocm, +2 metal, +3 vulkan, +4 oneapi, +5 tpu, +6 sycl,
 #   +7 openvino, +8 directml.
-# All flags start at 0. AcceleratorFlags_to_json (#derive) serializes it.
+# All flags start at 0. AcceleratorFlags_to_json serializes it.
 fn accelerator_flags_new() {
-    var f = alloc(9);
+    var f = _stik_alloc(9);
     var i = 0;
     while (i < 9) { store8(f + i, 0); i = i + 1; }
     return f;
 }
 # 1 when CUDA is available, else 0.
-fn aflags_cuda(f)     { return load8(f); }
+fn aflags_cuda(f)     { return load8(f) != 0; }
 # 1 when ROCm is available, else 0.
-fn aflags_rocm(f)     { return load8(f + 1); }
+fn aflags_rocm(f)     { return load8(f + 1) != 0; }
 # 1 when Metal is available, else 0.
-fn aflags_metal(f)    { return load8(f + 2); }
+fn aflags_metal(f)    { return load8(f + 2) != 0; }
 # 1 when Vulkan is available, else 0.
-fn aflags_vulkan(f)   { return load8(f + 3); }
+fn aflags_vulkan(f)   { return load8(f + 3) != 0; }
 # 1 when oneAPI is available, else 0.
-fn aflags_oneapi(f)   { return load8(f + 4); }
+fn aflags_oneapi(f)   { return load8(f + 4) != 0; }
 # 1 when a TPU backend is available, else 0.
-fn aflags_tpu(f)      { return load8(f + 5); }
+fn aflags_tpu(f)      { return load8(f + 5) != 0; }
 # 1 when SYCL is available, else 0.
-fn aflags_sycl(f)     { return load8(f + 6); }
+fn aflags_sycl(f)     { return load8(f + 6) != 0; }
 # 1 when OpenVINO is available, else 0.
-fn aflags_openvino(f) { return load8(f + 7); }
+fn aflags_openvino(f) { return load8(f + 7) != 0; }
 # 1 when DirectML is available, else 0.
-fn aflags_directml(f) { return load8(f + 8); }
-# Set the CUDA flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_cuda(f, v)     { store8(f, v); return 0; }
-# Set the ROCm flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_rocm(f, v)     { store8(f + 1, v); return 0; }
-# Set the Metal flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_metal(f, v)    { store8(f + 2, v); return 0; }
-# Set the Vulkan flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_vulkan(f, v)   { store8(f + 3, v); return 0; }
-# Set the oneAPI flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_oneapi(f, v)   { store8(f + 4, v); return 0; }
-# Set the TPU flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_tpu(f, v)      { store8(f + 5, v); return 0; }
-# Set the SYCL flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_sycl(f, v)     { store8(f + 6, v); return 0; }
-# Set the OpenVINO flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_openvino(f, v) { store8(f + 7, v); return 0; }
-# Set the DirectML flag (0/1). Only the low byte of `v` is stored. Returns 0.
-fn aflags_set_directml(f, v) { store8(f + 8, v); return 0; }
+fn aflags_directml(f) { return load8(f + 8) != 0; }
+# Set the CUDA flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_cuda(f, v)     { store8(f, v != 0); return 0; }
+# Set the ROCm flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_rocm(f, v)     { store8(f + 1, v != 0); return 0; }
+# Set the Metal flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_metal(f, v)    { store8(f + 2, v != 0); return 0; }
+# Set the Vulkan flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_vulkan(f, v)   { store8(f + 3, v != 0); return 0; }
+# Set the oneAPI flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_oneapi(f, v)   { store8(f + 4, v != 0); return 0; }
+# Set the TPU flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_tpu(f, v)      { store8(f + 5, v != 0); return 0; }
+# Set the SYCL flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_sycl(f, v)     { store8(f + 6, v != 0); return 0; }
+# Set the OpenVINO flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_openvino(f, v) { store8(f + 7, v != 0); return 0; }
+# Set the DirectML flag (0/1). Any nonzero `v` stores 1. Returns 0.
+fn aflags_set_directml(f, v) { store8(f + 8, v != 0); return 0; }
 # An AcceleratorDevice: one compute device and its reported state. 120 bytes,
 # all 8-byte slots, read through the adev_* accessors:
 #   +0 index, +8 name, +16 vendor, +24 family, +32 vram_total, +40 vram_used,
@@ -213,7 +302,7 @@ fn aflags_set_directml(f, v) { store8(f + 8, v); return 0; }
 # flags is a fresh all-0 AcceleratorFlags, power and bandwidth start at 0,
 # memory_type at MEM_UNKNOWN and health at HEALTH_OK.
 fn accelerator_device_new(index, dname: Str, vendor, family) {
-    var d = alloc(120);
+    var d = _stik_alloc(120);
     store64(d, index);
     store64(d + 8, dname);
     store64(d + 16, vendor);
@@ -284,7 +373,7 @@ fn adev_set_health(d, v)               { store64(d + 112, v); return 0; }
 # 16 bytes: +0 devices (a vec, starts empty), +8 total_vram (starts at 0).
 # Add devices with asum_add_device.
 fn accelerator_summary_new() {
-    var s = alloc(16);
+    var s = _stik_alloc(16);
     store64(s, vec_new());
     store64(s + 8, 0);
     return s;
@@ -296,9 +385,17 @@ fn asum_devices(s)    { return load64(s); }
 fn asum_total_vram(s) { return load64(s + 8); }
 # Append `dev` to the summary and add its current vram_total to total_vram.
 # Returns 0. There is no duplicate check: adding a device twice counts it twice.
+# A vram_total <= 0 adds nothing, and the total saturates at i64 max instead of
+# wrapping (since 1.12.3; a device reporting -100000 used to subtract it, and a
+# huge one wrapped the total negative).
 fn asum_add_device(s, dev) {
     vec_push(load64(s), dev);
-    store64(s + 8, load64(s + 8) + adev_vram_total(dev));
+    var v = adev_vram_total(dev);
+    if (v > 0) {
+        var t = load64(s + 8);
+        if (t > 0x7FFFFFFFFFFFFFFF - v) { t = 0x7FFFFFFFFFFFFFFF; } else { t = t + v; }
+        store64(s + 8, t);
+    }
     return 0;
 }
 # A new vec of the summary's devices whose family is `family`, in insertion

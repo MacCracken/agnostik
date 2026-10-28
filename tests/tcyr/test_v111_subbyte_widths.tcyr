@@ -66,14 +66,16 @@ fn test_iscore_field_independence() {
     return 0;
 }
 
-# Test: an InjectionScores field holds 127, the i8 positive maximum.
+# Test: a score outside 0..100 saturates instead of wrapping (since 1.12.3).
 fn test_iscore_i8_boundary() {
-    # i8 signed range is [-128, 127]. agnostik scores are 0..100 in
-    # spec but the storage is i8 — verify 127 (i8 max for the
-    # positive-only band we use) round-trips cleanly.
+    # The storage is i8, but scores are 0..100. Through 1.12.2 a setter
+    # stored the low byte, so 127 read back as 127 and 256 as 0; now
+    # every setter saturates to the documented range.
     var is = injection_scores_new();
+    iscore_set_sql(is, 100);
+    assert_eq(iscore_sql(is), 100, "is sql=100 (range top)");
     iscore_set_sql(is, 127);
-    assert_eq(iscore_sql(is), 127, "is sql=127 (i8 max positive)");
+    assert_eq(iscore_sql(is), 100, "is sql=127 saturates to 100");
     return 0;
 }
 
