@@ -4,13 +4,16 @@
 
 | Version  | Supported |
 |----------|-----------|
-| 1.12.x   | Yes (current) |
-| < 1.12.0 | No (upgrade to the current 1.x release) |
+| 2.0.x    | Yes (current) |
+| < 2.0.0  | No (upgrade to 2.0; see below) |
 
 Security fixes ship in a new release on the current line. There are no
-backport branches: every 1.x release keeps the public API (additions only,
-no breaks before 2.0.0), so moving to the current release is the upgrade
-path for any 1.x consumer. Feature work targets the current minor only. The
+backport branches. Within a major line every release keeps the public API
+(additions only), so moving to the current release is the upgrade path. A 1.x
+consumer moves to 2.0 with [`docs/migration/`](docs/migration/README.md). The
+2.0.0 break is the accessor rename, applied mechanically by
+`scripts/migrate-2.0.0.sh`, plus the output changes listed in the CHANGELOG's
+`[2.0.0]` Breaking sections. Feature work targets the current minor only. The
 table moves to the new line at each minor cut.
 
 ## Scope
@@ -54,7 +57,8 @@ only). Primary attack surfaces:
    is valid UTF-8 (ADR-006): an attribute value or log body that is not goes
    out as `bytes_value`, unchanged, and other strings get U+FFFD for each
    ill-formed subpart. So a strict decoder never rejects a message over a
-   caller's bytes.
+   caller's bytes. Since 2.0.0 the JSON writers apply the same rule, so their
+   text is always valid JSON.
 4. **Allocation failure** (v1.12.3, ADR-007). The stdlib's `alloc` returns
    0, rather than aborting, when the heap cannot grow or a size is <= 0 or
    over 2 GiB. agnostik never writes through that 0. `agnostik_err_new`
@@ -64,7 +68,16 @@ only). Primary attack surfaces:
    when memory runs out, as it already does for a missing CSPRNG (exit 70).
    Before 1.12.3 that case was a write through address 0, a SIGSEGV on Linux.
    `scripts/oom-probe.sh` checks both paths under `prlimit` in CI.
-5. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
+5. **Secrets and the audit chain** (v2.0.0).
+   - **Secrets:** `secret_matches` compares a presented credential with a stored `Secret` in time that depends
+     only on the two lengths. An empty or destroyed secret matches nothing, so an unset key authenticates no one.
+     `str_eq` is not for credentials: its timing reveals how much of a guess was right.
+   - **The audit chain:** `AuditEntry_to_canonical` gives the bytes to hash and sign: a fixed, injective encoding
+     (ADR-011), so two entries that differ anywhere hash differently. `IntegrityFields` keeps its own copy of
+     each hash and signature.
+   - **What stays with the consumer:** agnostik supplies the types and these bytes. Hashing and signature checks
+     belong to the consumer's crypto library.
+6. **Build toolchain supply chain** (v1.7.1). CI and the release workflow
    install the pinned Cyrius toolchain through `scripts/ci-install-cyrius.sh`.
    It checks the release's `SHA256SUMS.sig` against the cyrius Ed25519
    release key pinned in that script, then the tarball against `SHA256SUMS`,
@@ -97,6 +110,7 @@ shell interpolation — verified by the `Security Scan` job in
 | 2026-10-28 | v1.12.1 toolchain refresh (cyrius 6.7.9 → 6.7.18): advisories CYRIUS-2026-0036..0050 against agnostik's reach, silent 6.7.10–6.7.18 changes, re-vendored stdlib, syscall wrappers on every target | No findings; 0045 (`bayan` PDF) and 0047 (`io` `file_write_atomic`) sit in vendored modules agnostik never calls | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 | 2026-10-28 | v1.12.2 CI pass (same report, second section): actions checkout v7 / upload-artifact v7 / download-artifact v8 / action-gh-release v3, the `ubuntu-26.04` runner, the `xxd`-free installer, a read-only CI token | No findings; GHSA-cxww-7g56-2vh6 (download-artifact < 4.1.3) is out of range | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 | 2026-10-28 | v1.12.3 P(-1) pass (same report, third section): full review of `src/`, from anuenue's unchecked-allocation report | F-028..F-047, all repaired: three MEDIUM (F-029 JSON parser differential, F-032 fail-open score validator, F-047 derived decoders' over-read), sixteen LOW, one INFO; v2.0.0 carries the items that need new API | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
+| 2026-10-28 | v2.0.0 release pass (same report, fourth section): the accessor rename and derive, `_stik_json_int` as a Result, the seven items deferred from 1.12.3 (sandbox fields, set flags, `secret_matches`, the canonical audit encoding, the OTLP span kind, UTF-8 JSON, provider enums) | No new finding; the deferred items closed | [`docs/audit/2026-10-28-audit.md`](docs/audit/2026-10-28-audit.md) |
 
 **Cadence**: an audit pass runs at every minor cut and on demand if a
 CVE/0-day pattern surfaces in agnostik's input-handling paths or the cyrius

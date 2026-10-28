@@ -1,7 +1,7 @@
 # tests/tcyr/test_v200_contract.tcyr
 #
 # v2.0.0 step 5: the contract items deferred from 1.12.3, one group per item
-# (roadmap §v2.0.0 "Deferred from 1.12.3"). Each slot test writes a distinct
+# (docs/audit/2026-10-28-audit.md §"Deferred to v2.0.0"). Each slot test writes a distinct
 # value to every field of a struct and reads them all back, so two accessors
 # sharing a slot, or a new slot overlapping an old one, fails here.
 

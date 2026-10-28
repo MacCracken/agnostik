@@ -11,12 +11,13 @@ against successive Cyrius type-system slots.
 
 ## Status
 
-- **Current**: 1.12.3
+- **Current**: 2.0.0, which renamed every accessor to `<Struct>_<field>`. Upgrading from 1.x:
+  [`docs/migration/README.md`](docs/migration/README.md) and `scripts/migrate-2.0.0.sh`.
 - **Toolchain**: Cyrius `6.7.18` (pinned in `cyrius.cyml`)
-- **Tests**: 2,416 assertions across 25 `.tcyr` files, passing on x86_64-linux
+- **Tests**: 2,582 assertions across 27 `.tcyr` files, passing on x86_64-linux
   and on aarch64 (under `qemu-aarch64`); `CYRIUS_TYPE_CHECK=1` clean; OTLP
   encoders byte-identical to protoc's encoding of the official schema;
-  api-surface gate locked at 1,122 public fns, every one documented;
+  api-surface gate locked at 1,295 public fns, every one documented;
   `cyrius audit` clean; allocation-failure probes under `prlimit`; all five
   consumers swept green
 - **Audits**: 2026-04-26 (pre-1.0, 11 findings closed), 2026-05-10
@@ -31,7 +32,8 @@ against successive Cyrius type-system slots.
   F-027 OTLP encoder bounds on malformed values, fixed in v1.10.0; v1.11.0
   and v1.12.0 minor-cut passes — no findings), 2026-10-28 (v1.12.1 toolchain
   refresh, cyrius 6.7.9 → 6.7.18, and v1.12.2 CI pass — no findings; v1.12.3 P(-1)
-  pass — F-028..F-047, three MEDIUM, all repaired).
+  pass — F-028..F-047, three MEDIUM, all repaired; v2.0.0 release pass — no new
+  finding).
   Cadence: every minor cut and toolchain refresh, plus each P(-1) pass.
 - **Per-parser fuzz**: 9 parser entry points × 200 deterministic
   iterations + audit-finding regression seeds — runs every CI build.

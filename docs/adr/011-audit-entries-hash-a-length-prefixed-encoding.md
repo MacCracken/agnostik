@@ -23,7 +23,7 @@ stored entry.
 ## Options considered
 
 - **JSON.** Readable, but not canonical without a canonicalization scheme (key order, number forms, escapes).
-  agnostik's JSON writer also passes invalid UTF-8 through (roadmap item 5f), so the text is not always valid
+  agnostik's JSON writer also passes invalid UTF-8 through (fixed in 2.0.0's step 5f), so the text is not always valid
   JSON.
 - **Protobuf through the existing OTLP writer.** Compact, and the writer is already here. But protobuf elides
   default values, so 0 and "absent" encode alike, and its canonical form is not specified.
